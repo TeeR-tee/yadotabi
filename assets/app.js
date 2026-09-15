@@ -21,14 +21,26 @@
 
   /** エリアチップ。座標は直書き(ジオコーディングのAPI呼び出しを増やさないため)。 */
   var AREAS = [
+    { label: '登別', lat: 42.4917, lon: 141.1500 },
+    { label: '定山渓', lat: 42.9683, lon: 141.1653 },
+    { label: '銀山', lat: 38.5750, lon: 140.5344 },
+    { label: '鬼怒川', lat: 36.8144, lon: 139.7086 },
+    { label: '日光', lat: 36.7539, lon: 139.5989 },
     { label: '草津', lat: 36.6226, lon: 138.5960 },
     { label: '伊香保', lat: 36.4886, lon: 138.9200 },
+    { label: '軽井沢', lat: 36.3486, lon: 138.6360 },
     { label: '箱根', lat: 35.2324, lon: 139.1069 },
     { label: '熱海', lat: 35.0959, lon: 139.0717 },
+    { label: '修善寺', lat: 34.9702, lon: 138.9264 },
+    { label: '下呂', lat: 35.8058, lon: 137.2436 },
+    { label: '有馬', lat: 34.7981, lon: 135.2478 },
+    { label: '城崎', lat: 35.6247, lon: 134.8055 },
+    { label: '白浜', lat: 33.6853, lon: 135.3403 },
+    { label: '道後', lat: 33.8521, lon: 132.7861 },
     { label: '別府', lat: 33.2794, lon: 131.5006 },
     { label: '由布院', lat: 33.2647, lon: 131.3870 },
-    { label: '城崎', lat: 35.6247, lon: 134.8055 },
-    { label: '道後', lat: 33.8521, lon: 132.7861 }
+    { label: '黒川', lat: 32.9853, lon: 131.1461 },
+    { label: '指宿', lat: 31.2286, lon: 130.6331 }
   ];
 
   /** この倍率より引いた地図では宿を取りに行かない(Overpassに広い範囲を投げないため)。 */
@@ -632,7 +644,7 @@
       encodeURIComponent(hotel.lat + ',' + hotel.lon);
     return '<div class="card empty">' +
       '<p class="empty__title">この周辺ではまだ提案を作れませんでした</p>' +
-      '<p class="empty__note">データが少ないエリアのようです。地図で直接探してみてください。</p>' +
+      '<p class="empty__note">この辺りはデータが少なめです。地図で直接探せます。</p>' +
       '<a class="btn btn--secondary" href="' + escapeHtml(url) + '" target="_blank" rel="noopener">' +
         'Googleマップで周辺を見る</a>' +
     '</div>';
