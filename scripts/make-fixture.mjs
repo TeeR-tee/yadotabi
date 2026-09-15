@@ -1,8 +1,8 @@
 /**
- * 固定データ(fixture)生成スクリプト — 実行方法: `node scripts/make-fixture.mjs`(草津固定)
+ * 固定データ(fixture)生成スクリプト — 実行方法: `node scripts/make-fixture.mjs <area>`(未指定は草津固定)
  *
- * 撮影・検証のたびに Overpass / Wikipedia を叩かないよう、草津温泉の生レスポンスを
- * 1度だけ取って `fixtures/kusatsu.json` に保存する。保存するのは「加工前の生JSON」で、
+ * 撮影・検証のたびに Overpass / Wikipedia を叩かないよう、対象エリアの生レスポンスを
+ * 1度だけ取って `fixtures/<area>.json` に保存する。保存するのは「加工前の生JSON」で、
  * ブラウザ側(geo.js)の既存の整形コードをそのまま通す前提。
  *
  * Node 18+ の素の fetch のみを使う(npm install 禁止)。
@@ -14,13 +14,25 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-// 草津温泉。assets/app.js の DEFAULT_VIEW と同じ座標。
-const AREA = 'kusatsu';
-const LAT = 36.6226;
-const LON = 138.5960;
+// エリアごとの座標テーブル。assets/app.js の fixtureNameFromUrl と同じ正規表現で名前を検証する。
+const AREAS = {
+  kusatsu: { lat: 36.6226, lon: 138.5960, label: '草津温泉' },
+  hakone: { lat: 35.2324, lon: 139.1069, label: '箱根湯本', osmRadiusM: 30000 }
+};
 
-// assets/engine.js の OSM_RADIUS_M / WIKI_RADIUS_M と揃えること。
-const OSM_RADIUS_M = 15000;
+const AREA = (process.argv[2] || 'kusatsu').trim();
+if (!/^[a-z0-9_-]+$/.test(AREA) || !AREAS[AREA]) {
+  console.error('不正なエリア名です: ' + AREA);
+  console.error('使えるエリア名: ' + Object.keys(AREAS).join(', '));
+  process.exit(1);
+}
+
+const LAT = AREAS[AREA].lat;
+const LON = AREAS[AREA].lon;
+const AREA_LABEL = AREAS[AREA].label;
+
+// assets/engine.js の OSM_RADIUS_M / WIKI_RADIUS_M と揃えること(未指定は 15000)。
+const OSM_RADIUS_M = AREAS[AREA].osmRadiusM || 15000;
 const WIKI_RADIUS_M = 10000;
 
 const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
@@ -178,6 +190,7 @@ async function main() {
   const fixture = {
     meta: {
       area: AREA,
+      label: AREA_LABEL,
       lat: LAT,
       lon: LON,
       osmRadiusM: overpass.radiusM,

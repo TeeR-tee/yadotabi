@@ -6,6 +6,11 @@
 
 ## サイクル記録
 
+### 2026-09-16 R9 別エリア fixture(箱根)追加
+- やったこと: `scripts/make-fixture.mjs` を引数化(`AREAS` 座標テーブル+`process.argv[2]`、app.js と同じ `/^[a-z0-9_-]+$/` で名前検証)。`node scripts/make-fixture.mjs hakone` を1回実行し、収集半径30kmで `fixtures/hakone.json`(overpass elements 4186件・wiki pages 50件)を生成。app.js の固定ヘッダー名 `'草津温泉(固定データ)'` を `json.meta.label` 参照に修正し、kusatsu.json の meta にも `"label":"草津温泉"` を1キー追加。
+- 見た目の確認結果: `?fixture=hakone` mobile/desktop ともヘッダーが「箱根湯本(固定データ)」でカード30件・番号ピンが谷沿いでも判読可能、リンクチップ・徒歩/車行の折り返し崩れなし。`?fixture=hakone&demo=far` をDOM検査したところ「もっと遠く(車1時間以上)10件」が実データで出ており(施設名と🚗分の泣き別れなし)、R2-3 の未確認だった実データ far を確認できた。`?fixture=kusatsu` mobile はカード30枚のままでデグレなし。
+- 次: R2-1(候補ドロップダウンの重なり・朝の相談待ち)・R2-2(0件カード説明文の3行目落ち)が ROADMAP に残っている。
+
 ### 2026-09-16 R2 視覚QA第1回(未撮影5画面の網羅撮影と崩れ修正)
 - 撮った画面一覧: 撮影専用パラメータ `?simulate=empty`(提案0件)・`?demo=suggest`(検索候補)・`?demo=recent`(最近見た宿)・`?demo=far`(もっと遠くを開いた状態)・`?demo=zoomout`(ズーム不足バナー)を app.js に追加し、mobile/desktop で計10枚+far節を開いた2枚+デグレ確認を撮影。状態Aのデモ中は宿ピンを取りに行かない `demoStateA` 分岐を入れたので、全撮影が外部API 0回で完結した。
 - 見つけた崩れと直した内容: (1)候補の絵文字が ♨ だけ文字扱いで幅18px・他は25pxとなり、宿名の左端が行ごとに 93px/100px と波打っていた → `.suggest__icon` を幅24px固定+中央寄せ+絵文字フォント優先にして全行 99px に揃えた(目視でも ♨ が他と同じカラー絵文字になった)。(2)「もっと遠く」の長い施設名で `🚗85分` が「85」と「分」に泣き別れ → `.far__time` を `white-space: nowrap` に。(3)ズーム不足バナーが Leaflet の帰属表示に重なっていた → `.mapnote` の bottom に 20px 足して逃がした。(4)0件カードの見出しが mobile で「でした」だけ2行目に落ちていた → `text-wrap: balance` で2行を均等割りに。(5)カードの「徒歩10分 · 車2分」が折り返し得た → `white-space: nowrap`。パラメータ無しの `?fixture=kusatsu` と素の状態Aはデグレなし(カード30枚・far 0件のまま)。

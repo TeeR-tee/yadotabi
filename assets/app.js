@@ -886,7 +886,7 @@
           // ?hotel= が同時にあるならそちらの座標を優先する(fixture はデータ源だけ差し替える)
           var hotel = hotelFromUrl(params) || {
             id: 'fixture/' + fixtureName,
-            name: '草津温泉(固定データ)',
+            name: (json.meta && json.meta.label ? json.meta.label : fixtureName) + '(固定データ)',
             lat: json.meta.lat,
             lon: json.meta.lon
           };
