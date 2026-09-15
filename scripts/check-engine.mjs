@@ -445,6 +445,7 @@ console.log('\n(c) onProgress の順序');
   ok(partials[0].cards.every(c => c.source === 'osm'), 'osm 段階は OSM のみ');
   ok(partials[1].cards.some(c => c.source === 'both' || c.source === 'wiki'), 'wiki 段階で統合済み');
   eq(partials[2].cards.map(c => c.id), res.cards.map(c => c.id), 'done の内容は戻り値と一致');
+  ok(partials.every(p => Array.isArray(p.more)), '各 partial に more キーが存在する(配列)');
 
   // 片方失敗時も stage は3回
   const E2 = loadEngine(geoMock({ wikiReject: true }));
@@ -468,6 +469,38 @@ console.log('\n(d) その他: context 無指定・不正ホテル');
   let err = null;
   try { await E.suggest({ name: 'x' }); } catch (e) { err = e; }
   ok(isErrorLike(err) && /[ぁ-んァ-ン一-龥]/.test(err.message), '座標不正で日本語 Error', err && err.message);
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n(e) present(): more(31〜60件目)');
+{
+  // 40件の OSM スポットを距離違いで用意し、31件以上あるケースを作る
+  const manySpots = Array.from({ length: 40 }, (_, i) => ({
+    id: 'node/many' + i, name: '候補' + i, lat: at(100 + i * 50), lon: HOTEL.lon,
+    category: 'other', categoryLabel: 'スポット', distanceM: 100 + i * 50
+  }));
+  const E = loadEngine({
+    ...geoMock(),
+    fetchSpots: () => Promise.resolve(manySpots),
+    fetchWikiNearby: () => Promise.resolve([])
+  });
+  const res = await E.suggest(HOTEL, CTX);
+  eq(res.cards.length, 30, '候補31件以上のとき cards は30件のまま');
+  eq(res.more.length, 10, '40件中 cards30件を除いた10件が more に入る');
+  ok(res.cards.every(c => c.name.startsWith('候補')), 'cards は距離順の候補');
+  ok(res.more.every(c => c.name.startsWith('候補')), 'more も候補由来');
+  // rank 順が連続していること(cards末尾の距離 <= more先頭の距離)
+  const lastCard = res.cards[res.cards.length - 1];
+  const firstMore = res.more[0];
+  ok(lastCard.distanceM <= firstMore.distanceM,
+    'more の先頭は cards の末尾より遠い(rank順が連続)',
+    { lastCard: lastCard.distanceM, firstMore: firstMore.distanceM });
+
+  // 候補が30件以下のとき more は空配列(undefined ではない)
+  const E2 = loadEngine(geoMock());
+  const res2 = await E2.suggest(HOTEL, CTX);
+  ok(Array.isArray(res2.more), '候補30件以下でも more は配列');
+  eq(res2.more.length, 0, '候補30件以下のとき more は空配列');
 }
 
 console.log('\n==== ' + pass + ' pass / ' + fail + ' fail ====');

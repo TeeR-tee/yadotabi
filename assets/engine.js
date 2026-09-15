@@ -27,6 +27,7 @@
 
   // カードの上限。far は「もっと遠く」を開いたときに出す分。
   var MAX_CARDS = 30;
+  var MAX_MORE = 30; // 「もっと見る」で追加展開する分(31〜60件目)
   var MAX_FAR = 10;
   // 車でこれを超えるものは cards から外して far に回す
   var FAR_DRIVE_MIN = 60;
@@ -762,7 +763,7 @@
    *
    * @param {Array} items rank 済みの候補
    * @param {Object} hotel
-   * @returns {{cards:Array, far:Array}}
+   * @returns {{cards:Array, more:Array, far:Array}}
    */
   function present(items, hotel) {
     var h = hotel || {};
@@ -782,6 +783,7 @@
 
     return {
       cards: cards.slice(0, MAX_CARDS),
+      more: cards.slice(MAX_CARDS, MAX_CARDS + MAX_MORE),
       far: far.slice(0, MAX_FAR)
     };
   }
@@ -801,9 +803,9 @@
    *
    * @param {{id?:string,name:string,lat:number,lon:number}} hotel
    * @param {{now?:Date,lang?:string}} [context] 端末から自動取得する想定。無指定なら現在時刻
-   * @param {Function} [onProgress] (stage, partial, meta) partial は {cards, far, osmFailed}、
+   * @param {Function} [onProgress] (stage, partial, meta) partial は {cards, more, far, osmFailed}、
    *        meta は {osmFailed:boolean}(OSM だけ落ちて Wikipedia で補った、の意)
-   * @returns {Promise<{cards:Array, far:Array, osmFailed:boolean}>}
+   * @returns {Promise<{cards:Array, more:Array, far:Array, osmFailed:boolean}>}
    */
   async function suggest(hotel, context, onProgress) {
     var h = hotel || {};

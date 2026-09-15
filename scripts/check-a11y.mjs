@@ -27,6 +27,7 @@ const TARGETS = [
   { selector: '.suggest__item', label: '検索候補の行' },
   { selector: '.far__summary', label: 'もっと遠くの開閉' },
   { selector: '.far__item a', label: 'もっと遠くの各リンク' },
+  { selector: '.morebtn', label: 'もっと見る' },
 ];
 
 const PAGES = [

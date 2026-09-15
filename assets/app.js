@@ -98,6 +98,8 @@
     view: 'select',   // "select" | "feed"
     hotel: null,      // {id?, name, lat, lon}
     cards: [],
+    more: [],         // 31〜60件目(「もっと見る」で展開する分)
+    moreOpen: false,  // 「もっと見る」を展開済みか
     far: [],
     stage: null,      // null | "loading" | "osm" | "wiki" | "done" | "error"
     osmFailed: false, // Overpass が混雑して Wikipedia だけで提案したか
@@ -537,6 +539,7 @@
   function applyDemoOverrides(hotel) {
     if (demoEmpty) {
       state.cards = [];
+      state.more = [];
       state.far = [];
       return;
     }
@@ -579,6 +582,8 @@
     state.view = 'feed';
     state.hotel = hotel;
     state.cards = [];
+    state.more = [];
+    state.moreOpen = false;
     state.far = [];
     state.stage = 'loading';
     state.osmFailed = false;
@@ -596,6 +601,7 @@
       perfMark('stage:' + stage);
       state.stage = stage;
       state.cards = (partial && partial.cards) || [];
+      state.more = (partial && partial.more) || [];
       state.far = (partial && partial.far) || [];
       applyDemoOverrides(hotel);
       if (meta && meta.osmFailed) state.osmFailed = true;
@@ -604,6 +610,7 @@
       if (seq !== requestSeq || state.view !== 'feed') return;
       state.stage = 'done';
       state.cards = (result && result.cards) || [];
+      state.more = (result && result.more) || [];
       state.far = (result && result.far) || [];
       applyDemoOverrides(hotel);
       if (result && result.osmFailed) state.osmFailed = true;
@@ -621,6 +628,8 @@
     state.view = 'select';
     state.hotel = null;
     state.cards = [];
+    state.more = [];
+    state.moreOpen = false;
     state.far = [];
     state.stage = null;
     state.osmFailed = false;
@@ -707,6 +716,16 @@
     '</div>';
   }
 
+  /**
+   * フィード末尾の「もっと見る」行。展開済みならボタンは出さない
+   * (カード本体は renderFeed 側で state.more を連結して描く)。
+   */
+  function moreHtml(more, open) {
+    if (!more.length) return '';
+    if (open) return '';
+    return '<button type="button" class="morebtn" id="more-btn">もっと見る（残り' + more.length + '件）</button>';
+  }
+
   function farHtml(far) {
     if (!far.length) return '';
     var items = far.map(function (c) {
@@ -759,6 +778,9 @@
     }
 
     var html = state.cards.map(cardHtml).join('');
+    if (state.moreOpen) {
+      html += state.more.map(function (c, i) { return cardHtml(c, i + state.cards.length); }).join('');
+    }
     // スケルトンは「まだ増える」ことを示すので、読み込み中は実カードの後ろに残す
     if (loading) html += skeletonHtml();
     if (!loading && !state.cards.length) html = emptyHtml(hotel);
@@ -766,6 +788,13 @@
     els.feedList.innerHTML = html;
     // 実カードが入った最初の描画だけ計測する(?perf=1 のとき以外は何もしない)
     perfMarkFirstCard();
+
+    // 「もっと見る」は読み込み中は出さない(スケルトンと並ぶと意味が分からないため)
+    var more = loading ? '' : moreHtml(state.more, state.moreOpen);
+    if (els.feedMore) {
+      els.feedMore.hidden = !more;
+      els.feedMore.innerHTML = more;
+    }
 
     var far = farHtml(state.far);
     els.feedFar.hidden = !far;
@@ -1246,6 +1275,14 @@
       feedMap.panTo([card.lat, card.lon]);
       els.feedMap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     });
+
+    if (els.feedMore) {
+      els.feedMore.addEventListener('click', function (e) {
+        if (!e.target.closest('#more-btn')) return;
+        state.moreOpen = true;
+        renderFeed();
+      });
+    }
   }
 
   function init() {
@@ -1262,6 +1299,7 @@
       feedMap: document.getElementById('feed-map'),
       feedStatus: document.getElementById('feed-status'),
       feedList: document.getElementById('feed-list'),
+      feedMore: document.getElementById('feed-more'),
       feedFar: document.getElementById('feed-far')
     };
 

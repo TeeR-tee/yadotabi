@@ -120,3 +120,9 @@
 - **修正後実測**(司令塔の許可で実API 1回追加、`WIKI_NEARBY_MAX_CALLS` を 4→**6** に引き上げ後): 箱根 35.2323,139.1069 で **34件・最遠3,574m「早川駅」・extract充足率 34/34 = 100%(上位30件も30/30)・実fetch 6回**。**大涌谷・彫刻の森は入らなかった**。ただし**これは50件上限による打ち切りではない**: 10kmリング単独の応答が ggslimit=50 に届かず34件で終わっているため、今日の ja.wikipedia にはこの中心から10km以内に座標付き記事が34件しか無い、という意味になる。同心円の仕組み自体は正しく動いており(3リングへ ggsradius=3000/6000/10000 が別々に飛ぶことを確認済み)、**取れるものは取り切った**状態。
 - **要注意の発見**: 同じ中心・同じ10kmで作った `fixtures/hakone.json` は **wiki 50件・最遠3,720m** を持っている(生成 2026-09-15)。実APIの34件と食い違うので、**50件上限が原因という R17/S1 の前提自体が現在は再現しない**。大涌谷(7.6km)・彫刻の森(5.2km)が入らない理由は「半径の打ち切り」ではなく別要因(記事の座標がこの中心から10km圏外、もしくは geosearch のインデックス差)である可能性が高い。R18 で入れた「OSMの wikipedia タグを直接使う」経路がこの2件を both 化する本命のままなので、実害は小さい。
 - 次: R19(far 分布の是正)。**朝の相談**に「実APIとfixtureのwiki件数が50 vs 34で食い違う。fixture再生成の要否と、大涌谷/彫刻の森が10km geosearch に出てこない真因の調査をどこまでやるか」を追加したい。
+
+### 2026-09-16 R16 カードの「もっと見る」(31〜60件目の展開)
+- やったこと: `engine.js` の `present()` に `MAX_MORE=30` を追加し、戻り値へ `more: cards.slice(30, 60)` を足した(既存の `cards`/`far` の計算式は無変更、diffは追加行のみで `rank()`/重み/閾値/カテゴリ多様性は無傷)。`app.js` に `state.more`/`state.moreOpen` を追加し、`moreHtml()` 新設(未展開時のみ `#more-btn` を出す)、`renderFeed()` で展開時に `state.more` を通し番号(31〜)で連結、`els.feedMore` へのクリック委譲で `moreOpen=true` にして再描画するだけ(外部API呼び出し無し)。`index.html` に `#feed-more` を feed-list と feed-far の間に追加、`style.css` に `.morebtn`(min-height 44px、既存トークン流用)を追加。
+- 見た目の確認結果: `?fixture=kusatsu` mobile を展開前(カード30枚+「もっと見る（残り30件）」がfarの上に1行、崩れなし)/展開後(31〜60件目が続き番号バッジ31,32…と連番、ボタン消滅、崩れなし)の両方をReadで目視しOK。`?fixture=hakone` mobile はデグレなし(カード30枚・ピン1〜30)、`?fixture=kusatsu&embed=1` も破綻なし。
+- テスト: `node scripts/check-engine.mjs` 111件全pass(moreケース7件追加)、新設`node scripts/check-more.mjs` 6件全pass(Playwrightでclick→31枚目バッジ確認・ボタン消滅・コンソールエラー0件)、`check-a11y.mjs`(.morebtn追加)全OK46px、`check-r5.mjs`15件・`check-passive.mjs`9項目・`check-geo.mjs`34件すべてpass、`node --check`全通過。engine.jsのdiffが追加行のみのためrank順は不変(dump-rankの出力も正常)。
+- 次: ROADMAP残りのR10/R11/R14/R15/R21/R22。朝の相談は前回分(wiki件数50vs34の食い違い)が引き続き未決。
