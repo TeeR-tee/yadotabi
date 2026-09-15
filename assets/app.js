@@ -652,9 +652,50 @@
     return { id: 'url/' + lat + ',' + lon, name: name || 'この宿', lat: lat, lon: lon };
   }
 
+  /**
+   * `?fixture=<名前>` を読む。使えない名前は null(=通常動作に戻す)。
+   * 固定データは撮影・検証用で、外部APIを叩かずに状態Bを再現するためのもの。
+   */
+  function fixtureNameFromUrl(params) {
+    var raw = (params.get('fixture') || '').trim();
+    if (!raw || !/^[a-z0-9_-]+$/.test(raw)) return null;
+    return raw;
+  }
+
   function applyEntryPoint() {
     var params = new URLSearchParams(global.location.search);
 
+    var fixtureName = fixtureNameFromUrl(params);
+    if (fixtureName) {
+      // GitHub Pages のサブパス(/yadotabi/)でも動くよう相対パスで読む
+      fetch('fixtures/' + fixtureName + '.json')
+        .then(function (res) {
+          if (!res.ok) throw new Error('fixture ' + res.status);
+          return res.json();
+        })
+        .then(function (json) {
+          if (!json || !json.meta) throw new Error('fixture broken');
+          YadoGeo.setFixture(json);
+          // ?hotel= が同時にあるならそちらの座標を優先する(fixture はデータ源だけ差し替える)
+          var hotel = hotelFromUrl(params) || {
+            id: 'fixture/' + fixtureName,
+            name: '草津温泉(固定データ)',
+            lat: json.meta.lat,
+            lon: json.meta.lon
+          };
+          selectHotel(hotel);
+        })
+        .catch(function () {
+          // 読めなければ黙って通常動作へ。画面は絶対に空白にしない。
+          applyNormalEntryPoint(params);
+        });
+      return;
+    }
+
+    applyNormalEntryPoint(params);
+  }
+
+  function applyNormalEntryPoint(params) {
     var urlHotel = hotelFromUrl(params);
     if (urlHotel) {
       // 状態Aを飛ばして即フィードへ

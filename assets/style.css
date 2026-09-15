@@ -142,7 +142,11 @@ body {
   color: #fff;
   font-size: var(--fs-sm);
   font-weight: 600;
-  white-space: nowrap;
+  /* 長い文言(混雑トーストなど)は nowrap だと右端で切れるので折り返す */
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
+  line-height: 1.5;
   z-index: 450;
   pointer-events: none;
 }

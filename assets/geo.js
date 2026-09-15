@@ -58,6 +58,18 @@
   var WIKI_NEARBY_MAX_RADIUS_M = 10000;
 
   // ---------------------------------------------------------------------------
+  // 固定データモード (fixture)
+  //
+  // `?fixture=kusatsu` で起動すると、app.js が fixtures/*.json を読んで setFixture する。
+  // 保持するのは Overpass / Wikipedia の「生レスポンス」で、整形は既存のコードを
+  // そのまま通す(重複実装しない)。fixture 中は外部APIを一切叩かない。
+  // 生成は `node scripts/make-fixture.mjs`。
+  // ---------------------------------------------------------------------------
+
+  var fixtureData = null;              // 読み込み済みの fixture(生レスポンス形)
+  function setFixture(data) { fixtureData = data; }
+
+  // ---------------------------------------------------------------------------
   // キャッシュ層 (window.YadoCache)
   // ---------------------------------------------------------------------------
 
@@ -601,34 +613,43 @@
     // 緯度経度は小数3桁(約100m)に丸めてキー化する。ホテルの位置が少し違っても
     // 同じ商圏なら同じ結果になるため、キャッシュヒット率を上げられる。
     var cacheKey = 'spots:' + lat.toFixed(3) + ',' + lon.toFixed(3) + ':' + radius;
-    var cached = cacheGet(cacheKey);
-    if (cached) return cached;
-
-    var query = buildOverpassQuery(lat, lon, radius);
-
-    var res = await fetchWithTimeout(
-      OVERPASS_URL,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: 'data=' + encodeURIComponent(query)
-      },
-      TIMEOUT_OVERPASS_MS,
-      'スポットの取得に時間がかかりすぎました。範囲を狭めるか、少し待ってからお試しください。'
-    );
-
-    if (res.status === 429 || res.status === 504) {
-      throw new Error('地図サーバーが混雑しています。1分ほど待ってからもう一度お試しください。');
-    }
-    if (!res.ok) {
-      throw new Error('スポットの取得に失敗しました(エラー' + res.status + ')。しばらく待ってからお試しください。');
+    // 固定データモードでは localStorage の本物データと混ざらないよう読み書きしない
+    if (!fixtureData) {
+      var cached = cacheGet(cacheKey);
+      if (cached) return cached;
     }
 
-    var data;
-    try {
-      data = await res.json();
-    } catch (e) {
-      throw new Error('スポット情報を読み取れませんでした。もう一度お試しください。');
+    var data = null;
+    if (fixtureData && fixtureData.overpass) {
+      data = fixtureData.overpass;
+    }
+
+    if (!data) {
+      var query = buildOverpassQuery(lat, lon, radius);
+
+      var res = await fetchWithTimeout(
+        OVERPASS_URL,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'data=' + encodeURIComponent(query)
+        },
+        TIMEOUT_OVERPASS_MS,
+        'スポットの取得に時間がかかりすぎました。範囲を狭めるか、少し待ってからお試しください。'
+      );
+
+      if (res.status === 429 || res.status === 504) {
+        throw new Error('地図サーバーが混雑しています。1分ほど待ってからもう一度お試しください。');
+      }
+      if (!res.ok) {
+        throw new Error('スポットの取得に失敗しました(エラー' + res.status + ')。しばらく待ってからお試しください。');
+      }
+
+      try {
+        data = await res.json();
+      } catch (e) {
+        throw new Error('スポット情報を読み取れませんでした。もう一度お試しください。');
+      }
     }
 
     var elements = (data && data.elements) || [];
@@ -671,7 +692,7 @@
     });
 
     spots.sort(function (a, b) { return a.distanceM - b.distanceM; });
-    cacheSet(cacheKey, spots, TTL_SPOTS_MS);
+    if (!fixtureData) cacheSet(cacheKey, spots, TTL_SPOTS_MS);
     return spots;
   }
 
@@ -689,6 +710,8 @@
    * @throws {Error} 範囲が広すぎるときは tooWide:true を持つ Error
    */
   async function fetchHotelsInBbox(south, west, north, east) {
+    // 固定データモードでは Overpass を叩かない(宿ピンは無しでよい)
+    if (fixtureData) return [];
     if (![south, west, north, east].every(function (v) { return isFinite(v); })) {
       throw new Error('地図の表示範囲を読み取れませんでした。もう一度お試しください。');
     }
@@ -826,8 +849,11 @@
 
     // fetchSpots と同じく小数3桁(約100m)に丸めてキャッシュヒット率を上げる
     var cacheKey = 'wikinear:' + lat.toFixed(3) + ',' + lon.toFixed(3) + ':' + radius;
-    var cached = cacheGet(cacheKey);
-    if (cached) return cached;
+    // 固定データモードでは localStorage の本物データと混ざらないよう読み書きしない
+    if (!fixtureData) {
+      var cached = cacheGet(cacheKey);
+      if (cached) return cached;
+    }
 
     function baseParams() {
       return {
@@ -856,7 +882,8 @@
         Object.keys(cont).forEach(function (k) { params.set(k, cont[k]); });
       }
 
-      var data = await callWikipediaApi(params);
+      // 固定データモードは continue を追わず、保存済みの生レスポンスを1回流すだけ
+      var data = fixtureData ? fixtureData.wiki : await callWikipediaApi(params);
       var got = (data && data.query && data.query.pages) || {};
 
       Object.keys(got).forEach(function (pid) {
@@ -867,7 +894,7 @@
         pages[pid] = Object.assign({}, prev, page);
       });
 
-      cont = (data && data.continue) || null;
+      cont = fixtureData ? null : ((data && data.continue) || null);
       if (!cont) break;
     }
 
@@ -894,7 +921,7 @@
     });
 
     articles.sort(function (a, b) { return a.distanceM - b.distanceM; });
-    cacheSet(cacheKey, articles, TTL_WIKI_NEARBY_MS);
+    if (!fixtureData) cacheSet(cacheKey, articles, TTL_WIKI_NEARBY_MS);
     return articles;
   }
 
@@ -1099,6 +1126,8 @@
    * @returns {Promise<Array>} 同じ配列
    */
   async function enrichFame(spots) {
+    // 固定データモードでは Wikidata / pageviews を叩かない(fixture に含めていないため)
+    if (fixtureData) return spots || [];
     if (!Array.isArray(spots) || !spots.length) return spots || [];
 
     // 古いキャッシュ由来のスポットには fame が無いことがあるので補う
@@ -1123,6 +1152,9 @@
     fetchSpots: fetchSpots,
     fetchWikiNearby: fetchWikiNearby,
     enrichFame: enrichFame,
+    // 固定データモード(?fixture=kusatsu)の差し込み口
+    setFixture: setFixture,
+    isFixture: function () { return !!fixtureData; },
     // プラン生成側や画面側でも使えるように距離計算とラベル表を公開しておく
     haversineM: haversineM,
     CATEGORY_LABELS: CATEGORY_LABELS
