@@ -932,36 +932,50 @@
       var calls = 0;      // 発行した外部リクエストの総数(WIKI_NEARBY_MAX_CALLS を超えない)
       var okCount = 0;    // 成功した半径の数
       var lastError = null;
+      var conts = [];     // 各半径の続き(extracts の穴埋め)。1周目が終わってから余った回数で追う
 
+      /** 1リクエスト発行して pages に流し込み、continue があれば返す。 */
+      async function runOnce(r, cont) {
+        var params = new URLSearchParams(baseParams(r));
+        if (cont) {
+          Object.keys(cont).forEach(function (k) { params.set(k, cont[k]); });
+        }
+        calls++;
+        var data = await callWikipediaApi(params);
+        mergePages((data && data.query && data.query.pages) || {});
+        return (data && data.continue) || null;
+      }
+
+      // 1周目: まず全部の半径を1回ずつ引く。continue(要約の穴埋め)より
+      // 「遠いリングのページ集合そのものを取ること」を優先しないと、
+      // 近い半径の continue だけで呼び出し上限を使い切ってしまう。
       for (var ri = 0; ri < radii.length; ri++) {
         if (calls >= WIKI_NEARBY_MAX_CALLS) break;
-        var cont = null;
-        var radiusOk = false;
-
         try {
-          for (var i = 0; i <= WIKI_NEARBY_MAX_CONTINUE; i++) {
-            if (calls >= WIKI_NEARBY_MAX_CALLS) break; // 上限に達したら取れた分で打ち切る
-            var params = new URLSearchParams(baseParams(radii[ri]));
-            if (cont) {
-              Object.keys(cont).forEach(function (k) { params.set(k, cont[k]); });
-            }
-
-            calls++;
-            var data = await callWikipediaApi(params);
-            mergePages((data && data.query && data.query.pages) || {});
-            radiusOk = true;
-
-            cont = (data && data.continue) || null;
-            if (!cont) break;
-          }
+          var cont = await runOnce(radii[ri], null);
+          okCount++;
+          if (cont) conts.push({ r: radii[ri], cont: cont });
         } catch (e) {
           // 1つの半径が失敗しても他の半径の結果は活かす。全滅したときだけ後で throw する。
           lastError = e;
         }
-        if (radiusOk) okCount++;
       }
 
       if (okCount === 0 && lastError) throw lastError;
+
+      // 2周目: 余った呼び出し回数で continue を追い、取り切れなかった extract を埋める。
+      // 近い半径ほど画面に出やすいので、近い順(conts の並び順)に消化する。
+      for (var ci = 0; ci < conts.length && calls < WIKI_NEARBY_MAX_CALLS; ci++) {
+        var entry = conts[ci];
+        for (var i = 0; i < WIKI_NEARBY_MAX_CONTINUE && calls < WIKI_NEARBY_MAX_CALLS; i++) {
+          try {
+            entry.cont = await runOnce(entry.r, entry.cont);
+          } catch (e) {
+            entry.cont = null; // 穴埋めの失敗は致命的ではない(extract が null のままになるだけ)
+          }
+          if (!entry.cont) break;
+        }
+      }
     }
 
     var articles = [];

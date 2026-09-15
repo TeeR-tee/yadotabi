@@ -110,6 +110,29 @@ async function main() {
     const articles = await geo.fetchWikiNearby(LAT, LON, 10000);
     eq(calls.length, 4, '外部呼び出しは4回ちょうど(上限を超えない)');
     ok(articles.length > 0, '取れた分は返る', articles.length);
+    // ここが R20 の肝: 近い半径の continue に上限を食われて遠いリングが引けない、を防ぐ
+    eq(calls.slice(0, 3).map(radiusOf), [3000, 6000, 10000], '1周目で全リングを1回ずつ引く(continue より優先)');
+    ok(/excontinue/.test(calls[3]), '余った1回で continue を追う', calls[3]);
+  }
+
+  // --- ケース2b: 実APIの形(1周目から continue が付く)でも遠いリングが引けること ---
+  // 実測で見つかった退行: continue を半径ごとに追い切ってしまうと、3km と 6km の
+  // continue だけで4回を使い切り、10km のページ集合が一度も取れなかった(最遠2971m)。
+  {
+    const { geo, calls } = loadGeo((url) => {
+      const r = radiusOf(url);
+      const isCont = /excontinue/.test(url);
+      const body = r === 3000 ? pagesResponse(1, 32) : r === 6000 ? pagesResponse(33, 82) : pagesResponse(83, 132);
+      // extracts は1回20件までなので、20件を超える応答には continue が付く
+      if (!isCont) body.continue = { excontinue: '1', continue: '||' };
+      return { json: body };
+    });
+    console.log('[2b] continue に上限を食われても10kmリングが引けること');
+    const articles = await geo.fetchWikiNearby(LAT, LON, 10000);
+    eq(calls.slice(0, 3).map(radiusOf), [3000, 6000, 10000], '3リングとも1回目が発行される');
+    eq(calls.length, 4, '外部呼び出しは4回');
+    eq(articles.length, 132, '3リングぶん 132件がそろう(32件で止まらない)');
+    ok(articles[articles.length - 1].id === 'wp/132', '最遠は10kmリングの記事', articles[articles.length - 1].id);
   }
 
   // --- ケース3: 重複排除(全半径が同じ50件) ---------------------------------
