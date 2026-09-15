@@ -310,11 +310,16 @@
   }
 
   /** SNS等の外部検索リンクをまとめて作る。名前は必ずエンコードする。 */
-  function buildLinks(item) {
+  function buildLinks(item, hotel) {
     var q = encodeURIComponent(item.name || '');
     var coords = encodeURIComponent(item.lat + ',' + item.lon);
+    var h = hotel || {};
+    var gmap = (isFinite(h.lat) && isFinite(h.lon))
+      ? 'https://www.google.com/maps/dir/?api=1&origin=' + encodeURIComponent(h.lat + ',' + h.lon)
+          + '&destination=' + coords + '&travelmode=walking'
+      : 'https://www.google.com/maps/search/?api=1&query=' + coords;
     return {
-      gmap: 'https://www.google.com/maps/search/?api=1&query=' + coords,
+      gmap: gmap,
       official: safeUrl(item.website),
       instagram: 'https://www.instagram.com/explore/search/keyword/?q=' + q,
       tiktok: 'https://www.tiktok.com/search?q=' + q,
@@ -817,7 +822,7 @@
       distanceM: distanceM,
       walkMin: minutesFor(distanceM, WALK_M_PER_MIN),
       driveMin: minutesFor(distanceM, DRIVE_M_PER_MIN),
-      links: buildLinks(item),
+      links: buildLinks(item, hotel),
       source: item.source || 'osm'
     };
   }

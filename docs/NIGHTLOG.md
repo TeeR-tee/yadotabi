@@ -268,3 +268,8 @@
 - やったこと: 事前調査の通り、状態Bの小地図(`ensureFeedMap()`)は`attributionControl: false`かつtileLayerに`attribution`未指定で、**帰属表示がDOMに存在しない状態が本番に出ていた**(OSM利用規約違反)。`app.js:904`の`attributionControl: false`を削除し、tileLayerに`attribution: TILE_ATTR`を渡すよう状態Aと同じ書き方に統一。CSSだけでは右下のピンと重なったため(`check-attrib.mjs`で検出)、`feedMap.attributionControl.setPosition('topright')`を1行追加して回避(`nudgeOverlaps`のMARGINは無変更)。
 - テストと目視: 新設`scripts/check-attrib.mjs`(4URL×8項目=32 pass/0 fail)、`check-all.mjs`13本全PASS。`?fixture=kusatsu`/`hakone`/`dogo`/`kusatsu&embed=1`のmobile4枚をRead目視し、右上に帰属表示が判読可・番号ピン1〜30と重ならず・カード30枚崩れなしを確認。
 - コミットとpush: 完了後にコミット・push・`docs/check.mjs`実行予定(このログ追記と同一コミットにまとめる)。
+
+### 2026-09-16 R38 カードの「Googleマップ」を宿→スポットの経路リンクにする
+- やったこと: `engine.js`の`buildLinks(item, hotel)`が、宿座標が有限なら`https://www.google.com/maps/dir/?api=1&origin=<宿>&destination=<スポット>&travelmode=walking`を返すよう変更(`toCard`から`hotel`を渡すだけ)。宿座標が非有限なら従来の検索URLへフォールバック。`check-engine.mjs`にdir形式・origin/destination/travelmode・フォールバック・far側の4観点を追加。
+- テストと目視: `check-engine.mjs`159 pass/0 fail、`check-all.mjs`13本全PASS。`dump-rank.mjs kusatsu/hakone`は変更前後で完全に差分ゼロ(順位・名前・カテゴリ・距離は不変、このツールはlinksを出力しないため差分なしが期待通り)。`?fixture=kusatsu`mobileをRead目視しカード30枚・番号ピン判読可・リンクチップ崩れなしを確認。Playwrightで光泉寺の実リンクを1件取得: `https://www.google.com/maps/dir/?api=1&origin=36.6226%2C138.596&destination=36.6218107%2C138.5952868&travelmode=walking`(叩いていない)。
+- 次: ROADMAP残りはR11/R14/R19/R23/R28/R30/R33/R34。朝の相談は前回分(wiki件数50vs34の食い違い)が引き続き未決。

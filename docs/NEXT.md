@@ -1,69 +1,89 @@
-# NEXT: R31 小地図の OSM attribution を復活させ、ピンと重ならない位置に置く
+# NEXT: R38 カードの「Googleマップ」を宿→スポットの経路リンクにする
 
-## なぜこのタスクか(判断理由1行)
-計画役が実物を読んだ結果、状態Bの小地図は `attributionControl: false` で**帰属表示が存在しない**ことが判明し、「位置確認」ではなく **OSM タイル利用規約違反の是正**という実害のあるタスクに格上げされたため(R28残作業より優先)。
+**判断理由**: 残候補(R11/R14/R19/R28残/R37〜R41)の中で、ユーザーの体験が一番変わるのに追加入力もAPIキーも要らない(既に持っている座標2組だけで「宿からの行き方」が1タップで出る)ため。R37/R39は小さく、R14/R19は調査が重い。
 
-## 事前調査で判明している事実(作業役はここから始めてよい)
-- `assets/app.js:900` `ensureFeedMap()` の Leaflet 初期化オプションが
-  `{ zoomControl: false, attributionControl: false, scrollWheelZoom: false }`。
-  → **`attributionControl: false` のせいで `.leaflet-control-attribution` が DOM に生成されていない。**
-- `assets/app.js:908` `L.tileLayer(TILE_URL, { maxZoom: 19 })` に **`attribution` が渡されていない**(状態A の `ensureMap()` は `app.js:350` で `attribution: TILE_ATTR` を渡しており正しい)。
-- `TILE_ATTR` は `assets/app.js:59` に定義済み: `'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'`。
-- 最新スクリーンショット2枚を目視:
-  - `screenshots/2026-09-15T22-52-21_..._fixture_kusatsu_mobile.png`(状態B 180px 小地図) → **帰属表示なし**。番号ピン 1〜30 は判読可、崩れなし。
-  - `screenshots/2026-09-15T22-52-14_..._demo_recent_mobile.png`(状態A 全画面地図) → 右下に「Leaflet | © OpenStreetMap」が正しく出ている。
-- 小地図の高さは `assets/style.css:273` `.feedmap { height: 180px; }`。
-- ピンのずらし処理 `nudgeOverlaps()` は `assets/app.js:928` の `MARGIN = 20` で**地図コンテナの縁から20px内側にクランプ**している。帰属表示は高さ約14〜16pxなので、右下に置くと最下段のピンと接触しうる。
+- **難易度**: sonnet
+- **所要目安**: 40〜60分(実装15分 + check-all 約54秒 + 撮影・目視)
+
+---
 
 ## 対象ファイル(絶対パス)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js`(`ensureFeedMap()` 900行付近のみ)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\style.css`(小地図用の `.leaflet-control-attribution` 節を追記)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-attrib.mjs`(**新規**)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-all.mjs`(検査リストに1行追加。12本→13本)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md` / `docs\NIGHTLOG.md`(完了記録)
 
-## 実装方針
-1. **`app.js:904`** `attributionControl: false` を削除(または `true`)し、**`app.js:908`** の tileLayer に `attribution: TILE_ATTR` を渡す。状態A(`app.js:350`)と同じ書き方に揃える。
-2. 重なり回避は**まず CSS だけ**で試す。`style.css` の `.feedmap` 節の直後に、小地図配下に限定したセレクタを追加する:
-   - `.feedmap .leaflet-control-attribution { font-size: 10px; padding: 1px 4px; background: rgba(255,255,255,0.85); }`
-   - ピンとの接触を確実に避けるため、**`nudgeOverlaps` の `MARGIN`(app.js:928)は触らずに**、帰属表示側を右下の最小面積に収める方向で調整する。
-   - それでも `check-attrib.mjs` が重なりを検出する場合のみ、`ensureFeedMap()` の初期化後に
-     `feedMap.attributionControl.setPosition('topright')` を1行足す(Leaflet 標準API。ライブラリ追加なし)。
-   - `MARGIN` を広げる案は、番号ピンの分離(R8)を壊す恐れがあるため**最後の手段**。採る場合は 3 fixture 全部でピン1〜30の判読可を撮り直すこと。
-3. **埋め込みモード**でも読めることを確認する(`body.is-embed` 配下で帰属表示を隠す CSS を**書かない**。既存 CSS が隠していないかも grep で確認する)。
-4. **新規 `scripts/check-attrib.mjs`**: 既存 `scripts/check-pinflash.mjs` / `check-more.mjs` の作り(Playwright + ローカル3000番サーバを自前で立てて finally で落とす)をそのまま踏襲する。検査内容:
-   - `?fixture=kusatsu` / `hakone` / `dogo` / `?fixture=kusatsu&embed=1` の4URLについて
-   - (a) `#feed-map .leaflet-control-attribution` が**存在する**
-   - (b) そのテキストに `OpenStreetMap` を含む
-   - (c) `getComputedStyle` で `display!=='none'`、`visibility!=='hidden'`、`opacity>0.5`(=非表示化されていない)
-   - (d) その `getBoundingClientRect()` が、`#feed-map` 内の**全 `.pin`** の rect と**1つも交差しない**
-   - (e) コンソールエラー0件
-5. `scripts/check-all.mjs` の実行リストに `check-attrib.mjs` を追加する。
+1. `C:\workspace\claude\旅行先用サイト\yadotabi\assets\engine.js` — 本命
+2. `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js` — ラベル(任意)・far節の確認のみ
+3. `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-engine.mjs` — テスト追加
+
+---
+
+## 実装方針(実物を読んだ結果)
+
+### 現状(確認済み)
+
+- `assets/engine.js:313` `function buildLinks(item)` が `links` を組み立てている。
+  - `engine.js:315` `var coords = encodeURIComponent(item.lat + ',' + item.lon);`
+  - `engine.js:317` `gmap: 'https://www.google.com/maps/search/?api=1&query=' + coords,`
+- `buildLinks` の**唯一の呼び出し元**は `engine.js:820`、`function toCard(item, hotel)`(`engine.js:805`)の中の `links: buildLinks(item),`。
+  - → **`toCard` は既に第2引数で `hotel` を受け取っている**ので、`buildLinks(item, hotel)` と渡すだけでよい。`present()`(`engine.js:833`)や `rank()` の署名変更は不要。
+- `assets/app.js:696` `function linkRowHtml(card)` は `links.gmap` を `safeUrl()` に通して `{url, label:'Googleマップ'}` を push するだけ(`app.js:699-700`)。**URLの形は見ていない**ので app.js 側の変更は必須ではない。
+- `assets/app.js:776` の far 節(`farHtml`)も `c.links.gmap` をそのまま使う → 自動で経路リンクになる(これは望ましい。「車1時間以上」の項目こそ経路が要る)。
+
+### やること
+
+**(A) engine.js `buildLinks` を `buildLinks(item, hotel)` にする**
+
+```
+gmap = hotel の lat/lon が有限
+  ? 'https://www.google.com/maps/dir/?api=1&origin=' + encodeURIComponent(hotel.lat + ',' + hotel.lon)
+      + '&destination=' + encodeURIComponent(item.lat + ',' + item.lon)
+      + '&travelmode=walking'
+  : 従来の 'https://www.google.com/maps/search/?api=1&query=' + coords   // ← フォールバック
+```
+
+- **座標の順序を間違えない**: `origin` が宿、`destination` がスポット。
+- `encodeURIComponent` は origin/destination それぞれに掛ける(既存 `coords` と同じ作法)。カンマは `%2C` になるが Google は受け付ける。
+- `travelmode=walking` を既定にする。徒歩/車の切替は Google 側の画面で1タップなので、こちらでは判定しない(**入力ゼロ原則**)。
+- `hotel` が未指定・lat/lon が非有限のときは**必ず従来の検索URLにフォールバック**(`engine.js` の既存 `isFinite` チェックと同じ書き方で)。
+- `toCard`(`engine.js:820`)の呼び出しを `buildLinks(item, hotel)` に変更。`toCard` 内で既に `hotel.lat/lon` を使っているので追加の防御は最小で済む。
+
+**(B) ラベル(任意・やるなら小さく)**
+
+`app.js:700` の `'Googleマップ'` を `'行き方'` にしてもよいが、**チップ幅が変わる**ので `node scripts/check-a11y.mjs`(リンクチップ44px)が緑であることを必ず確認する。迷ったら**ラベルは変えずに `Googleマップ` のまま**でよい(本タスクの本質はURL)。変えた場合は check-a11y の結果を NIGHTLOG に書く。
+
+**(C) デモ用スタブの整合(小)**
+
+`app.js:609` の `?demo=far` 用ダミーが `links: { gmap: '.../maps/search/?api=1&query=' + lat + ',' + lon }` を直書きしている。ここは撮影用スタブなので**そのままでも壊れない**。触るなら宿座標が手元にある場合のみ dir 形式にする。無理はしない。
+
+---
 
 ## 完了条件(検証可能)
-- [ ] `node scripts/check-attrib.mjs` が 4URL 全てで PASS(exit 0)
-- [ ] `node scripts/check-all.mjs` が **13本全PASS**(exit 0)
-- [ ] 3 fixture + embed の4枚を撮影し Read で目視、帰属表示が読めて番号ピン1〜30も判読可・カード30枚・崩れなし
-- [ ] `git diff --stat -- assets/engine.js assets/geo.js fixtures` が**空**
+
+1. `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-engine.mjs` に gmap のケースを追加し全 pass。既存の `check-engine.mjs:166`(`eq(saino.links.gmap, ...search/?api=1&query=...)`)は**新しい期待値に書き換える**。追加する観点:
+   - 宿座標ありのとき URL が `https://www.google.com/maps/dir/?api=1` で始まる
+   - `origin=` に**宿**の `lat,lon` が `encodeURIComponent` 済みで入る
+   - `destination=` に**スポット**の `lat,lon` が入る(origin と取り違えていない)
+   - `travelmode=walking` を含む
+   - 宿の lat/lon が `undefined`/`NaN` のとき従来の `maps/search/?api=1&query=` に落ちる
+   - far 側のカード(`present()` の `far`)の `links.gmap` も dir 形式になっている
+2. `node scripts/check-all.mjs` が **13本すべて PASS・exit 0**。
+3. `node scripts/dump-rank.mjs kusatsu` と `hakone` の出力差分が **links の URL だけ**(順位・名前・カテゴリ・距離・件数は完全一致)。差分確認は変更前の出力を scratchpad に保存してから比較する。
+
+---
 
 ## 検証手順
-```
-node --check assets/app.js
-node scripts/check-attrib.mjs
-node scripts/check-all.mjs
-node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=kusatsu" --mobile
-node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=hakone" --mobile
-node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=dogo" --mobile
-node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=kusatsu&embed=1" --mobile
-```
-撮影は全て fixture なので**外部API 0回**。撮った4枚は必ず Read で開いて目視すること。
+
+1. 変更前に `node scripts/dump-rank.mjs kusatsu > <scratchpad>/before-kusatsu.md`、`hakone` も同様。
+2. 実装 → `node --check assets/engine.js` / `assets/app.js`。
+3. `node scripts/check-all.mjs`(約54秒)が全緑。
+4. `node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=kusatsu" --mobile` で撮影し、**画像を Read で目視**。確認点: カード30枚・番号ピン1〜30判読可・リンクチップの折り返し崩れなし・チップの高さが変わっていない。
+5. 生成されたURLを1本だけ目視(コンソールか dump 出力)して、実際にブラウザで開いたとき「宿→光泉寺」の経路が出る形になっているかを文字列で確認する(実際に Google を開く必要はない)。
+6. `node scripts/dump-rank.mjs` の差分を before と比較。
+
+---
 
 ## 変更禁止範囲
-- `assets/engine.js` / `assets/geo.js` / `fixtures/*.json` は一切触らない(rank の重み・閾値も同様)
-- **帰属表示の非表示化は禁止**(`display:none` / `visibility:hidden` / `opacity:0` / `font-size:0` / 幅0 / DOM削除、いずれも不可)。OSM タイル利用規約の必須要件。
-- 状態A の地図(`ensureMap()` `app.js:344`)は無変更
-- `nudgeOverlaps()` のロジック本体(MARGIN 以外)は無変更
 
-## 難易度 / 所要目安
-- **sonnet**(builder-sonnet)
-- 30〜45分(実装10分・新規テスト15分・撮影と目視10分・記録とコミット10分)
+- `rank()` の重み・閾値・カテゴリ多様性の減点(`engine.js`)
+- `assets/geo.js` 全体
+- `fixtures/*.json`
+- 外部APIを叩く撮影(本タスクは fixture のみで完結する。Overpass/Wikipedia を叩く必要は**ゼロ**)
+- Google Maps **API キー**の利用(`/maps/dir/?api=1` はキー不要の公開URLスキームなのでコスト0円の原則を満たす)

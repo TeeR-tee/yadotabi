@@ -163,8 +163,40 @@ console.log('\n(a) 統合・除外・far分離・Cardのフィールド・リン
   eq(ayashii.links.tiktok, 'https://www.tiktok.com/search?q=' + encodeURIComponent('怪しい館 & 庭'), 'tiktok リンク');
   eq(ayashii.links.youtube, 'https://www.youtube.com/results?search_query=' + encodeURIComponent('怪しい館 & 庭'), 'youtube リンク');
   ok(ayashii.links.instagram.indexOf('&') === ayashii.links.instagram.lastIndexOf('&') , 'クエリに生の & が混ざらない');
-  eq(saino.links.gmap, 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(saino.lat + ',' + saino.lon), 'gmap リンク');
+  eq(saino.links.gmap,
+    'https://www.google.com/maps/dir/?api=1&origin=' + encodeURIComponent(HOTEL.lat + ',' + HOTEL.lon)
+      + '&destination=' + encodeURIComponent(saino.lat + ',' + saino.lon) + '&travelmode=walking',
+    'gmap リンクは宿発着の経路URL');
+  ok(saino.links.gmap.indexOf('/maps/dir/?api=1') === 0 || saino.links.gmap.indexOf('https://www.google.com/maps/dir/?api=1') === 0,
+    'gmap は経路URL(maps/dir)で始まる');
+  ok(saino.links.gmap.indexOf('destination=' + encodeURIComponent(saino.lat + ',' + saino.lon)) > -1,
+    'destination にスポットの座標');
+  ok(saino.links.gmap.indexOf('travelmode=walking') > -1, 'travelmode=walking を含む');
   eq(saino.links.official, 'https://example.com/saino', 'http(s) の website は official に入る');
+
+  // 宿座標が無い(non-finite)ときは従来の検索URLにフォールバック
+  {
+    const E2 = loadEngine(geoMock());
+    const badHotel = { id: 'h2', name: '座標なし宿', lat: undefined, lon: NaN };
+    const items2 = await E2.collect(HOTEL);
+    const ranked2 = E2.rank(items2, HOTEL, CTX);
+    const res2 = E2.present(ranked2, badHotel);
+    const all2 = [...res2.cards, ...res2.more, ...res2.far];
+    const saino2 = all2.find(c => c.name === '西の河原公園');
+    eq(saino2.links.gmap,
+      'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(saino2.lat + ',' + saino2.lon),
+      '宿座標が非有限のときは従来の検索URLにフォールバック');
+  }
+
+  // far 側のカードも経路URLになっている
+  {
+    const farCard = res.far[0];
+    if (farCard) {
+      ok(farCard.links.gmap.indexOf('/maps/dir/?api=1') > -1, 'far のカードも経路URL(maps/dir)');
+      ok(farCard.links.gmap.indexOf('origin=' + encodeURIComponent(HOTEL.lat + ',' + HOTEL.lon)) > -1,
+        'far のカードも origin が宿の座標');
+    }
+  }
 
   // 上限
   ok(res.cards.length <= 30, 'cards は最大30件');
