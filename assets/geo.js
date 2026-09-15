@@ -69,6 +69,14 @@
   var fixtureData = null;              // 読み込み済みの fixture(生レスポンス形)
   function setFixture(data) { fixtureData = data; }
 
+  // `?simulate=overpass504` 用。真のあいだ Overpass へのリクエストは実際には飛ばさず、
+  // 常に「混雑(504)」として失敗させる。混雑時の画面を外部APIを叩かずに撮影・検証するため。
+  var simulateBusy = false;
+  function setSimulateBusy(v) { simulateBusy = !!v; }
+
+  // Overpass が混雑(429/504)していたときに待つ時間(ms)。再試行は1回だけ。
+  var OVERPASS_RETRY_WAIT_MS = 3000;
+
   // ---------------------------------------------------------------------------
   // キャッシュ層 (window.YadoCache)
   // ---------------------------------------------------------------------------
@@ -597,6 +605,48 @@
     return name.trim();
   }
 
+  /** 混雑(429/504)を表す Error を作る。呼び出し側は overpassBusy で判別する。 */
+  function busyError() {
+    var err = new Error('地図サーバーが混雑しています。1分ほど待ってからもう一度お試しください。');
+    err.overpassBusy = true;
+    return err;
+  }
+
+  /**
+   * Overpass に1回だけ問い合わせて JSON を返す。
+   * 混雑(429/504)のときだけ overpassBusy を立てた Error を投げる。リトライはしない
+   * (再試行するかどうかは呼び出し側が決める。bbox 側は地図移動のたびに呼ばれるため
+   *  無料APIのマナー上リトライしない)。
+   * @param {string} query Overpass QL
+   * @param {string} timeoutMessage タイムアウト時の日本語メッセージ
+   */
+  async function requestOverpass(query, timeoutMessage) {
+    // 混雑シミュレーション。fetch そのものを行わないので外部APIは一切叩かない。
+    if (simulateBusy) throw busyError();
+
+    var res = await fetchWithTimeout(
+      OVERPASS_URL,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'data=' + encodeURIComponent(query)
+      },
+      TIMEOUT_OVERPASS_MS,
+      timeoutMessage
+    );
+
+    if (res.status === 429 || res.status === 504) throw busyError();
+    if (!res.ok) {
+      throw new Error('スポットの取得に失敗しました(エラー' + res.status + ')。しばらく待ってからお試しください。');
+    }
+
+    try {
+      return await res.json();
+    } catch (e) {
+      throw new Error('スポット情報を読み取れませんでした。もう一度お試しください。');
+    }
+  }
+
   /**
    * ホテル周辺の観光スポットを取得する。
    * @param {number} lat ホテルの緯度
@@ -620,35 +670,24 @@
     }
 
     var data = null;
-    if (fixtureData && fixtureData.overpass) {
+    // 混雑シミュレーション中は fixture の生データより先に失敗させる。
+    // そうしないと「Overpassだけ落ちて Wikipedia は生きている」状態を再現できない。
+    if (!simulateBusy && fixtureData && fixtureData.overpass) {
       data = fixtureData.overpass;
     }
 
     if (!data) {
       var query = buildOverpassQuery(lat, lon, radius);
-
-      var res = await fetchWithTimeout(
-        OVERPASS_URL,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: 'data=' + encodeURIComponent(query)
-        },
-        TIMEOUT_OVERPASS_MS,
-        'スポットの取得に時間がかかりすぎました。範囲を狭めるか、少し待ってからお試しください。'
-      );
-
-      if (res.status === 429 || res.status === 504) {
-        throw new Error('地図サーバーが混雑しています。1分ほど待ってからもう一度お試しください。');
-      }
-      if (!res.ok) {
-        throw new Error('スポットの取得に失敗しました(エラー' + res.status + ')。しばらく待ってからお試しください。');
-      }
+      var timeoutMsg = 'スポットの取得に時間がかかりすぎました。範囲を狭めるか、少し待ってからお試しください。';
 
       try {
-        data = await res.json();
+        data = await requestOverpass(query, timeoutMsg);
       } catch (e) {
-        throw new Error('スポット情報を読み取れませんでした。もう一度お試しください。');
+        // 混雑のときだけ3秒待って1回だけ再試行する。タイムアウトや通信断は
+        // 待っても状況が変わらない(既に60秒待っている)ので再試行しない。
+        if (!e || !e.overpassBusy) throw e;
+        await delay(OVERPASS_RETRY_WAIT_MS);
+        data = await requestOverpass(query, timeoutMsg);
       }
     }
 
@@ -741,30 +780,8 @@
       '  nwr["tourism"~"^(hotel|guest_house|hostel|motel)$"]["name"](' + bbox + ');\n' +
       ');\nout center tags;\n';
 
-    var res = await fetchWithTimeout(
-      OVERPASS_URL,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: 'data=' + encodeURIComponent(query)
-      },
-      TIMEOUT_OVERPASS_MS,
-      '宿の取得に時間がかかりすぎました。少し待ってからお試しください。'
-    );
-
-    if (res.status === 429 || res.status === 504) {
-      throw new Error('地図サーバーが混雑しています。1分ほど待ってからもう一度お試しください。');
-    }
-    if (!res.ok) {
-      throw new Error('宿の取得に失敗しました(エラー' + res.status + ')。しばらく待ってからお試しください。');
-    }
-
-    var data;
-    try {
-      data = await res.json();
-    } catch (err) {
-      throw new Error('宿の情報を読み取れませんでした。もう一度お試しください。');
-    }
+    // 地図を動かすたびに呼ばれるので、混雑してもリトライはしない(フラグを立てるだけ)。
+    var data = await requestOverpass(query, '宿の取得に時間がかかりすぎました。少し待ってからお試しください。');
 
     var elements = (data && data.elements) || [];
     var seen = Object.create(null);
@@ -1155,6 +1172,8 @@
     // 固定データモード(?fixture=kusatsu)の差し込み口
     setFixture: setFixture,
     isFixture: function () { return !!fixtureData; },
+    // 混雑シミュレーション(?simulate=overpass504)の差し込み口
+    setSimulateBusy: setSimulateBusy,
     // プラン生成側や画面側でも使えるように距離計算とラベル表を公開しておく
     haversineM: haversineM,
     CATEGORY_LABELS: CATEGORY_LABELS

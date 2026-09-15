@@ -87,7 +87,8 @@
     hotel: null,      // {id?, name, lat, lon}
     cards: [],
     far: [],
-    stage: null       // null | "loading" | "osm" | "wiki" | "done" | "error"
+    stage: null,      // null | "loading" | "osm" | "wiki" | "done" | "error"
+    osmFailed: false  // Overpass が混雑して Wikipedia だけで提案したか
   };
 
   /** 提案リクエストの世代番号。戻る→別の宿、の取り違えを防ぐ。 */
@@ -256,7 +257,14 @@
         if (state.view !== 'select') return;
         hotelLayer.clearLayers();
         // 範囲が広すぎるときはズーム不足と同じ案内にする(利用者にとっては同じこと)
-        setMapNote(err && err.tooWide ? 'ズームすると宿が出ます' : (err && err.message) || '宿を取得できませんでした');
+        if (err && err.tooWide) {
+          setMapNote('ズームすると宿が出ます');
+        } else if (err && err.overpassBusy) {
+          // 「1分待て」で終わらせず、待たずに進める道(検索・エリアチップ)を案内する
+          setMapNote('宿ピンの取得が混雑中です。検索やエリアチップから選べます。');
+        } else {
+          setMapNote((err && err.message) || '宿を取得できませんでした');
+        }
       });
   }
 
@@ -395,22 +403,25 @@
     state.cards = [];
     state.far = [];
     state.stage = 'loading';
+    state.osmFailed = false;
     pushRecent(hotel);
     render();
 
     var seq = ++requestSeq;
 
-    YadoEngine.suggest(hotel, {}, function (stage, partial) {
+    YadoEngine.suggest(hotel, {}, function (stage, partial, meta) {
       if (seq !== requestSeq || state.view !== 'feed') return;
       state.stage = stage;
       state.cards = (partial && partial.cards) || [];
       state.far = (partial && partial.far) || [];
+      if (meta && meta.osmFailed) state.osmFailed = true;
       render();
     }).then(function (result) {
       if (seq !== requestSeq || state.view !== 'feed') return;
       state.stage = 'done';
       state.cards = (result && result.cards) || [];
       state.far = (result && result.far) || [];
+      if (result && result.osmFailed) state.osmFailed = true;
       render();
     }).catch(function () {
       if (seq !== requestSeq || state.view !== 'feed') return;
@@ -427,6 +438,7 @@
     state.cards = [];
     state.far = [];
     state.stage = null;
+    state.osmFailed = false;
     render();
   }
 
@@ -525,9 +537,16 @@
     '</details>';
   }
 
-  function statusText(stage) {
+  /**
+   * フィード上部の1行。読み込み中は進捗、読み込み後は Overpass が混雑していた
+   * ことだけを正直に伝える(隠すと「なぜ少ないのか」が分からなくなるため)。
+   */
+  function statusText(stage, osmFailed) {
     if (stage === 'loading' || stage === 'osm') return '周辺を集めています…';
     if (stage === 'wiki') return 'Wikipediaで補強しています…';
+    if (stage === 'done' && osmFailed) {
+      return '周辺の宿情報だけ混雑中。Wikipediaの情報で提案しています。';
+    }
     return '';
   }
 
@@ -537,9 +556,11 @@
 
     els.feedTitle.textContent = hotel.name || '';
 
-    var status = statusText(state.stage);
+    var status = statusText(state.stage, state.osmFailed);
     els.feedStatus.hidden = !status;
     els.feedStatus.textContent = status;
+    // 混雑の告知は進捗表示より目立たせたいので、見た目を分ける
+    els.feedStatus.classList.toggle('feedstatus--warn', state.stage === 'done' && !!state.osmFailed);
 
     var loading = state.stage === 'loading' || state.stage === 'osm' || state.stage === 'wiki';
 
@@ -711,6 +732,12 @@
 
   function applyEntryPoint() {
     var params = new URLSearchParams(global.location.search);
+
+    // `?simulate=overpass504` で Overpass だけ混雑している状態を再現する。
+    // fixture と併用すると「Overpassは死んでWikipediaは生きている」を外部APIなしで撮れる。
+    if (params.get('simulate') === 'overpass504' && typeof YadoGeo.setSimulateBusy === 'function') {
+      YadoGeo.setSimulateBusy(true);
+    }
 
     var fixtureName = fixtureNameFromUrl(params);
     if (fixtureName) {

@@ -224,6 +224,19 @@ body {
   padding: var(--sp-3) var(--sp-4);
   font-size: var(--fs-sm);
   color: var(--c-text-sub);
+  /* 混雑の告知は長文なので、右端で切らずに折り返す */
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+/* 「宿情報だけ混雑中」の告知。進捗表示と区別がつくよう帯にする。 */
+.feedstatus--warn {
+  margin: var(--sp-3) var(--sp-3) 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  background: rgb(255 179 0 / .14);
+  color: var(--c-text);
+  font-weight: 600;
 }
 
 .feed {

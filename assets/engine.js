@@ -347,7 +347,8 @@
    * OSM と Wikipedia を並行取得し、片方が落ちても取れた方だけで返す。
    *
    * @param {{name:string,lat:number,lon:number}} hotel
-   * @param {Function} [onStage] (stage, items) OSM 取得直後に "osm"、統合後に "wiki" を渡す
+   * @param {Function} [onStage] (stage, items, meta) OSM 取得直後に "osm"、統合後に "wiki" を渡す。
+   *        meta は {osmFailed:boolean} で、OSM 側だけ落ちたことを画面に伝えるために使う。
    * @returns {Promise<Array>} 統合済み候補(順序は未確定。rank で並べる)
    */
   async function collect(hotel, onStage) {
@@ -384,6 +385,10 @@
         : '周辺の情報を取得できませんでした。通信状況を確認してもう一度お試しください。');
     }
 
+    // OSM だけ落ちた場合も Wikipedia の結果で提案は成立する。ただし「宿周辺の
+    // 情報が欠けている」ことは利用者に正直に伝えたいので、印を上まで運ぶ。
+    var meta = { osmFailed: osmResult.status === 'rejected' };
+
     var osmItems = [];
     if (osmResult.status === 'fulfilled' && Array.isArray(osmResult.value)) {
       osmResult.value.forEach(function (spot) {
@@ -397,7 +402,7 @@
     }
 
     // OSM が取れた時点で一度画面に出せるよう、この段階のリストを渡す
-    if (typeof onStage === 'function') onStage('osm', osmItems.slice());
+    if (typeof onStage === 'function') onStage('osm', osmItems.slice(), meta);
 
     var wikiItems = [];
     if (wikiResult.status === 'fulfilled' && Array.isArray(wikiResult.value)) {
@@ -424,7 +429,10 @@
       merged.push(wikiItem);
     });
 
-    if (typeof onStage === 'function') onStage('wiki', merged.slice());
+    if (typeof onStage === 'function') onStage('wiki', merged.slice(), meta);
+    // suggest 側が最終結果にも印を付けられるよう、列挙されない形で持たせる
+    // (カードの配列として素直に map/forEach できる性質は壊さない)
+    Object.defineProperty(merged, 'osmFailed', { value: meta.osmFailed, enumerable: false });
     return merged;
   }
 
@@ -586,30 +594,35 @@
    *
    * @param {{id?:string,name:string,lat:number,lon:number}} hotel
    * @param {{now?:Date,lang?:string}} [context] 端末から自動取得する想定。無指定なら現在時刻
-   * @param {Function} [onProgress] (stage, partial) partial は {cards, far}
-   * @returns {Promise<{cards:Array, far:Array}>}
+   * @param {Function} [onProgress] (stage, partial, meta) partial は {cards, far, osmFailed}、
+   *        meta は {osmFailed:boolean}(OSM だけ落ちて Wikipedia で補った、の意)
+   * @returns {Promise<{cards:Array, far:Array, osmFailed:boolean}>}
    */
   async function suggest(hotel, context, onProgress) {
     var h = hotel || {};
     var ctx = normalizeContext(context);
 
-    function emit(stage, items) {
+    function emit(stage, items, meta) {
       if (typeof onProgress !== 'function') return;
       try {
-        onProgress(stage, present(rank(items, h, ctx), h));
+        var partial = present(rank(items, h, ctx), h);
+        partial.osmFailed = !!(meta && meta.osmFailed);
+        onProgress(stage, partial, meta || {});
       } catch (e) {
         // 画面側の描画エラーで提案そのものを落とさない
       }
     }
 
-    var items = await collect(h, function (stage, partial) {
-      emit(stage, partial);
+    var items = await collect(h, function (stage, partial, meta) {
+      emit(stage, partial, meta);
     });
 
+    var osmFailed = !!(items && items.osmFailed);
     var result = present(rank(items, h, ctx), h);
+    result.osmFailed = osmFailed;
     if (typeof onProgress === 'function') {
       try {
-        onProgress('done', result);
+        onProgress('done', result, { osmFailed: osmFailed });
       } catch (e) {
         // 同上
       }
