@@ -133,6 +133,7 @@
   var demoStateA = false;     // ?demo=suggest|recent|zoomout … 状態Aの撮影中
   var demoNoSaveView = false; // ?demo=zoomout    … 撮影用の地図位置を localStorage に残さない
   var demoPassive = false;    // ?demo=passive     … 受動ログの中身をその場で目視する
+  var demoImgFail = false;    // ?demo=imgfail     … 先頭3枚のカード画像を強制的に読み込み失敗させる
 
   // ---------------------------------------------------------------------------
   // 計測(?perf=1 のときだけ動く)
@@ -679,12 +680,18 @@
     }).join('') + '</div>';
   }
 
+  function placeholderHtml(card, emoji) {
+    return '<div class="feedcard__ph" data-cat="' + escapeHtml(card.categoryLabel || '') + '">' +
+      '<span aria-hidden="true">' + escapeHtml(emoji) + '</span></div>';
+  }
+
   function cardHtml(card, index) {
     var emoji = emojiFor(card.categoryLabel);
-    var media = card.imageUrl && safeUrl(card.imageUrl)
-      ? '<img class="feedcard__img" src="' + escapeHtml(card.imageUrl) + '" alt="" loading="lazy">'
-      : '<div class="feedcard__ph" data-cat="' + escapeHtml(card.categoryLabel || '') + '">' +
-          '<span aria-hidden="true">' + escapeHtml(emoji) + '</span></div>';
+    var imgSrc = demoImgFail && index < 3 ? './__imgfail_test__.png' : card.imageUrl;
+    var media = imgSrc && safeUrl(imgSrc)
+      ? '<img class="feedcard__img" src="' + escapeHtml(imgSrc) + '" alt="" loading="lazy" ' +
+          'data-cat="' + escapeHtml(card.categoryLabel || '') + '" data-emoji="' + escapeHtml(emoji) + '">'
+      : placeholderHtml(card, emoji);
 
     var summary = card.summary
       ? '<p class="feedcard__summary">' + escapeHtml(card.summary) + '</p>'
@@ -1114,6 +1121,7 @@
     if (demo === 'zoomout') demoNoSaveView = true;
     if (demo === 'suggest' || demo === 'recent' || demo === 'zoomout') demoStateA = true;
     if (demo === 'passive') demoPassive = true;
+    if (demo === 'imgfail') demoImgFail = true;
 
     var fixtureName = fixtureNameFromUrl(params);
 
@@ -1282,6 +1290,19 @@
 
     // --- 状態B ---
     els.backBtn.addEventListener('click', goBack);
+
+    // 画像読み込み失敗時は画像なしカードと同じプレースホルダに差し替える。
+    // error イベントは <img> からバブリングしないため、capture=true が必須。
+    els.feedList.addEventListener('error', function (e) {
+      var img = e.target;
+      if (!img || img.tagName !== 'IMG' || !img.classList.contains('feedcard__img')) return;
+      var ph = document.createElement('div');
+      ph.innerHTML = placeholderHtml(
+        { categoryLabel: img.dataset.cat || '' },
+        img.dataset.emoji || emojiFor(img.dataset.cat || '')
+      );
+      img.replaceWith(ph.firstChild);
+    }, true);
 
     els.feedList.addEventListener('click', function (e) {
       var hotel = state.hotel;
