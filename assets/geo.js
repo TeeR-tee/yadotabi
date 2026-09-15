@@ -2,8 +2,9 @@
  * やどたび v0 - ジオコーディング / 周辺スポット取得 / 人気度推定
  *
  * 外部API:
- *   - Nominatim (OpenStreetMap): ホテル名・住所 → 緯度経度
- *   - Overpass API (OpenStreetMap): 周辺の観光スポット取得
+ *   - Nominatim (OpenStreetMap): ホテル名・住所 → 緯度経度 / 打鍵ごとの宿候補
+ *   - Overpass API (OpenStreetMap): 周辺の観光スポット取得 / 表示範囲内の宿取得
+ *   - 日本語版Wikipedia API: 座標の近くにある記事(写真・要約つき)
  *   - Wikidata API: サイトリンク数(何言語版のWikipediaに記事があるか)
  *   - Wikimedia REST API: 日本語版Wikipediaの月間ページビュー
  * いずれもAPIキー不要・CORS対応・無料。利用規約に配慮し、リクエストは
@@ -19,24 +20,42 @@
   var OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
   var WIKIDATA_URL = 'https://www.wikidata.org/w/api.php';
   var PAGEVIEWS_URL = 'https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/ja.wikipedia/all-access/user/';
+  var WIKIPEDIA_API_URL = 'https://ja.wikipedia.org/w/api.php';
 
   // fetchのタイムアウト(ms)。Overpassは重いクエリだと時間がかかるため長めに取る。
   var TIMEOUT_GEOCODE_MS = 15000;
   var TIMEOUT_OVERPASS_MS = 60000;
   var TIMEOUT_FAME_MS = 12000;
+  var TIMEOUT_WIKI_NEARBY_MS = 15000;
 
   // キャッシュTTL(ms)
   var DAY_MS = 24 * 60 * 60 * 1000;
+  var HOUR_MS = 60 * 60 * 1000;
   var TTL_GEOCODE_MS = 30 * DAY_MS;
   var TTL_SPOTS_MS = 7 * DAY_MS;
   var TTL_FAME_MS = 7 * DAY_MS;
   // 取得に失敗した/値が無かったものは短めに保持し、毎回の再取得を防ぎつつ復旧も待てるようにする
   var TTL_FAME_TRIED_MS = 1 * DAY_MS;
+  var TTL_HOTELS_MS = 7 * DAY_MS;
+  var TTL_WIKI_NEARBY_MS = 7 * DAY_MS;
+  // 候補0件は「そのうち登録されるかも」なので短期だけ覚えて連打を防ぐ
+  var TTL_SUGGEST_EMPTY_MS = 1 * HOUR_MS;
 
   // Wikidata wbgetentities は1リクエストあたり50IDまで
   var WIKIDATA_BATCH_SIZE = 50;
   // ページビューは1スポット1リクエストになるため、近い順に上限を設ける
   var PAGEVIEWS_MAX = 12;
+
+  // 地図の表示範囲から宿を引くときの上限。これより広いと Overpass に負荷をかけるので呼ばない。
+  var BBOX_MAX_DEG = 0.25;
+  // 即時候補(suggestHotels)の設定
+  var SUGGEST_MIN_CHARS = 2;
+  var SUGGEST_LIMIT = 6;
+  // Nominatim の利用規約は「1リクエスト/秒まで」。geo.js 側で必ず守る。
+  var NOMINATIM_MIN_INTERVAL_MS = 1000;
+  // Wikipedia の extracts は1リクエストにつき20ページ分までしか返らないので continue を追う
+  var WIKI_NEARBY_MAX_CONTINUE = 3;
+  var WIKI_NEARBY_MAX_RADIUS_M = 10000;
 
   // ---------------------------------------------------------------------------
   // キャッシュ層 (window.YadoCache)
@@ -190,6 +209,7 @@
     { key: 'tourism', value: 'zoo', category: 'zoo' },
     { key: 'tourism', value: 'aquarium', category: 'aquarium' },
     { key: 'tourism', value: 'viewpoint', category: 'viewpoint' },
+    { key: 'tourism', value: 'picnic_site', category: 'picnic_site' },
     { key: 'tourism', value: 'attraction', category: 'attraction' },
     { key: 'historic', value: 'castle', category: 'castle' },
     { key: 'historic', value: 'monument', category: 'monument' },
@@ -197,7 +217,14 @@
     { key: 'historic', value: 'ruins', category: 'ruins' },
     { key: 'leisure', value: 'garden', category: 'garden' },
     { key: 'leisure', value: 'park', category: 'park' },
-    { key: 'amenity', value: 'place_of_worship', category: 'place_of_worship' }
+    { key: 'amenity', value: 'place_of_worship', category: 'place_of_worship' },
+    { key: 'amenity', value: 'public_bath', category: 'public_bath' },
+    { key: 'natural', value: 'waterfall', category: 'waterfall' },
+    { key: 'natural', value: 'spring', category: 'spring' },
+    { key: 'natural', value: 'hot_spring', category: 'hot_spring' },
+    { key: 'natural', value: 'cave_entrance', category: 'cave' },
+    { key: 'natural', value: 'peak', category: 'peak' },
+    { key: 'man_made', value: 'lighthouse', category: 'lighthouse' }
   ];
 
   /** カテゴリ → 画面表示用の日本語ラベル */
@@ -215,6 +242,14 @@
     garden: '庭園',
     park: '公園',
     place_of_worship: '神社・寺院',
+    public_bath: '共同浴場',
+    waterfall: '滝',
+    spring: '湧水',
+    hot_spring: '温泉源',
+    cave: '洞窟',
+    peak: '山頂',
+    picnic_site: '展望地',
+    lighthouse: '灯台',
     other: 'スポット'
   };
 
@@ -250,35 +285,59 @@
     }
   }
 
+  /** 検索語を正規化する。全角空白や連続空白の違いで別キー扱いにならないようにする。 */
+  function normalizeQuery(q) {
+    return q.replace(/[\s　]+/g, ' ').trim().toLowerCase();
+  }
+
+  // --- Nominatim の利用マナー(1リクエスト/秒以下)を守るための簡易スロットル ---
+  // 「打つそばから候補」は入力のたびに呼ばれうるので、待ち行列を1本にして間隔を空ける。
+  var nominatimChain = Promise.resolve();
+  var nominatimLastAt = 0;
+
+  /** ms ミリ秒待つ。 */
+  function delay(ms) {
+    return new Promise(function (resolve) { setTimeout(resolve, ms); });
+  }
+
   /**
-   * ホテル名・住所から候補地点を検索する(国内限定)。
-   * @param {string} query ホテル名または住所
-   * @returns {Promise<Array<{name:string,lat:number,lon:number,displayName:string}>>}
-   *          見つからない場合は空配列
+   * Nominatim へのリクエストを直列化し、直前の呼び出しから1秒未満なら待ってから送る。
+   * @param {function():Promise<any>} task 実際の fetch を行う関数
    */
-  async function geocodeHotel(query) {
-    var q = (query || '').trim();
-    if (!q) return [];
+  function throttleNominatim(task) {
+    var run = nominatimChain.then(async function () {
+      var wait = NOMINATIM_MIN_INTERVAL_MS - (Date.now() - nominatimLastAt);
+      if (wait > 0) await delay(wait);
+      nominatimLastAt = Date.now();
+      return task();
+    });
+    // 失敗しても後続のリクエストが止まらないように、鎖は解決済みに戻しておく
+    nominatimChain = run.then(function () { }, function () { });
+    return run;
+  }
 
-    // 全角空白や連続空白の違いで別キー扱いにならないよう正規化する
-    var cacheKey = 'geo:' + q.replace(/[\s　]+/g, ' ').toLowerCase();
-    var cached = cacheGet(cacheKey);
-    if (cached) return cached;
-
+  /**
+   * Nominatim /search を呼び、生のJSON配列を返す。geocodeHotel と suggestHotels で共通。
+   * @param {string} q 検索語
+   * @param {number} limit 最大件数
+   */
+  async function searchNominatim(q, limit) {
     var params = new URLSearchParams({
       q: q,
       format: 'jsonv2',
       countrycodes: 'jp',
-      limit: '5',
+      limit: String(limit),
       'accept-language': 'ja'
     });
 
-    var res = await fetchWithTimeout(
-      NOMINATIM_URL + '?' + params.toString(),
-      { method: 'GET', headers: { Accept: 'application/json' } },
-      TIMEOUT_GEOCODE_MS,
-      '場所の検索に時間がかかりすぎました。もう一度お試しください。'
-    );
+    var res = await throttleNominatim(function () {
+      return fetchWithTimeout(
+        NOMINATIM_URL + '?' + params.toString(),
+        { method: 'GET', headers: { Accept: 'application/json' } },
+        TIMEOUT_GEOCODE_MS,
+        '場所の検索に時間がかかりすぎました。もう一度お試しください。'
+      );
+    });
 
     if (!res.ok) {
       throw new Error('場所の検索に失敗しました(エラー' + res.status + ')。しばらく待ってからお試しください。');
@@ -291,21 +350,42 @@
       throw new Error('場所の検索結果を読み取れませんでした。もう一度お試しください。');
     }
 
-    if (!Array.isArray(data)) return [];
+    return Array.isArray(data) ? data : [];
+  }
+
+  /** Nominatim の1件から短い名前を取り出す。display_name は「◯◯ホテル, ◯◯町, ...」形式。 */
+  function pickNominatimName(item, fallback) {
+    var display = item.display_name || '';
+    var shortName = item.name || display.split(',')[0] || fallback;
+    return String(shortName).trim();
+  }
+
+  /**
+   * ホテル名・住所から候補地点を検索する(国内限定)。
+   * @param {string} query ホテル名または住所
+   * @returns {Promise<Array<{name:string,lat:number,lon:number,displayName:string}>>}
+   *          見つからない場合は空配列
+   */
+  async function geocodeHotel(query) {
+    var q = (query || '').trim();
+    if (!q) return [];
+
+    var cacheKey = 'geo:' + normalizeQuery(q);
+    var cached = cacheGet(cacheKey);
+    if (cached) return cached;
+
+    var data = await searchNominatim(q, 5);
 
     var results = data
       .filter(function (item) {
         return item && item.lat && item.lon;
       })
       .map(function (item) {
-        var display = item.display_name || '';
-        // display_nameは「◯◯ホテル, ◯◯町, ◯◯市, ...」形式。先頭要素を短い名前として使う。
-        var shortName = item.name || display.split(',')[0] || q;
         return {
-          name: shortName.trim(),
+          name: pickNominatimName(item, q),
           lat: parseFloat(item.lat),
           lon: parseFloat(item.lon),
-          displayName: display
+          displayName: item.display_name || ''
         };
       })
       .filter(function (item) {
@@ -317,24 +397,115 @@
     return results;
   }
 
-  /** Overpass QLを組み立てる。node/way/relation全部を対象にし、way/relationはcenterを取る。 */
+  // ---------------------------------------------------------------------------
+  // 即時の宿候補 (suggestHotels)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Nominatim の分類(jsonv2 の category / json の class と type)から宿の種別を推定する。
+   * 宿でなさそうなものは null。
+   * OSMの tourism=hotel には旅館も多く含まれるため、名前で旅館・温泉宿に寄せる。
+   */
+  function detectHotelKind(cls, type, name) {
+    var kind = null;
+    if (cls === 'tourism' && /^(hotel|guest_house|hostel|motel)$/.test(type)) kind = type;
+    if (!kind && cls === 'building' && /^(hotel)$/.test(type)) kind = 'hotel';
+    if (!kind) return null;
+    if (/旅館|温泉/.test(name || '')) return 'ryokan';
+    return kind;
+  }
+
+  // 同じ query の連続呼び出しを1つにまとめるための在庫(打鍵のたびに同じ語が飛んでくる)
+  var suggestInflight = Object.create(null);
+
+  /**
+   * 打つそばから出す宿の候補を取得する(最大6件)。
+   * @param {string} query 入力中の文字列
+   * @returns {Promise<Array<{id:string,name:string,lat:number,lon:number,kind:string,displayName:string}>>}
+   *          2文字未満のときはAPIを呼ばずに空配列
+   */
+  async function suggestHotels(query) {
+    var q = (query || '').trim();
+    // 短すぎる語は候補が絞れずAPIにも負荷なので、そもそも呼ばない
+    if (q.length < SUGGEST_MIN_CHARS) return [];
+
+    var norm = normalizeQuery(q);
+    var cacheKey = 'suggest:' + norm;
+    var cached = cacheGet(cacheKey);
+    if (cached) return cached;
+
+    // 同じ語のリクエストが飛んでいる最中なら、それに相乗りする
+    if (suggestInflight[norm]) return suggestInflight[norm];
+
+    var task = (async function () {
+      var data = await searchNominatim(q, SUGGEST_LIMIT);
+
+      var results = [];
+      data.forEach(function (item) {
+        if (!item || !item.lat || !item.lon) return;
+        var lat = parseFloat(item.lat);
+        var lon = parseFloat(item.lon);
+        if (!isFinite(lat) || !isFinite(lon)) return;
+
+        var name = pickNominatimName(item, q);
+        if (!name) return;
+
+        // jsonv2 は分類を category、jsonは class という名前で返す。どちらでも拾えるようにする。
+        var cls = item.category || item.class;
+
+        results.push({
+          id: 'nominatim/' + (item.osm_type || 'node') + '/' + (item.osm_id != null ? item.osm_id : name),
+          name: name,
+          lat: lat,
+          lon: lon,
+          // 宿と判定できなければ地名・施設として扱う(地図を寄せる用途には使える)
+          kind: detectHotelKind(cls, item.type, name) || 'place',
+          displayName: item.display_name || ''
+        });
+      });
+
+      results = results.slice(0, SUGGEST_LIMIT);
+      // 0件も短期だけ覚えて、同じ語での連打がそのままAPIに流れないようにする
+      cacheSet(cacheKey, results, results.length ? TTL_GEOCODE_MS : TTL_SUGGEST_EMPTY_MS);
+      return results;
+    })();
+
+    suggestInflight[norm] = task;
+    try {
+      return await task;
+    } finally {
+      delete suggestInflight[norm];
+    }
+  }
+
+  /**
+   * Overpass QLを組み立てる。node/way/relation全部を対象にし、way/relationはcenterを取る。
+   *
+   * 重要: 各条件は node/way/relation を個別に書かず nwr(= 3種まとめて)を使う。
+   * Overpass は文ごとに範囲検索をやり直すため、7条件×3種=21文に展開すると
+   * 同じ範囲を21回走査して50秒の実行上限を超える(実測: 21文で44秒〜タイムアウト、
+   * nwr 6文なら5秒前後)。amenity は place_of_worship と public_bath を
+   * 1つの正規表現にまとめ、文の数自体も減らしている。
+   */
   function buildOverpassQuery(lat, lon, radiusM) {
     var around = '(around:' + Math.round(radiusM) + ',' + lat + ',' + lon + ')';
     var clauses = [
-      '["tourism"~"^(attraction|museum|viewpoint|zoo|aquarium|theme_park|gallery)$"]',
+      '["tourism"~"^(attraction|museum|viewpoint|zoo|aquarium|theme_park|gallery|picnic_site)$"]',
       '["historic"~"^(castle|monument|memorial|ruins)$"]',
       '["leisure"~"^(park|garden)$"]',
-      '["amenity"="place_of_worship"]["name"]'
+      // 名前のない礼拝所・浴場は提案にならないので name 必須で絞る
+      '["amenity"~"^(place_of_worship|public_bath)$"]["name"]',
+      // 自然物は無名のものが大量にあるため name 必須で絞る
+      '["natural"~"^(waterfall|spring|hot_spring|cave_entrance|peak)$"]["name"]',
+      '["man_made"="lighthouse"]'
     ];
 
     var body = '';
     clauses.forEach(function (clause) {
-      ['node', 'way', 'relation'].forEach(function (type) {
-        body += '  ' + type + clause + around + ';\n';
-      });
+      body += '  nwr' + clause + around + ';\n';
     });
 
-    return '[out:json][timeout:50];\n(\n' + body + ');\nout center tags;\n';
+    return '[out:json][timeout:90];\n(\n' + body + ');\nout center tags;\n';
   }
 
   /** OSMのtagsから内部カテゴリを判定する。該当なしは 'other'。 */
@@ -502,6 +673,229 @@
     spots.sort(function (a, b) { return a.distanceM - b.distanceM; });
     cacheSet(cacheKey, spots, TTL_SPOTS_MS);
     return spots;
+  }
+
+  // ---------------------------------------------------------------------------
+  // 地図の表示範囲内の宿 (fetchHotelsInBbox)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * 地図の表示範囲(bbox)にある宿を取得する。地図を動かすたびにピンを打ち直す用途。
+   * @param {number} south 南端の緯度
+   * @param {number} west 西端の経度
+   * @param {number} north 北端の緯度
+   * @param {number} east 東端の経度
+   * @returns {Promise<Array<{id:string,name:string,lat:number,lon:number,kind:string}>>}
+   * @throws {Error} 範囲が広すぎるときは tooWide:true を持つ Error
+   */
+  async function fetchHotelsInBbox(south, west, north, east) {
+    if (![south, west, north, east].every(function (v) { return isFinite(v); })) {
+      throw new Error('地図の表示範囲を読み取れませんでした。もう一度お試しください。');
+    }
+
+    // 南北・東西が入れ替わって渡されても動くようにしておく
+    var s = Math.min(south, north);
+    var n = Math.max(south, north);
+    var w = Math.min(west, east);
+    var e = Math.max(west, east);
+
+    // 広い範囲を Overpass に投げると宿が数千件返って重いうえサーバーにも迷惑なので、
+    // 呼ばずに「ズームしてください」と画面側に伝える。
+    if ((n - s) > BBOX_MAX_DEG || (e - w) > BBOX_MAX_DEG) {
+      var wide = new Error('地図の範囲が広すぎます。もう少しズームしてください。');
+      wide.tooWide = true;
+      throw wide;
+    }
+
+    var bbox = [s.toFixed(3), w.toFixed(3), n.toFixed(3), e.toFixed(3)].join(',');
+    var cacheKey = 'hotels:' + bbox;
+    var cached = cacheGet(cacheKey);
+    if (cached) return cached;
+
+    // fetchSpots と同じ理由で nwr にまとめる(文を増やすと範囲検索を繰り返して遅くなる)
+    var query =
+      '[out:json][timeout:90];\n(\n' +
+      '  nwr["tourism"~"^(hotel|guest_house|hostel|motel)$"]["name"](' + bbox + ');\n' +
+      ');\nout center tags;\n';
+
+    var res = await fetchWithTimeout(
+      OVERPASS_URL,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'data=' + encodeURIComponent(query)
+      },
+      TIMEOUT_OVERPASS_MS,
+      '宿の取得に時間がかかりすぎました。少し待ってからお試しください。'
+    );
+
+    if (res.status === 429 || res.status === 504) {
+      throw new Error('地図サーバーが混雑しています。1分ほど待ってからもう一度お試しください。');
+    }
+    if (!res.ok) {
+      throw new Error('宿の取得に失敗しました(エラー' + res.status + ')。しばらく待ってからお試しください。');
+    }
+
+    var data;
+    try {
+      data = await res.json();
+    } catch (err) {
+      throw new Error('宿の情報を読み取れませんでした。もう一度お試しください。');
+    }
+
+    var elements = (data && data.elements) || [];
+    var seen = Object.create(null);
+    var hotels = [];
+
+    elements.forEach(function (el) {
+      var tags = el.tags || {};
+      var name = pickName(tags);
+      if (!name) return;
+
+      var elLat = el.lat != null ? el.lat : (el.center && el.center.lat);
+      var elLon = el.lon != null ? el.lon : (el.center && el.center.lon);
+      if (elLat == null || elLon == null) return;
+
+      // 同じ宿が node と way の両方で登録されているケースを名前+座標で重複排除する
+      var dedupeKey = name + '@' + elLat.toFixed(3) + ',' + elLon.toFixed(3);
+      if (seen[dedupeKey]) return;
+      seen[dedupeKey] = true;
+
+      // 旅館は OSM では tourism=hotel で登録されることが多いので、名前から拾い直す
+      var kind = tags.tourism;
+      if (/旅館|温泉/.test(name)) kind = 'ryokan';
+
+      hotels.push({
+        id: el.type + '/' + el.id,
+        name: name,
+        lat: elLat,
+        lon: elLon,
+        kind: kind
+      });
+    });
+
+    cacheSet(cacheKey, hotels, TTL_HOTELS_MS);
+    return hotels;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Wikipedia の周辺記事 (fetchWikiNearby)
+  // ---------------------------------------------------------------------------
+
+  /** Wikipedia API を1回叩いて JSON を返す。429/5xx はリトライせず日本語Errorにする。 */
+  async function callWikipediaApi(params) {
+    var res = await fetchWithTimeout(
+      WIKIPEDIA_API_URL + '?' + params.toString(),
+      { method: 'GET', headers: { Accept: 'application/json' } },
+      TIMEOUT_WIKI_NEARBY_MS,
+      '周辺の記事の取得に時間がかかりすぎました。もう一度お試しください。'
+    );
+
+    if (res.status === 429) {
+      throw new Error('Wikipediaが混雑しています。少し待ってからもう一度お試しください。');
+    }
+    if (!res.ok) {
+      throw new Error('周辺の記事の取得に失敗しました(エラー' + res.status + ')。しばらく待ってからお試しください。');
+    }
+
+    try {
+      return await res.json();
+    } catch (e) {
+      throw new Error('周辺の記事を読み取れませんでした。もう一度お試しください。');
+    }
+  }
+
+  /**
+   * 日本語版Wikipediaの「この座標の近くにある記事」を写真・要約つきで取得する。
+   *
+   * 注意: extracts(要約)は1リクエストにつき20ページ分までしか返らない(exlimit の上限)。
+   * geosearch は50件返せるので、残りは continue を追いかけて埋める(最大3回)。
+   * それでも取れなかった extract は null のままにする。
+   *
+   * @param {number} lat 中心の緯度
+   * @param {number} lon 中心の経度
+   * @param {number} radiusM 検索半径(メートル、最大10000)
+   * @returns {Promise<Array<{id:string,title:string,lat:number,lon:number,distanceM:number,
+   *          thumbnailUrl:(string|null),extract:(string|null),url:string}>>} 距離の近い順
+   */
+  async function fetchWikiNearby(lat, lon, radiusM) {
+    if (!isFinite(lat) || !isFinite(lon)) {
+      throw new Error('位置情報が正しくありません。もう一度お試しください。');
+    }
+    var radius = isFinite(radiusM) && radiusM > 0 ? Math.min(Math.round(radiusM), WIKI_NEARBY_MAX_RADIUS_M) : 5000;
+
+    // fetchSpots と同じく小数3桁(約100m)に丸めてキャッシュヒット率を上げる
+    var cacheKey = 'wikinear:' + lat.toFixed(3) + ',' + lon.toFixed(3) + ':' + radius;
+    var cached = cacheGet(cacheKey);
+    if (cached) return cached;
+
+    function baseParams() {
+      return {
+        action: 'query',
+        generator: 'geosearch',
+        ggscoord: lat + '|' + lon,
+        ggsradius: String(radius),
+        ggslimit: '50',
+        prop: 'coordinates|pageimages|extracts',
+        exintro: '1',
+        explaintext: '1',
+        exsentences: '2',
+        exlimit: 'max',
+        pithumbsize: '480',
+        format: 'json',
+        origin: '*'
+      };
+    }
+
+    var pages = Object.create(null); // pageid → ページ情報(continue で少しずつ埋まる)
+    var cont = null;
+
+    for (var i = 0; i <= WIKI_NEARBY_MAX_CONTINUE; i++) {
+      var params = new URLSearchParams(baseParams());
+      if (cont) {
+        Object.keys(cont).forEach(function (k) { params.set(k, cont[k]); });
+      }
+
+      var data = await callWikipediaApi(params);
+      var got = (data && data.query && data.query.pages) || {};
+
+      Object.keys(got).forEach(function (pid) {
+        var page = got[pid];
+        if (!page || page.missing !== undefined) return;
+        var prev = pages[pid] || {};
+        // continue のたびに同じページの別プロパティが届くのでマージする
+        pages[pid] = Object.assign({}, prev, page);
+      });
+
+      cont = (data && data.continue) || null;
+      if (!cont) break;
+    }
+
+    var articles = [];
+    Object.keys(pages).forEach(function (pid) {
+      var page = pages[pid];
+      var coord = (page.coordinates && page.coordinates[0]) || null;
+      if (!coord || !isFinite(coord.lat) || !isFinite(coord.lon)) return;
+
+      var extract = typeof page.extract === 'string' ? page.extract.trim() : '';
+      var thumb = (page.thumbnail && page.thumbnail.source) || null;
+
+      articles.push({
+        id: 'wp/' + page.pageid,
+        title: page.title || '',
+        lat: coord.lat,
+        lon: coord.lon,
+        distanceM: haversineM(lat, lon, coord.lat, coord.lon),
+        thumbnailUrl: thumb || null,
+        extract: extract || null,
+        // curid 形式ならタイトルのエスケープを気にせずリンクできる
+        url: 'https://ja.wikipedia.org/?curid=' + page.pageid
+      });
+    });
+
+    articles.sort(function (a, b) { return a.distanceM - b.distanceM; });
+    cacheSet(cacheKey, articles, TTL_WIKI_NEARBY_MS);
+    return articles;
   }
 
   // ---------------------------------------------------------------------------
@@ -724,7 +1118,10 @@
 
   global.YadoGeo = {
     geocodeHotel: geocodeHotel,
+    suggestHotels: suggestHotels,
+    fetchHotelsInBbox: fetchHotelsInBbox,
     fetchSpots: fetchSpots,
+    fetchWikiNearby: fetchWikiNearby,
     enrichFame: enrichFame,
     // プラン生成側や画面側でも使えるように距離計算とラベル表を公開しておく
     haversineM: haversineM,
