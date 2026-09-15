@@ -134,6 +134,8 @@
   var demoNoSaveView = false; // ?demo=zoomout    … 撮影用の地図位置を localStorage に残さない
   var demoPassive = false;    // ?demo=passive     … 受動ログの中身をその場で目視する
   var demoImgFail = false;    // ?demo=imgfail     … 先頭3枚のカード画像を強制的に読み込み失敗させる
+  var demoNoHotels = false;   // ?demo=nohotels    … 宿が0件の画面を外部APIなしで再現する
+  var isFixtureMode = false;  // ?fixture=…        … 固定データ読み込み成功時のバッジ表示フラグ
 
   // ---------------------------------------------------------------------------
   // 計測(?perf=1 のときだけ動く)
@@ -375,6 +377,10 @@
     // 状態Aの撮影中は宿ピンを取りに行かない(外部APIを叩かずに素の画面を撮るため)
     if (demoStateA) {
       hotelLayer.clearLayers();
+      if (demoNoHotels) {
+        setMapNote('この範囲には宿が見つかりませんでした');
+        return;
+      }
       if (map.getZoom() < MIN_HOTEL_ZOOM) setMapNote('ズームすると宿が出ます');
       return;
     }
@@ -803,6 +809,7 @@
     if (!hotel) return;
 
     els.feedTitle.textContent = hotel.name || '';
+    els.feedBadge.hidden = !isFixtureMode;
 
     var status = statusText(state.stage, state.osmFailed);
     els.feedStatus.hidden = !status;
@@ -1158,6 +1165,7 @@
     if (demo === 'suggest' || demo === 'recent' || demo === 'recentmix' || demo === 'zoomout') demoStateA = true;
     if (demo === 'passive') demoPassive = true;
     if (demo === 'imgfail') demoImgFail = true;
+    if (demo === 'nohotels') { demoStateA = true; demoNoHotels = true; }
 
     var fixtureName = fixtureNameFromUrl(params);
 
@@ -1181,10 +1189,11 @@
             global.console.log('[perf] fixture-loaded ' + Math.round(perfNow() - fixtureStart) + 'ms');
           }
           YadoGeo.setFixture(json);
+          isFixtureMode = true;
           // ?hotel= が同時にあるならそちらの座標を優先する(fixture はデータ源だけ差し替える)
           var hotel = hotelFromUrl(params) || {
             id: 'fixture/' + fixtureName,
-            name: (json.meta && json.meta.label ? json.meta.label : fixtureName) + '(固定データ)',
+            name: (json.meta && json.meta.label ? json.meta.label : fixtureName),
             lat: json.meta.lat,
             lon: json.meta.lon
           };
@@ -1475,6 +1484,7 @@
       mapNote: document.getElementById('map-note'),
       backBtn: document.getElementById('back-btn'),
       feedTitle: document.getElementById('feed-title'),
+      feedBadge: document.getElementById('feed-badge'),
       feedMap: document.getElementById('feed-map'),
       feedStatus: document.getElementById('feed-status'),
       feedList: document.getElementById('feed-list'),

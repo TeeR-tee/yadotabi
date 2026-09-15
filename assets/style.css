@@ -270,6 +270,16 @@ body {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
+.topbar__badge {
+  flex: 0 0 auto;
+  font-size: var(--fs-sm);
+  padding: 2px 8px;
+  border-radius: var(--r-full);
+  background: var(--c-surface-2);
+  color: var(--c-text-sub);
+  white-space: nowrap;
+}
+
 .feedmap { height: 180px; width: 100%; background: var(--c-surface-2); }
 /* OSM利用規約上の必須表示。非表示化はしない。ピンとの重なりを避けるため最小面積に抑える */
 .feedmap .leaflet-control-attribution {

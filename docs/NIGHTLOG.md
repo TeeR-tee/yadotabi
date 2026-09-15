@@ -278,3 +278,8 @@
 - やったこと: README.mdの「仕組み(かんたん解説)」節に段階描画・重複マージ・除外ルール・Wikipedia同心円3段geosearch・受動ログの説明を追記し、URLパラメータ一覧(hotel/q/fixture/embed/slow/perf/simulate/demoの8種、app.js実装とgrepで照合)を新設。「自動リトライはしません」の誤記(R4実装後は誤り)と「10本」の誤記(実際は12本+docs/check.mjsで計13本)を修正、ファイル構成にscripts/fixtures/demo/docsの説明を追加。「今後」節の実装済み項目(埋め込み・受動ログ)を削除。docs/ROADMAP.mdは完了済み[x]を「## 完了(2026-09-16)」節に集約(未完了8件はR2-1/R11/R14/R19/R28/R37/R39/R40のまま元の文面で残置)。
 - 確認結果: `node docs/check.mjs`全OK、`node scripts/check-all.mjs`13本全PASS、`git diff --stat -- assets fixtures index.html demo scripts`は空(コード無変更)。画面変更なしのため撮影は省略。
 - 次: ROADMAP残りはR2-1(朝の相談向き)/R11/R14/R19/R28/R37/R39/R40。
+
+### 2026-09-16 R39 固定データバッジ + R28 残作業(`?demo=nohotels`)
+- やったこと: `.topbar__title`直後に`#feed-badge`(淡色バッジ)を追加し、fixture読み込み成功時のみ`isFixtureMode`フラグで可視化、見出しの`(固定データ)`括弧書きは削除。`?demo=nohotels`で`demoStateA`+`demoNoHotels`を立て、`loadHotelsInView()`の状態A分岐先頭で本番と同一文言「この範囲には宿が見つかりませんでした」を外部APIなしで再現。`check-hotelparam.mjs`にバッジ4ケース追加、`check-nohotels.mjs`を新設し`check-all.mjs`に追加(14本)。
+- 見た目の確認結果: `?fixture=kusatsu`/`&embed=1`/`?demo=nohotels`のmobile3枚をRead目視。見出し・バッジ・戻るボタンが1行に収まりバッジ文字のはみ出しなし、0件バナーはLeaflet帰属表示と重ならず判読可。`check-all.mjs`14本全PASS、`node --check assets/app.js`OK。engine/geo/fixturesは無変更のためdump-rank差分なし。
+- 次: `?demo=nohotels`と`?simulate=overpass504`併用時は混雑トースト側が勝つ(catchが後に上書きするため)現状のまま据え置き。ROADMAP残りはR2-1/R11/R14/R19/R37/R40。

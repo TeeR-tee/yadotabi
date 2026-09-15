@@ -1,5 +1,5 @@
 // scripts/check-all.mjs
-// check-*.mjs 12本 + docs/check.mjs の計13本を直列実行し、pass/fail と所要時間を表で出す。
+// check-*.mjs 13本 + docs/check.mjs の計14本を直列実行し、pass/fail と所要時間を表で出す。
 // 1本でも失敗なら exit 1。共有サーバ化はしない(各テストが自前でポート3000を spawn/kill するため)。
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
@@ -18,6 +18,7 @@ const SCRIPTS = [
   'scripts/check-hotelparam.mjs',
   'scripts/check-imgfail.mjs',
   'scripts/check-more.mjs',
+  'scripts/check-nohotels.mjs',
   'scripts/check-passive.mjs',
   'scripts/check-pinflash.mjs',
   'scripts/check-r5.mjs',
