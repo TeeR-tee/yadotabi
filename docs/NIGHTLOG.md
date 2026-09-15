@@ -78,3 +78,8 @@
 - check-a11y結果(before→after、375px幅・Playwright実測): 戻るボタン 36→44px OK、エリアチップ 31〜32→44px OK、リンクチップ(判定領域) 28〜29→44px OK、検索候補71.9px OK(無変更)、もっと遠くの開閉46.1px OK(無変更)、もっと遠くの各行 22→44px OK。4画面×6セレクタで全件OK、exitCode 0。コントラストは再計算し表の数値と一致、4.5:1未満の色は増やしていない(faintは対象外のまま)。
 - 見た目の確認結果: `?fixture=kusatsu`/`?demo=zoomout`/`?fixture=hakone&demo=far`/`?fixture=kusatsu&embed=1` のmobile撮影を目視、カード30枚・番号ピン1〜30判読可・リンクチップ折り返し崩れなし・チップ行と検索欄の間延びなし・「もっと遠く」10件の間延びも許容範囲、コンソールエラー0件。
 - 次: R2-1(検索候補とチップの重なり)は朝の相談で保留中。ROADMAP残りはR10/R11/R14/R15/R16。
+
+### 2026-09-16 S1 v3暫定rankの実測(草津/箱根)
+- やったこと: `scripts/dump-rank.mjs` を新規作成(Playwrightで`?fixture=<area>`を開き`YadoEngine.collect→rank→present`をそのまま呼ぶ方式、check-a11y.mjsの前例に合わせた)。草津・箱根それぞれ上位30件+far10件をmarkdown表で出力し、09_研究ノートに生データと観察を追記。engine.js/geo.jsは無変更。
+- 観察できた事実: 草津・箱根とも上位10件はWikipedia要約ありが10件中10件。草津の「湯畑」は26位(要約・画像なし)。箱根fixtureに「大涌谷」のOSM要素はあるが座標(lat/lon)が欠落しておりcollect段階で除外され候補にすら入らない。彫刻の森美術館(距離5.1km)もWikipedia記事なしで圏外。
+- 次: ROADMAP残りのR10/R11/R14/R15/R16(コード改修系)。R2-1(検索候補とチップの重なり)は朝の相談で保留中。
