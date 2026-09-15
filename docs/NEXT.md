@@ -1,62 +1,99 @@
-# NEXT — R25 `docs/check.mjs` を GitHub Actions で毎日1回実行
+# NEXT: R26 README にスクリーンショット3枚を貼る
 
-## 判断理由
-残り未完了のうち R11(小地図の高さ・要デザイン判断寄り)・R14(fixture 軽量化・Overpass 再生成リスク)・R19(far 分布・rank 隣接で慎重さが要る)に対し、R25 はコード変更ゼロ・新規1ファイル・外部APIを叩かず、本番が壊れたら翌朝気づける仕組みが手に入るので費用対効果が最大。R26(README スクショ)はさらに軽いが価値も小さいので次に回す。
+**選定理由(1行)**: 残タスク R11/R14/R19 はいずれも rank・fixture の中身に踏み込む調査寄りで1サイクルに収まりにくいのに対し、R26 はコード無変更・見た目のリスクゼロで「本番URLを開く前に何のアプリか分かる」という公開価値が最も大きいため。
+
+難易度: **sonnet** / 所要目安: **20〜30分**
+
+---
+
+## 目的
+
+README の冒頭を見ただけで「地図から宿を選ぶ → 周辺スポットのカードが流れる → 他サイトに埋め込める」が伝わるようにする。GitHub リポジトリページと、英語段落を読む海外訪問者の両方に効く。
 
 ## 対象ファイル(絶対パス)
-- 新規: `C:\workspace\claude\旅行先用サイト\yadotabi\.github\workflows\check.yml`
-- 追記のみ: `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md`(R25 を `[x] 2026-09-16` に)
-- 追記のみ: `C:\workspace\claude\旅行先用サイト\yadotabi\docs\NIGHTLOG.md`(3行)
-- その他のファイルは一切変更しない(`docs/check.mjs` 自体も変更不要)
+
+- 新規: `C:\workspace\claude\旅行先用サイト\yadotabi\docs\shots\state-a.jpg`
+- 新規: `C:\workspace\claude\旅行先用サイト\yadotabi\docs\shots\state-b.jpg`
+- 新規: `C:\workspace\claude\旅行先用サイト\yadotabi\docs\shots\embed.jpg`
+- 編集: `C:\workspace\claude\旅行先用サイト\yadotabi\README.md`
+- (必要なら)新規: `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\make-shots.mjs`
 
 ## 実装方針
-`.github/workflows/check.yml` を新規作成する。内容の要件:
 
-1. `name: check` (任意の短い名前で可)
-2. トリガーは3つ:
-   - `schedule:` — `cron: '30 21 * * *'`(UTC 21:30 = JST 翌朝 6:30)。GitHub の cron は数十分遅延することがあるので「毎朝6時台に走ればOK」という緩い期待にする。
-   - `workflow_dispatch:` — 手動実行できるように(`gh workflow run` で緑を確認するのに必須)
-   - `push:` — `branches: [main]`(実際のデフォルトブランチ名を `git branch --show-current` で確認して合わせること)
-3. ジョブは1つ、`runs-on: ubuntu-latest`
-4. ステップは3つだけ:
-   - `actions/checkout@v4`
-   - `actions/setup-node@v4` with `node-version: '20'`(check.mjs は Node18+ の標準 fetch のみ使用、依存インストール不要なので `npm ci` は書かない)
-   - `run: node docs/check.mjs`
-5. `permissions: contents: read` を明記(最小権限)。
-6. 通知先(Slack/メール等)の設定は**書かない**。失敗時に Actions のジョブが赤くなるところまでがゴール。
-7. タイムアウト保険として job に `timeout-minutes: 5` を入れておく(本番URLが無応答のとき無限に回らないように)。
-8. YAML なので**タブ文字を使わない**(インデントは半角スペース2)。`on:` はクオート不要だが、エディタが `true` に解釈するような整形はしない。
+### 1. 3枚の撮り直し(既存 PNG の流用ではなく再撮影)
 
-補足: `docs/check.mjs` は本番URL(teer-tee.github.io)と、リンク検査で見つかる外部ドメインは fetch しない設計になっている。Overpass/Wikipedia/Nominatim は一切叩かないので、Actions から毎日実行しても無料APIのマナーに反しない。公開リポジトリなので Actions の実行時間は無料枠。
+`screenshots/` の既存ファイルは 1〜6MB の PNG でサイズ過大なので、**Playwright で撮り直して JPEG 品質 75 で保存する**のが最も簡単(npm install 禁止のため、Playwright は既存スクリプトと同じく
+`file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs` を絶対パスで import する)。
+`scripts/check-more.mjs` の「ローカルサーバーが無ければ自分で起動して最後に落とす」構造をそのまま流用してよい。
 
-## 完了条件(検証可能)
-- [ ] `.github/workflows/check.yml` が存在し、`schedule` / `workflow_dispatch` / `push` の3トリガーを持つ
-- [ ] ローカルで `node docs/check.mjs` が全項目 OK・exit code 0 で終わる
-- [ ] YAML の構文が正しい(下の検証手順のいずれかでパース成功)
-- [ ] push 後、`gh workflow run check.yml` → 数十秒待って `gh run list --workflow=check.yml --limit 3` で **conclusion が success(緑)** の実行が1件以上ある
-- [ ] push トリガーで走った分も含め、赤い実行が無い
-- [ ] `git status -sb` が clean かつ origin と同期済み
+撮影仕様(3枚共通): `viewport { width: 375, height: 780 }`、`deviceScaleFactor: 1`(実寸のまま。拡大しない)、`page.screenshot({ type: 'jpeg', quality: 75, path: ... })`、フルページではなくビューポート内。地図タイルとカード画像の読み込みを待つため `waitForLoadState('networkidle')` か固定待機 2000ms を入れること。
+
+| ファイル | URL | 写すもの |
+|---|---|---|
+| `docs/shots/state-a.jpg` | `http://127.0.0.1:3000/?q=草津温泉` | **状態A**: 地図に♨の宿ピンが実際に出ている状態。`?demo=zoomout`(ズーム不足バナー)は使わない。宿ピンが出ない/混雑した場合の代替は `?fixture=kusatsu&hotel=36.6226,138.5960` ではなく、**素の状態Aで宿ピンが出るまで最大2回だけ再試行**(外部APIは1サイクル2回までのマナー厳守)。それでも出なければ ROADMAP に起票して state-a は後回しにし、2枚で README を先に整える |
+| `docs/shots/state-b.jpg` | `http://127.0.0.1:3000/?fixture=kusatsu` | **状態B フィード**: 見出し「草津温泉(固定データ)」+小地図の番号ピン+1枚目のカード(光泉寺)が入る構図 |
+| `docs/shots/embed.jpg` | `http://127.0.0.1:3000/demo/hotel-page.html` | **埋め込みデモ**: 予約サイト風ページに iframe が載っている様子。宿名と「このお宿のまわり(やどたび)」見出しと iframe 内カードが1画面に入るよう `page.evaluate` で iframe 見出しの位置まで `scrollIntoView` してから撮る |
+
+各ファイルは **150KB 以下**。超えたら quality を 70 → 65 と下げる(高さを縮めるのは最後の手段)。
+
+### 2. README への貼り付け
+
+貼る位置は **冒頭の英語段落(3行目)の直下、日本語の紹介文(5行目)の上**。HTML の `<table>` で横並び1行3列にする(GitHub は Markdown の画像を横並びにできないため)。
+
+```html
+<table>
+  <tr>
+    <td align="center"><img src="docs/shots/state-a.jpg" width="240" alt="地図から宿を選ぶ画面"><br>①宿を選ぶ</td>
+    <td align="center"><img src="docs/shots/state-b.jpg" width="240" alt="周辺スポットのカードが並ぶフィード画面"><br>②周辺が流れてくる</td>
+    <td align="center"><img src="docs/shots/embed.jpg" width="240" alt="予約サイト風ページに埋め込んだ様子"><br>③他サイトに埋め込める</td>
+  </tr>
+</table>
+```
+
+- パスは **リポジトリ相対**(`docs/shots/...`)にする。GitHub の README は相対パスを解決するので絶対URLにしない。
+- `alt` は必ず付ける(R13 のアクセシビリティ方針に揃える)。
+- README の既存本文(英語段落・日本語段落・以降の全節)は**書き換えない**。追加のみ。
+
+### 3. 調査済みの前提(確認不要)
+
+`docs/check.mjs` のリンク切れ検査は `HTML_PAGES = ['index.html', 'demo/embed-check.html', 'demo/hotel-page.html']` の **HTML 3ファイルだけ**を対象にしており、**README.md(Markdown)は対象外**。よって `docs/shots/*.jpg` は既存の検査に自動では含まれない。今回は check.mjs を拡張せず、後述の手順で本番URLの200を手動確認する(README の画像を検査対象に加えるのは ROADMAP の別タスクに回す)。
+
+## 完了条件(すべて検証可能)
+
+1. `docs/shots/state-a.jpg` / `state-b.jpg` / `embed.jpg` の3枚が存在し、**各 150,000 バイト以下**である。
+2. 3枚を `Read` で開いて目視し、文字崩れ・重なり・はみ出し・真っ白の地図が無いこと。state-a には**♨の宿ピンが1つ以上写っている**こと。
+3. README.md の英語段落直下に3枚が横並びの `<table>` で入っており、既存本文に差分が無い(`git diff README.md` が追加行のみ)。
+4. `node docs/check.mjs` が**全項目OK・exit 0**。
+5. push 後、`https://teer-tee.github.io/yadotabi/docs/shots/state-a.jpg`(および state-b / embed)が **HTTP 200** を返す。
+6. `assets/` 配下・`fixtures/` 配下・`index.html` の差分が**ゼロ**(`git diff --stat` で確認)。
 
 ## 検証手順
-1. ブランチ名確認: `cd "C:\workspace\claude\旅行先用サイト\yadotabi" && git branch --show-current`
-2. ローカル死活チェック: `node docs/check.mjs`(exit 0 を確認)
-3. YAML 構文確認(どちらか成功すればOK):
-   - `node -e "const s=require('fs').readFileSync('.github/workflows/check.yml','utf8'); if(/\t/.test(s)) throw new Error('tab found'); console.log('no tabs, '+s.split('\n').length+' lines')"`
-   - さらに確実にしたい場合は `python -c "import yaml,sys;yaml.safe_load(open('.github/workflows/check.yml',encoding='utf-8'));print('yaml ok')"`(python が無ければスキップ可。無ければ目視でインデントを確認する)
-4. コミット → `git push`
-5. `gh workflow run check.yml`(初回は Actions に workflow が登録されるまで少し待つ。`gh workflow list` に出てこなければ 15〜30秒待って再試行)
-6. `gh run list --workflow=check.yml --limit 5` を実行し、`completed success` を確認する。in_progress なら 20〜30秒おきに数回確認する。
-7. 赤かった場合は `gh run view --log-failed` でログを見て、YAML かパスの誤りを直して再 push(check.mjs 自体は直さない。本番URLが実際に壊れているなら、それは R25 の成果=検知できたということなので NIGHTLOG に事実として書き、ROADMAP に別タスクとして起票する)
-8. 画面の変更が無いタスクなので撮影は省略してよい(NIGHTLOG に「画面変更なしのため撮影省略」と明記する)
+
+```powershell
+# 1. サイズ確認(3枚とも150000以下)
+Get-ChildItem docs\shots\*.jpg | Select-Object Name, Length
+
+# 2. 既存テストのデグレ確認
+node docs\check.mjs
+node scripts\check-more.mjs
+
+# 3. コード無変更の証明
+git diff --stat -- assets fixtures index.html   # 出力が空であること
+
+# 4. push 後の本番確認(3枚それぞれ)
+curl -s -o NUL -w "%{http_code} %{size_download}`n" https://teer-tee.github.io/yadotabi/docs/shots/state-a.jpg
+```
+
+さらに3枚を `Read` で開いて目視する(AUTOPILOT 絶対ルール5)。
 
 ## 変更禁止範囲
-- `assets/` 配下すべて(app.js / geo.js / engine.js / *.css)
-- `fixtures/` 配下すべて
-- `index.html`、`demo/` 配下
-- `docs/check.mjs` 本体(今回は実行するだけ)
-- `scripts/` 配下の既存チェッカー
-- git stash / reset --hard / checkout でファイルを戻す操作(AUTOPILOT 規約7)
 
-## 難易度・所要目安
-- 難易度: sonnet
-- 所要目安: 15〜25分(うち gh run の待ち時間が数分)
+- `assets/` 配下すべて(app.js / geo.js / engine.js / style.css / ui.css / tokens.css)
+- `fixtures/` 配下すべて
+- `index.html`、`demo/` 配下の既存HTML
+- README.md の既存本文(追加のみ。既存行の書き換え・削除は禁止)
+- `git stash` / `reset --hard` / `checkout` によるファイル復元操作(AUTOPILOT 絶対ルール7)
+
+## 完了後
+
+`docs/ROADMAP.md` の R26 を `[x] 2026-09-16` にし、`docs/NIGHTLOG.md` に3行(やったこと / 見た目の確認結果 / 次)追記 → コミット → `git push`。**実装が終わったらまず先にコミットすること。報告は簡潔に(長文の報告書を書かない)。**
