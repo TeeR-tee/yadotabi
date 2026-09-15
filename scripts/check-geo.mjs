@@ -263,6 +263,38 @@ async function main() {
     eq(articles.length, 7, '件数はケース5と同じ(7件)');
   }
 
+  // --- ケース8: R35 社寺のカテゴリ判定は名前を優先する -----------------------
+  // 社寺は境内の石碑が historic=memorial として本体と同じ名前で登録されることがあり、
+  // タグの評価順だけだと神社が「記念碑」になっていた(道後の伊佐爾波神社・湯神社)。
+  {
+    const { geo, calls } = loadGeo(() => { throw new Error('fixture 中に fetch が呼ばれた'); });
+    console.log('[8] 社寺のカテゴリは名前優先(R35)');
+    geo.setFixture({
+      overpass: {
+        elements: [
+          // 境内の石碑ノード。タグは memorial だが名前は神社
+          { type: 'node', id: 1, lat: LAT + 0.001, lon: LON, tags: { name: '伊佐爾波神社', historic: 'memorial' } },
+          // 本体。place_of_worship
+          { type: 'relation', id: 2, center: { lat: LAT + 0.002, lon: LON },
+            tags: { name: '湯神社', amenity: 'place_of_worship', religion: 'shinto' } },
+          // 名前が社寺でない monument は従来どおり記念碑のまま
+          { type: 'node', id: 3, lat: LAT + 0.003, lon: LON, tags: { name: '筆塚', historic: 'monument' } },
+          // 城は社寺語に当たらない(末尾が「城」)
+          { type: 'node', id: 4, lat: LAT + 0.004, lon: LON, tags: { name: '湯築城', historic: 'castle' } }
+        ]
+      }
+    });
+    const spots = await geo.fetchSpots(LAT, LON, 3000);
+    eq(calls.length, 0, '外部 fetch は0回');
+    const byName = {};
+    spots.forEach((s) => { byName[s.name] = s; });
+    eq(byName['伊佐爾波神社'].category, 'place_of_worship', 'memorial タグでも名前が神社なら社寺');
+    eq(byName['伊佐爾波神社'].categoryLabel, '神社・寺院', 'ラベルも「神社・寺院」');
+    eq(byName['湯神社'].category, 'place_of_worship', 'place_of_worship はそのまま社寺');
+    eq(byName['筆塚'].category, 'monument', '社寺でない monument は記念碑のまま');
+    eq(byName['湯築城'].category, 'castle', '城は城のまま');
+  }
+
   console.log('\n' + pass + ' pass, ' + fail + ' fail');
   process.exit(fail === 0 ? 0 : 1);
 }

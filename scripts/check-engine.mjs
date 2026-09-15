@@ -404,6 +404,85 @@ console.log('\n(a-4) R18 誤併合: 名前の包含だけで別施設を同一�
 }
 
 // ---------------------------------------------------------------------------
+console.log('\n(a-5) R35 観光対象でない候補の除外(OSM側にも適用)+保護リスト');
+{
+  // 除外語に当たる名前 / 保護語で終わる名前を OSM と Wikipedia の両方から流し込み、
+  // どちらの経路でも同じ判定になることを確かめる。
+  // R35 以前は OSM 側に除外が一切かかっておらず、学校や役所が素通しだった。
+  const NG_NAMES = [
+    '愛媛大学教育学部附属特別支援学校', // 特別支援学校(部分一致)
+    '草津町立草津中学校',               // 学校(末尾一致)
+    '松山地方気象台',                   // 気象台
+    '松山市青少年センター',             // 青少年センター
+    '道後公園停留場',                   // 停留場(末尾が保護語でないので落ちる)
+    '箱根町役場',                       // 町役場
+    '草津町立草津保育園',               // 保育園
+    '県立中央病院',                     // 病院
+    '群馬銀行草津支店',                 // 支店
+    '第二浄水場',                       // 浄水場
+    '湯畑団地'                          // 団地
+  ];
+  const OK_NAMES = [
+    '愛媛大学ミュージアム',   // 大学を含むが末尾が保護語 → 残す(一般観覧できる展示施設)
+    'リーかあさま記念館',     // 記念館
+    '重監房資料館',           // 資料館
+    '道の駅六合',             // 道の駅
+    '西の河原公園',           // 公園
+    '白根神社',               // 神社
+    '光泉寺',                 // 寺
+    '小田原城',               // 城
+    '箱根湯寮'                // 「寮」で終わるが日帰り温泉施設 → 除外語に入れていない
+  ];
+
+  const mkSpots = (names) => names.map((name, i) => ({
+    id: 'node/ng' + i, name, lat: at(300 + i * 40), lon: HOTEL.lon,
+    category: 'other', categoryLabel: 'スポット', distanceM: 300 + i * 40
+  }));
+  const mkArticles = (names) => names.map((title, i) => ({
+    id: 'wp/ng' + i, title, lat: at(3000 + i * 40), lon: HOTEL.lon, distanceM: 3000 + i * 40,
+    thumbnailUrl: null, extract: null, url: ''
+  }));
+
+  // (1) OSM 由来 ------------------------------------------------------------
+  const Eo = loadEngine({
+    ...geoMock(),
+    fetchSpots: () => Promise.resolve(mkSpots([...NG_NAMES, ...OK_NAMES])),
+    fetchWikiNearby: () => Promise.resolve([])
+  });
+  const osmMerged = await Eo.collect(HOTEL);
+  const osmNames = osmMerged.map(i => i.name);
+  NG_NAMES.forEach((n) => ok(osmNames.indexOf(n) === -1, 'OSM由来で落ちる: ' + n, osmNames));
+  OK_NAMES.forEach((n) => ok(osmNames.indexOf(n) !== -1, 'OSM由来で残る: ' + n, osmNames));
+
+  // (2) Wikipedia 由来(既存の挙動が変わっていないこと) ----------------------
+  const Ew = loadEngine({
+    ...geoMock(),
+    fetchSpots: () => Promise.resolve([]),
+    fetchWikiNearby: () => Promise.resolve(mkArticles([...NG_NAMES, ...OK_NAMES]))
+  });
+  const wikiMerged = await Ew.collect(HOTEL);
+  const wikiNames = wikiMerged.map(i => i.name);
+  NG_NAMES.forEach((n) => ok(wikiNames.indexOf(n) === -1, 'wiki由来で落ちる: ' + n, wikiNames));
+  OK_NAMES.forEach((n) => ok(wikiNames.indexOf(n) !== -1, 'wiki由来で残る: ' + n, wikiNames));
+
+  // (3) 保護は extract 判定より先 --------------------------------------------
+  // 「〇〇記念館」は冒頭文に除外語が出ても落とさない(保護 → 除外の順)。
+  const Ep = loadEngine({
+    ...geoMock(),
+    fetchSpots: () => Promise.resolve([]),
+    fetchWikiNearby: () => Promise.resolve([
+      { id: 'wp/p1', title: '学校法人〇〇記念館', lat: at(800), lon: HOTEL.lon, distanceM: 800,
+        thumbnailUrl: null, extract: '学校法人が運営する展示施設である。', url: '' },
+      { id: 'wp/p2', title: '山田太郎', lat: at(900), lon: HOTEL.lon, distanceM: 900,
+        thumbnailUrl: null, extract: '山田太郎は、日本の政治家である。', url: '' }
+    ])
+  });
+  const pNames = (await Ep.collect(HOTEL)).map(i => i.name);
+  ok(pNames.indexOf('学校法人〇〇記念館') !== -1, '保護語で終われば extract の除外語より優先', pNames);
+  ok(pNames.indexOf('山田太郎') === -1, '保護語が無ければ extract 判定は従来どおり効く', pNames);
+}
+
+// ---------------------------------------------------------------------------
 console.log('\n(b) 片方失敗でも返る / 両方失敗で日本語 Error');
 {
   const E1 = loadEngine(geoMock({ wikiReject: true }));

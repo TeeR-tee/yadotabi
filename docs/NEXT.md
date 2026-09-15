@@ -1,53 +1,97 @@
-# NEXT: R30 fixture 3エリア目「道後温泉(dogo)」の追加
+# NEXT: R35 観光対象でない候補(学校・病院・公共施設)の除外ルール拡充
 
-判断理由: 未完了は R11/R14/R19/R28/R30〜R34。草津=山間の温泉地・箱根=谷/都市近郊に対し、道後は**市街地に隣接した温泉地**で候補密度と重複(松山城・道後公園など)の出方が違うため、除外ルール・重複マージ・番号ピン分離の視覚QAの幅が一番広がる。R19(far の分布是正)の検証素材にもなり、make-fixture.mjs は既に引数化済みで実装コストが小さい。
+難易度: **opus** / 所要目安: 60〜90分 / 1サイクル=1タスク
+
+## 背景(なぜ最優先か)
+R30 の道後温泉 fixture の観察(09_研究ノート L177〜)で、上位30件に
+**「愛媛大学教育学部附属特別支援学校」(13位)・「愛媛大学ミュージアム」(18位)・
+「松山地方気象台」(15位)・「松山市青少年センター」(17位)** など、観光対象とは
+言えない教育・公共施設が複数混入していることが判明した。
+これは rank(並び順)の問題ではなく**除外ルールの取りこぼし**であり、
+ユーザーに「特別支援学校」を観光地として提示する実害がある。市街地隣接の
+温泉地では必ず起きる構造的な穴なので、他エリア展開の前に塞ぐ。
+
+## 先に確認させたい事実(計画役の事前調査。実物を読んで裏取りすること)
+- `assets/engine.js:128` `TITLE_SUFFIX_NG` / `:137` `TITLE_KEYWORD_NG` / `:143` `EXTRACT_KEYWORD_NG`
+  の3定数があり、適用は `:303 isExcludedArticle(title, extract)` の1箇所のみ。
+- **`isExcludedArticle` の呼び出しは `assets/engine.js:608`(wiki 側のループ内)だけ。**
+  OSM 側の `buildOsmItems`(`assets/engine.js:544` 付近)は
+  「lat/lon がある」「name が空でない」「宿自身でない」しか見ておらず、
+  **除外ルールが一切かかっていない**。これが本命の原因と考えられる。
+  → まず `node scripts/dump-rank.mjs dogo` の全候補(cards+more+far)を出し、
+    混入している各件が `source=osm` / `wiki` / `both` のどれかを確認し、
+    **どちらの経路で入ったかを特定してから**修正方針を決めること。
+- OSM 側で拾われる理由の推定: `assets/geo.js:531` 付近の Overpass クエリは
+  `tourism=attraction` / `tourism=museum` / `historic=monument` 等を引いており、
+  大学附属施設・公共施設にこれらのタグが付いていると素通しになる。
+
+## やること
+1. **調査**: `node scripts/dump-rank.mjs dogo` の全候補から観光対象でないものを列挙する。
+   対象語の例: 学校・大学・学院・学園・幼稚園・保育園・こども園・病院・医院・診療所・
+   クリニック・役所・市役所・町役場・県庁・合同庁舎・気象台・センター(※後述)・
+   銀行・信用金庫・郵便局・警察・交番・消防・工場・変電所・浄水場・下水・清掃工場・
+   団地・マンション・アパート・住宅・寮・刑務所・自衛隊・駐屯地 など。
+2. **除外ルールの拡充**(語ベース、`engine.js` の既存3定数に追記する形)。
+   - `TITLE_SUFFIX_NG` に末尾一致で安全なもの(例: 学校・大学・幼稚園・保育園・
+     病院・診療所・市役所・町役場・気象台・工場・変電所・浄水場・団地 など)。
+   - `TITLE_KEYWORD_NG` に部分一致で安全なもの(例: 特別支援・附属・付属 など。
+     **誤爆しやすい語は入れない**)。
+   - `EXTRACT_KEYWORD_NG` に「にある学校」「に設置された」等、記事冒頭文で
+     判別できるものがあれば追加。
+3. **OSM 側にも除外を適用する**。`buildOsmItems` の中で
+   `isExcludedArticle(item.name, '')` 相当を通す(extract は無いので title のみ判定)。
+   関数名が実態と合わなくなるなら、判定本体を `isExcludedName(title)` と
+   `isExcludedArticle(title, extract)` に分けてよい(挙動は既存を保つこと)。
+4. **保護リスト**(誤爆防止)。次を含む名前は上の語に当たっても**落とさない**:
+   `記念館・資料館・美術館・博物館・道の駅・公園・神社・神宮・大社・寺・院・城・
+   ミュージアム`。保護は除外より先に評価する(保護 → 除外の順)。
+   ※「愛媛大学ミュージアム」は保護語(ミュージアム)を含むため、この設計だと残る。
+   残すか落とすかは**作業役の判断で決めてよい**が、決めた理由を NIGHTLOG に書くこと
+   (推奨: 大学の研究展示施設は一般観覧可なので残す。「附属特別支援学校」は落とす)。
+5. **`?demo=`/`?fixture=` の挙動は不変**。fixtures/*.json は再生成しない。
 
 ## 対象ファイル(絶対パス)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\make-fixture.mjs` — `AREAS` テーブルに1行追加
-- `C:\workspace\claude\旅行先用サイト\yadotabi\fixtures\dogo.json` — **新規生成物**(スクリプト実行で作られる)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\check.mjs` — `TARGETS` と meta.lat 判定に dogo.json を追加
-- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\09_研究ノート*.md` — 実験ログに観察を1段落(ファイル名は `docs/` を ls して実物を確認すること)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md` / `docs\NIGHTLOG.md` — 完了記録
+- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\engine.js` (除外定数と適用箇所)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\geo.js` (※下の「小修正」でのみ、カテゴリ判定順)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-engine.mjs` (ケース追加)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\NIGHTLOG.md` / `docs\ROADMAP.md` (記録)
 
-## 実装方針(実物を読んでから書くこと)
-1. `scripts/make-fixture.mjs` の `AREAS`(現在 kusatsu / hakone の2件)に1行追加する:
-   `dogo: { lat: 33.8520, lon: 132.7860, label: '道後温泉' }`
-   - `osmRadiusM` は**指定しない**(既定 15000m)。箱根の 30km は R19 で「far が境界に固まる」問題の原因として係争中なので、草津と同じ 15km で素直に取る。
-   - 名前 `dogo` は `/^[a-z0-9_-]+$/` を満たすので、`assets/app.js` の `fixtureNameFromUrl`(app.js:1069 付近、同じ正規表現で検証し `fetch('fixtures/' + name + '.json')` するだけ)は**無変更で通る**。app.js は触らない。
-   - ヘッダー名は `json.meta.label` 参照済みなので「道後温泉(固定データ)」が自動で出る。
-2. `node scripts/make-fixture.mjs dogo` を**1回だけ**実行(Overpass 1回 + Wikipedia continue 最大4回)。
-   - Overpass が 429/504 のときはスクリプト内蔵の 60秒×2 再試行に任せ、それでも駄目なら**このサイクルは中止**して NIGHTLOG に記録し、別タスクへ移ること(半径 4000m フォールバックで妥協した fixture は作らない)。
-3. `docs/check.mjs` の `TARGETS` 配列(docs/check.mjs:12-22)に `'fixtures/dogo.json'` を足し、58行目付近の
-   `if (path === 'fixtures/kusatsu.json' || path === 'fixtures/hakone.json')` の条件に dogo.json を加える(3つ並べるより `path.startsWith('fixtures/')` に直す方が素直)。
-4. `node scripts/dump-rank.mjs dogo` を実行し、上位30件と far 10件を 09研究ノートの実験ログに貼って**1段落**観察を書く。着目点: (a) 市街地なので飲食店・学校・企業などの除外が効いているか、(b) 道後温泉本館 / 道後温泉 / 道後公園 などの重複がマージされているか誤併合していないか、(c) far の分布が箱根のように境界に固まっていないか(15km 半径なら far 0件もありうる。その事実自体が R19 の材料)。
+## 同サイクルの小修正(司令塔からの指示・必須)
+dogo の 1位「伊佐爾波神社」のカテゴリ行が **「記念碑」** になっている(神社なのに)。
+原因は `assets/geo.js:243-264` の `CATEGORY_RULES` が上から順に評価され、
+`historic=monument`(:252) が `amenity=place_of_worship`(:257) **より先**にあるため、
+両方のタグを持つ神社が monument と判定されること(`detectCategory` は `geo.js:552` 付近)。
+- 修正: 名前に `神社 / 神宮 / 大社 / 寺 / 院 / 八幡宮 / 天満宮` を含む候補は
+  `place_of_worship` を優先する。実装場所は `geo.js` の `detectCategory`(タグと
+  合わせて name も見られるようにする)が素直。**実物を読んで正しい場所を選ぶこと**。
+  `engine.js:167` の `WIKI_CATEGORY_HINTS` は wiki 単独候補用なので既に神社を扱えている。
+- 影響確認: kusatsu/hakone で光泉寺・石垣山等のカテゴリ表示が壊れていないこと。
 
-## 完了条件(すべて検証可能)
-- [ ] `fixtures/dogo.json` が生成され、`meta.area === 'dogo'` / `meta.label === '道後温泉'` / `meta.lat` / `meta.osmRadiusM === 15000` を持つ
-- [ ] `?fixture=dogo` で**カードが10枚以上**描画される(草津30枚には届かなくてもよいが、10枚未満ならデータ不足としてログに理由を書く)
-- [ ] ヘッダーが「道後温泉(固定データ)」になっている
-- [ ] mobile / desktop とも文字崩れ・重なり・はみ出しなし、番号ピンが判読可能
-- [ ] `docs/check.mjs` に dogo.json のチェックが入り、**ローカル実行で全項目 OK・exit 0**(本番URLの dogo.json は push 前なので 404。**push 後に必ず再実行して緑を確認**すること)
-- [ ] `node scripts/dump-rank.mjs dogo` がエラーなく表を出力する
-- [ ] `?fixture=kusatsu` / `?fixture=hakone` にデグレなし(カード30枚・ピン1〜30判読可)
+## 完了条件(検証可能)
+- [ ] `node scripts/dump-rank.mjs dogo` の **cards + more** に、学校・特別支援学校・
+      幼稚園・保育園・病院・役所・気象台・青少年センター等が **0件**。
+- [ ] `node scripts/dump-rank.mjs kusatsu` / `hakone` を before/after で比較し、
+      **落ちた候補の一覧を目視**して、観光対象が1件も落ちていないことを確認。
+      (差分が出た場合は全件を NIGHTLOG に列挙する)
+- [ ] dogo の **1位カードのカテゴリ表示が「神社・寺院」**(現状「記念碑」)。
+- [ ] `node scripts/check-engine.mjs` 全 pass(除外の新ケース+保護リストのケースを追加。
+      最低でも「〇〇小学校が落ちる」「〇〇記念館が残る」「OSM 由来の学校が落ちる」の3件)。
+- [ ] `node --check assets/engine.js` / `assets/geo.js` 通過。
+- [ ] `node scripts/check-geo.mjs` / `check-more.mjs` / `check-a11y.mjs` / `docs/check.mjs` が緑。
 
 ## 検証手順
-1. `node scripts/make-fixture.mjs dogo`(外部API はこの1回のみ)
-2. `node scripts/dump-rank.mjs dogo` → 出力を 09研究ノートへ
-3. 撮影(すべて fixture なので外部API 0回):
-   - `node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=dogo" --mobile`
-   - 同 URL を desktop 幅で1枚
-   - デグレ確認に `?fixture=kusatsu` mobile を1枚
-4. 撮った画像を **Read で開いて目視**(崩れ・重なり・はみ出し・ピンの潰れ)。崩れがあれば同サイクルで直す。直せなければ ROADMAP に起票。
-5. `node docs/check.mjs` / `node scripts/check-engine.mjs` / `check-a11y.mjs` / `check-more.mjs` を実行し全緑を確認
-6. ROADMAP の R30 を `[x] 2026-09-16` に、NIGHTLOG に3行追記 → コミット → `git push` → push 後に `node docs/check.mjs` 再実行
+1. `node scripts/dump-rank.mjs dogo|kusatsu|hakone` を**変更前に**取って保存(before)。
+2. 実装 → 同じ3本を取り直し(after) → 差分を目視。
+3. 撮影: `?fixture=dogo` mobile、`?fixture=kusatsu` mobile の2枚。
+   `node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=dogo" --mobile`
+4. 画像を Read で開き、カード30枚・番号ピン1〜30判読可・文字崩れ無し・
+   dogo 1位のカテゴリ行が「神社・寺院」であることを目視。
+5. NIGHTLOG に3行+落ちた候補一覧 → ROADMAP を `[x] 2026-09-16` に → コミット → push。
 
 ## 変更禁止範囲
-- `assets/engine.js` / `assets/geo.js` / rank の重み・閾値・カテゴリ多様性ルール — **一切触らない**
-- `fixtures/kusatsu.json` / `fixtures/hakone.json` の**再生成は禁止**(R14 の軽量化タスクと衝突する)
-- `assets/app.js`(fixture 名検証は既存のまま通るので変更不要)
-- 外部API呼び出しは make-fixture の1回まで。追加調査で Overpass を叩き直さない
-- git stash / reset --hard / checkout でのファイル復元は禁止
-
-## 難易度・所要目安
-- 難易度: **sonnet**(既存の R9「箱根追加」と同型。差分は座標1行 + check.mjs 数行)
-- 所要目安: 25〜40分(うち Overpass 待ちが最大10分)
+- `rank()` の重み(`WEIGHT`)・閾値・`CATEGORY_PENALTY`・`CATEGORY_FREE_SLOTS`・
+  `SEASON_HINTS`・far 判定の分数 — **一切触らない**。
+- `assets/geo.js` は**カテゴリ判定順の小修正のみ**。Overpass クエリ・半径・
+  `fetchWikiNearby` の同心円ロジックは触らない。
+- `fixtures/*.json` の再生成・編集は禁止(外部API を叩かない)。
+- git stash / reset --hard / checkout でのファイル巻き戻しは禁止。

@@ -545,8 +545,31 @@
     return '[out:json][timeout:90];\n(\n' + body + ');\nout center tags;\n';
   }
 
+  /**
+   * 名前がこれらで終わる候補は社寺とみなす。
+   *
+   * 社寺は OSM 上で複数の要素に分かれていることがあり、境内の石碑が
+   * historic=memorial / monument として本体と同じ名前で登録されている。
+   * CATEGORY_RULES は上から順に見るうえ、engine 側の重複統合は先に見つけた方
+   * (＝より近い石碑ノード)を代表にするため、神社が「記念碑」と表示されていた
+   * (例: 道後の伊佐爾波神社・湯神社)。名前で社寺と分かるものはタグより名前を優先する。
+   */
+  var WORSHIP_NAME_SUFFIX = ['神社', '神宮', '大社', '八幡宮', '天満宮', '寺', '院'];
+
+  function looksLikeWorship(name) {
+    var n = typeof name === 'string' ? name.trim() : '';
+    if (!n) return false;
+    for (var i = 0; i < WORSHIP_NAME_SUFFIX.length; i++) {
+      var w = WORSHIP_NAME_SUFFIX[i];
+      if (n.length >= w.length && n.slice(-w.length) === w) return true;
+    }
+    return false;
+  }
+
   /** OSMのtagsから内部カテゴリを判定する。該当なしは 'other'。 */
-  function detectCategory(tags) {
+  function detectCategory(tags, name) {
+    // 名前から社寺と分かるものは、タグの評価順より名前を優先する
+    if (looksLikeWorship(name)) return 'place_of_worship';
     for (var i = 0; i < CATEGORY_RULES.length; i++) {
       var rule = CATEGORY_RULES[i];
       if (tags[rule.key] === rule.value) return rule.category;
@@ -729,7 +752,7 @@
       if (seen[dedupeKey]) return;
       seen[dedupeKey] = true;
 
-      var category = detectCategory(tags);
+      var category = detectCategory(tags, name);
       spots.push({
         id: el.type + '/' + el.id,
         name: name,
