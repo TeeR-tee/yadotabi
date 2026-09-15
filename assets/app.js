@@ -113,6 +113,60 @@
   var demoNoSaveView = false; // ?demo=zoomout    … 撮影用の地図位置を localStorage に残さない
 
   // ---------------------------------------------------------------------------
+  // 計測(?perf=1 のときだけ動く)
+  //
+  // 「宿を選んでから最初のカードが出るまで」を数値で見るためだけの仕掛け。
+  // perfOn が false のときは perfMark が即 return するので、通常動作・DOM は一切変わらない。
+  // ---------------------------------------------------------------------------
+
+  var perfOn = false;
+  var perfT0 = 0;
+  var perfFirstCardDone = false;  // first-card-painted は1回だけ
+  var perfLines = [];
+  var perfBox = null;
+
+  function perfNow() {
+    return (global.performance && typeof global.performance.now === 'function')
+      ? global.performance.now()
+      : Date.now();
+  }
+
+  /** 計測の起点(状態Bに入った瞬間)を置き直す。 */
+  function perfReset() {
+    if (!perfOn) return;
+    perfT0 = perfNow();
+    perfFirstCardDone = false;
+    perfLines = [];
+    if (perfBox) perfBox.textContent = '';
+  }
+
+  function perfMark(label) {
+    if (!perfOn) return;
+    var ms = Math.round(perfNow() - perfT0);
+    var line = '[perf] ' + label + ' ' + ms + 'ms';
+    if (global.console && global.console.log) global.console.log(line);
+    perfLines.push(label + ' ' + ms + 'ms');
+    if (!perfBox) {
+      perfBox = document.createElement('div');
+      perfBox.id = 'perf-box';
+      perfBox.setAttribute('style',
+        'position:fixed;left:0;right:0;bottom:0;z-index:9999;padding:4px 6px;' +
+        'background:rgba(0,0,0,.8);color:#fff;font:11px/1.4 monospace;' +
+        'white-space:pre-wrap;pointer-events:none;');
+      document.body.appendChild(perfBox);
+    }
+    perfBox.textContent = perfLines.join(' | ');
+  }
+
+  /** 実カードが1枚でも描けた最初の1回だけ、実際に塗られた時刻を打つ。 */
+  function perfMarkFirstCard() {
+    if (!perfOn || perfFirstCardDone || !state.cards.length) return;
+    perfFirstCardDone = true;
+    var raf = global.requestAnimationFrame || function (fn) { return setTimeout(fn, 16); };
+    raf(function () { perfMark('first-card-painted'); });
+  }
+
+  // ---------------------------------------------------------------------------
   // 小物
   // ---------------------------------------------------------------------------
 
@@ -463,11 +517,14 @@
     state.osmFailed = false;
     pushRecent(hotel);
     render();
+    // 状態Bに入った瞬間を計測の起点にする
+    perfReset();
 
     var seq = ++requestSeq;
 
     YadoEngine.suggest(hotel, {}, function (stage, partial, meta) {
       if (seq !== requestSeq || state.view !== 'feed') return;
+      perfMark('stage:' + stage);
       state.stage = stage;
       state.cards = (partial && partial.cards) || [];
       state.far = (partial && partial.far) || [];
@@ -638,6 +695,8 @@
     if (!loading && !state.cards.length) html = emptyHtml(hotel);
 
     els.feedList.innerHTML = html;
+    // 実カードが入った最初の描画だけ計測する(?perf=1 のとき以外は何もしない)
+    perfMarkFirstCard();
 
     var far = farHtml(state.far);
     els.feedFar.hidden = !far;
@@ -861,6 +920,7 @@
     }
 
     // ここから下は撮影・目視QA専用の入口。パラメータが無ければ全て素通りする。
+    if (params.get('perf') === '1') perfOn = true;
     if (params.get('simulate') === 'empty') demoEmpty = true;
     var demo = params.get('demo') || '';
     if (demo === 'far') demoFar = true;
@@ -874,6 +934,9 @@
     if (isEmbedFromUrl(params) && hasTarget) setEmbed(true);
 
     if (fixtureName) {
+      // fixture の読み込みは撮影用の事情で、本番の通常動作には無い工程。
+      // 状態Bの計測(t0)と混ざらないよう、ここだけ別の起点で測って先に出す。
+      var fixtureStart = perfNow();
       // GitHub Pages のサブパス(/yadotabi/)でも動くよう相対パスで読む
       fetch('fixtures/' + fixtureName + '.json')
         .then(function (res) {
@@ -882,6 +945,9 @@
         })
         .then(function (json) {
           if (!json || !json.meta) throw new Error('fixture broken');
+          if (perfOn && global.console && global.console.log) {
+            global.console.log('[perf] fixture-loaded ' + Math.round(perfNow() - fixtureStart) + 'ms');
+          }
           YadoGeo.setFixture(json);
           // ?hotel= が同時にあるならそちらの座標を優先する(fixture はデータ源だけ差し替える)
           var hotel = hotelFromUrl(params) || {

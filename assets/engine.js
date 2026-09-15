@@ -153,6 +153,25 @@
     return s.toLowerCase();
   }
 
+  /**
+   * Wikipedia extract 先頭の座標表記を落とす。
+   *
+   * 記事によっては extract が「北緯35度13分48.3秒 東経139度6分13.2秒 早雲寺（そううんじ）は、…」
+   * のように座標から始まり、120字の要約枠が座標だけで潰れてしまう。
+   * 本文の頭に出る度分秒表記・「座標: …」だけを落とし、それ以外は触らない。
+   * 落とした結果が空になる場合は、安全側に倒して元の文字列を返す。
+   */
+  var COORD_PREFIX_RE =
+    /^(?:座標\s*[:：]?\s*)?(?:北緯|南緯)\s*[\d.]+\s*度(?:\s*[\d.]+\s*分)?(?:\s*[\d.]+\s*秒)?\s*(?:東経|西経)\s*[\d.]+\s*度(?:\s*[\d.]+\s*分)?(?:\s*[\d.]+\s*秒)?\s*/;
+
+  function stripCoordPrefix(text) {
+    if (typeof text !== 'string') return text;
+    var stripped = text.replace(/^[\s　]+/, '').replace(COORD_PREFIX_RE, '');
+    stripped = stripped.replace(/^[\s　/、,]+/, '');
+    // 座標しか書かれていなかった記事は、消すと何も残らない。そのときは元のまま出す。
+    return stripped ? stripped : text;
+  }
+
   /** 文字列を最大長で切って「…」を付ける。null/空文字は null。 */
   function truncate(text, maxChars) {
     if (typeof text !== 'string') return null;
@@ -365,12 +384,52 @@
       throw new Error('周辺情報を取得する仕組みが読み込まれていません。ページを再読み込みしてください。');
     }
 
-    var tasks = [
-      canOsm ? geo.fetchSpots(h.lat, h.lon, OSM_RADIUS_M) : Promise.reject(new Error('osm unavailable')),
-      canWiki ? geo.fetchWikiNearby(h.lat, h.lon, WIKI_RADIUS_M) : Promise.reject(new Error('wiki unavailable'))
-    ];
+    var osmTask = canOsm
+      ? geo.fetchSpots(h.lat, h.lon, OSM_RADIUS_M)
+      : Promise.reject(new Error('osm unavailable'));
+    var wikiTask = canWiki
+      ? geo.fetchWikiNearby(h.lat, h.lon, WIKI_RADIUS_M)
+      : Promise.reject(new Error('wiki unavailable'));
 
-    var settled = await Promise.allSettled(tasks);
+    // OSM の候補づくりと "osm" 段の通知。OSM が解決した時点で先に1回だけ呼び、
+    // Wikipedia の完了を待たせない(待つと段階描画が意味を失う)。
+    // 統合処理でも同じリストを使うので、作った結果を覚えておいて使い回す。
+    var osmItems = null;
+    var osmStageSent = false;
+
+    function buildOsmItems(value) {
+      var items = [];
+      if (Array.isArray(value)) {
+        value.forEach(function (spot) {
+          if (!spot || !isFinite(spot.lat) || !isFinite(spot.lon)) return;
+          // 名前の無い OSM 要素は提案しても意味がないので落とす
+          if (typeof spot.name !== 'string' || !spot.name.trim()) return;
+          var item = fromOsmSpot(spot, h);
+          if (isHotelItself(item, h)) return;
+          items.push(item);
+        });
+      }
+      return items;
+    }
+
+    /**
+     * "osm" 段を1回だけ通知する。osmFailed は OSM が落ちたときだけ true になるが、
+     * 早出しの時点では「OSM は成功している」ので常に false でよい。
+     */
+    function sendOsmStage(items, meta) {
+      if (osmStageSent) return;
+      osmStageSent = true;
+      if (typeof onStage === 'function') onStage('osm', items.slice(), meta);
+    }
+
+    // 早出し。ここで throw すると allSettled の外で未処理拒否になるので握りつぶす
+    // (エラーの扱いは下の allSettled 側に一本化する)。
+    osmTask.then(function (value) {
+      osmItems = buildOsmItems(value);
+      sendOsmStage(osmItems, { osmFailed: false });
+    }, function () { /* 失敗時は allSettled 側で扱う */ });
+
+    var settled = await Promise.allSettled([osmTask, wikiTask]);
     var osmResult = settled[0];
     var wikiResult = settled[1];
 
@@ -389,20 +448,13 @@
     // 情報が欠けている」ことは利用者に正直に伝えたいので、印を上まで運ぶ。
     var meta = { osmFailed: osmResult.status === 'rejected' };
 
-    var osmItems = [];
-    if (osmResult.status === 'fulfilled' && Array.isArray(osmResult.value)) {
-      osmResult.value.forEach(function (spot) {
-        if (!spot || !isFinite(spot.lat) || !isFinite(spot.lon)) return;
-        // 名前の無い OSM 要素は提案しても意味がないので落とす
-        if (typeof spot.name !== 'string' || !spot.name.trim()) return;
-        var item = fromOsmSpot(spot, h);
-        if (isHotelItself(item, h)) return;
-        osmItems.push(item);
-      });
+    // 早出しが済んでいればその結果を使う。OSM が落ちた場合はここで空リストになる。
+    if (!osmItems) {
+      osmItems = osmResult.status === 'fulfilled' ? buildOsmItems(osmResult.value) : [];
     }
 
-    // OSM が取れた時点で一度画面に出せるよう、この段階のリストを渡す
-    if (typeof onStage === 'function') onStage('osm', osmItems.slice(), meta);
+    // OSM が落ちていて早出しできなかったときも、段の順序(osm → wiki)は必ず守る
+    sendOsmStage(osmItems, meta);
 
     var wikiItems = [];
     if (wikiResult.status === 'fulfilled' && Array.isArray(wikiResult.value)) {
@@ -539,7 +591,7 @@
       lat: item.lat,
       lon: item.lon,
       imageUrl: item.imageUrl || null,
-      summary: truncate(item.summary, SUMMARY_MAX_CHARS),
+      summary: truncate(stripCoordPrefix(item.summary), SUMMARY_MAX_CHARS),
       categoryLabel: item.categoryLabel || 'スポット',
       distanceM: distanceM,
       walkMin: minutesFor(distanceM, WALK_M_PER_MIN),
