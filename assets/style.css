@@ -170,6 +170,12 @@ body {
   color: var(--c-on-primary);
   font-size: var(--fs-xs);
   font-weight: 700;
+  box-shadow: var(--shadow-md), 0 0 0 2px #fff;
+  transform-origin: center;
+}
+.pin--top span {
+  box-shadow: var(--shadow-md), 0 0 0 2px #fff, 0 0 0 3px var(--c-primary);
+  transform: scale(1.12);
 }
 
 /* --------------------------------------------------------------------------

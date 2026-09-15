@@ -578,6 +578,42 @@
     return feedMap;
   }
 
+  /**
+   * 画面上で近すぎる上位ピンを、表示位置だけ円状にずらして分離する。
+   * `fixed` は動かさない基準点(宿ピン)の layerPoint 配列。
+   * `points` は [marker, layerPoint] の配列で、呼び出し側で先頭から重要度順に並べる。
+   * 緯度経度(state.cards / fitBounds 用の points)は書き換えず、marker の見た目位置だけ setLatLng する。
+   */
+  function nudgeOverlaps(markerPoints, fixedPoints) {
+    var MIN_DIST = 28;
+    var NUDGE = 16;
+    var placed = fixedPoints.slice();
+    markerPoints.forEach(function (mp) {
+      var best = mp.point;
+      var isTooClose = function (p) {
+        return placed.some(function (q) { return p.distanceTo(q) < MIN_DIST; });
+      };
+      if (isTooClose(best)) {
+        // 8方向 x 3リング(半径を広げながら)試して、最初に空いた場所を採用する
+        outer:
+        for (var ring = 1; ring <= 3; ring++) {
+          for (var dir = 0; dir < 8; dir++) {
+            var angle = dir * (Math.PI / 4);
+            var candidate = mp.point.add([Math.cos(angle) * NUDGE * ring, Math.sin(angle) * NUDGE * ring]);
+            if (!isTooClose(candidate)) {
+              best = candidate;
+              break outer;
+            }
+          }
+        }
+      }
+      if (best !== mp.point) {
+        mp.marker.setLatLng(feedMap.layerPointToLatLng(best));
+      }
+      placed.push(best);
+    });
+  }
+
   function renderFeedMap() {
     var hotel = state.hotel;
     if (!hotel) return;
@@ -592,19 +628,21 @@
       iconSize: [30, 30],
       iconAnchor: [15, 15]
     });
-    var hm = L.marker([hotel.lat, hotel.lon], { icon: hotelIcon }).addTo(feedMap);
+    var hm = L.marker([hotel.lat, hotel.lon], { icon: hotelIcon, zIndexOffset: 2000 }).addTo(feedMap);
     feedMarkers.push(hm);
 
     var points = [[hotel.lat, hotel.lon]];
+    var spotMarkers = [];
     state.cards.forEach(function (c, i) {
       var icon = L.divIcon({
-        className: 'pin pin--spot',
+        className: 'pin pin--spot' + (i < 5 ? ' pin--top' : ''),
         html: '<span>' + (i + 1) + '</span>',
         iconSize: [24, 24],
         iconAnchor: [12, 12]
       });
-      var m = L.marker([c.lat, c.lon], { icon: icon, title: c.name }).addTo(feedMap);
+      var m = L.marker([c.lat, c.lon], { icon: icon, title: c.name, zIndexOffset: 1000 - i }).addTo(feedMap);
       feedMarkers.push(m);
+      spotMarkers.push(m);
       points.push([c.lat, c.lon]);
     });
 
@@ -614,7 +652,16 @@
       feedMap.setView([hotel.lat, hotel.lon], 14);
     }
     // 非表示から表示に切り替えた直後はコンテナ寸法が0なので測り直す
-    setTimeout(function () { if (feedMap) feedMap.invalidateSize(); }, 0);
+    setTimeout(function () {
+      if (!feedMap) return;
+      feedMap.invalidateSize();
+      // ズーム・中心が確定してからでないと layerPoint が正しく取れない
+      var fixedPoints = [feedMap.latLngToLayerPoint(hm.getLatLng())];
+      var markerPoints = spotMarkers.map(function (m) {
+        return { marker: m, point: feedMap.latLngToLayerPoint(m.getLatLng()) };
+      });
+      nudgeOverlaps(markerPoints, fixedPoints);
+    }, 0);
   }
 
   // ---------------------------------------------------------------------------
