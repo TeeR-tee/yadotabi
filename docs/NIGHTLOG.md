@@ -165,3 +165,8 @@
 - 見た目の確認結果: `?fixture=kusatsu` mobile を展開前(カード30枚+「もっと見る（残り30件）」がfarの上に1行、崩れなし)/展開後(31〜60件目が続き番号バッジ31,32…と連番、ボタン消滅、崩れなし)の両方をReadで目視しOK。`?fixture=hakone` mobile はデグレなし(カード30枚・ピン1〜30)、`?fixture=kusatsu&embed=1` も破綻なし。
 - テスト: `node scripts/check-engine.mjs` 111件全pass(moreケース7件追加)、新設`node scripts/check-more.mjs` 6件全pass(Playwrightでclick→31枚目バッジ確認・ボタン消滅・コンソールエラー0件)、`check-a11y.mjs`(.morebtn追加)全OK46px、`check-r5.mjs`15件・`check-passive.mjs`9項目・`check-geo.mjs`34件すべてpass、`node --check`全通過。engine.jsのdiffが追加行のみのためrank順は不変(dump-rankの出力も正常)。
 - 次: ROADMAP残りのR10/R11/R14/R15/R21/R22。朝の相談は前回分(wiki件数50vs34の食い違い)が引き続き未決。
+
+### 2026-09-16 R22 `docs/check.mjs` にリンク切れ検査を追加
+- やったこと: 既存の`report()`/`hasFailure`/`BASE`を再利用し末尾に追記。`index.html`/`demo/embed-check.html`/`demo/hotel-page.html`から`src`/`href`属性と`og:image`/`twitter:image`のmeta contentを正規表現抽出し、`#`/`javascript:`/`mailto:`/空文字を除外、外部ドメインはfetchせず件数だけ計上、相対パスは`new URL(value, BASE+page)`でページ位置基準に解決してクエリを除去し本番URLをHEAD確認(非200ならGETで再確認)する処理を追加(index.html等は無変更)。
+- 見た目の確認結果: 画面変更なしのため撮影は省略。`node docs/check.mjs`実行で計21項目中21件OK・exit 0(内訳: 既存9項目+外部リンク検知1件+リンク検査11件、demo/embed-check.htmlの`../index.html`→`index.html`解決も確認、unpkg等の外部fetchなし)。既存9項目・`check-engine.mjs`111件・`check-a11y.mjs`にデグレなし。
+- 次: ROADMAP残りはR10/R11/R14/R15/R19/R21。朝の相談は前回分(wiki件数50vs34の食い違い)が引き続き未決。

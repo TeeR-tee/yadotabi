@@ -1,110 +1,75 @@
-# NEXT: R16 カードの「もっと見る」(31〜60件目の展開)
+# NEXT — R22 `docs/check.mjs` にリンク切れ検査を追加
 
-**選定理由**: 残る未完了のうち R10/R11 は見た目の微調整、R14/R15/R21/R22 は裏方の改善で、ユーザーに見える価値が一番大きいのは「30件で打ち切られていた候補の続きを見られる」R16 だから(R2-1 と R20 関連は朝の相談待ちのため除外)。
+担当: builder-sonnet / 難易度: 低〜中 / 所要目安: 20分
 
-**難易度**: sonnet / **所要目安**: 40〜60分
-
----
+## 選定理由(1行)
+R2-1 と朝の相談項目を除く残り(R10/R11/R14/R15/R19/R21/R22)のうち、R22 は公開物の健全性を毎サイクル自動で守る土台であり、外部APIを一切叩かず(本番の自サイトのみ)・見た目のデグレ risk がゼロで、最も費用対効果が高いため。
 
 ## 目的
-
-`engine.js` の `present()` は `cards.slice(0, MAX_CARDS)`(30件)で打ち切っており、31件目以降は完全に捨てられている。これを「捨てる」から「畳んでおく」に変える。フィード末尾に「もっと見る(残り n 件)」の1行を置き、タップで31件目以降を展開する。**タップ1回で増えるだけなので、ユーザー入力ゼロの原則には反しない**(泊数・移動手段の入力とは別物)。
-
-表示順は **cards(1〜30) → もっと見る行 → far(もっと遠く)**。
-
----
+index.html と demo/*.html が参照している**自サイト内の相対パス**(css / js / iframe src / 画像 / fixtures)と、
+meta タグ内の**自サイト絶対URL**(og:image = `docs/og.jpg` など)が、本番 GitHub Pages で本当に 200 を返すかを検査する。
+サブパス `/yadotabi/` 配下でのパス間違い(`/assets/...` と書いてしまう等)や、ファイルを消した/リネームした際の取りこぼしを機械的に検出するのが狙い。
 
 ## 対象ファイル(絶対パス)
+- 変更: `C:\workspace\claude\旅行先用サイト\yadotabi\docs\check.mjs` ← **このファイルだけ**
+- 参照(読むだけ・変更禁止): `index.html`, `demo/embed-check.html`, `demo/hotel-page.html`
 
-- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\engine.js`
-- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js`
-- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\style.css`
-- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-engine.mjs`(テスト追加)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-a11y.mjs`(対象セレクタ追加)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-more.mjs`(**新規**)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md` / `docs\NIGHTLOG.md`(記録)
-
----
+## 現状の check.mjs(実物・全82行)
+- 10行: `const BASE = 'https://teer-tee.github.io/yadotabi/';`
+- 12〜22行: `TARGETS` 配列(index.html / assets 6本 / fixtures 2本)を固定列挙
+- 24〜25行: `JS_FILES` Set と `MIN_JS_BYTES = 1000`
+- 27行: `let hasFailure = false;`
+- 29〜33行: `report(label, ok, detail)` — `[OK]/[NG]` を1行出力し NG なら `hasFailure = true`
+- 35〜73行: `async function checkTarget(path)` — `BASE + path` を fetch し、200 判定 → `<title>やどたび` / JSON妥当性 / JSサイズ の追加検査
+- 75〜77行: `for (const path of TARGETS) await checkTarget(path);`
+- 79〜81行: `if (hasFailure) process.exitCode = 1;`
 
 ## 実装方針
+既存の `report()` / `hasFailure` / `BASE` をそのまま再利用し、**末尾(77行目の for ループの後、79行目の exitCode 判定の前)に追記**する形にする。既存の TARGETS ループと report の書式は一切変えない。
 
-### 1. engine.js — `present()` の戻り値に `more` を足す
+1. `HTML_PAGES = ['index.html', 'demo/embed-check.html', 'demo/hotel-page.html']` を新設。
+2. `async function collectLinks(page)`:
+   - `fetch(BASE + page)` して本文を取得(非200ならその旨を report して空配列を返す)。
+   - 正規表現で属性値を抽出する。最低限この3系統:
+     - `/(?:src|href)\s*=\s*"([^"]+)"/g`(css / js / iframe / 画像 / a)
+     - `/<meta[^>]+content\s*=\s*"([^"]+)"/g`(og:image, twitter:image 等)
+   - 抽出した値を**振り分ける**:
+     - `#` 始まり、`javascript:`、`mailto:`、空文字 → 無視
+     - `http://` / `https://` 始まりで **`BASE` で始まらないもの** → **外部ドメインなので叩かない**(件数だけ数え、`[OK] <page> 外部リンク N件(検査対象外)` と出す)
+     - `BASE` で始まる絶対URL → `BASE` を剥がして相対パスとして扱う
+     - それ以外(相対パス) → **ページの位置を基準に解決する**。`new URL(value, BASE + page)` を使い、結果が `BASE` で始まらなければ「サイト外に出た」として NG。
+   - **クエリ文字列は落とす**(`?embed=1&fixture=kusatsu` を付けたまま叩かない。`new URL(...)` の `.pathname` を使う)。`demo/hotel-page.html` の iframe src はクエリ付きなので必須。
+   - `demo/*.html` の `../index.html` が `BASE + 'index.html'` に正しく解決されることが、この解決ロジックの要。
+3. 抽出した自サイトURLを **Set で重複排除**してから順に `fetch(url, { method: 'HEAD' })` する。
+   - GitHub Pages が HEAD に 405 等を返す場合に備え、**200以外が返ったら GET で1回だけ確認し直す**(GETで200ならOK扱い)。
+   - 結果は `report(`リンク ${page} → ${path}`, ok, detail)` の形で1行ずつ出す。
+4. 直列(`for ... await`)で回す。並列化しない(自サイトとはいえ行儀よく)。
 
-- 28〜30行目付近の定数の隣に `var MAX_MORE = 30;`(= 31〜60件目の30件)を追加する。
-- `present(items, hotel)`(**767行目**)の `return`(**783〜786行目**)を、`cards` の slice を分けて3つ返す形にする:
-  - `cards: cards.slice(0, MAX_CARDS)` (現状維持)
-  - `more: cards.slice(MAX_CARDS, MAX_CARDS + MAX_MORE)` (31〜60件目。30件以下なら**空配列**)
-  - `far: far.slice(0, MAX_FAR)` (現状維持)
-- JSDoc(**759〜766行目**)の `@returns` を `{{cards:Array, more:Array, far:Array}}` に更新する。
-- `suggest()`(**808行目**)は `present()` の戻り値をそのまま流しているので**コード変更不要**。ただし JSDoc(**804行目・806行目**)の `partial` / `@returns` の説明に `more` を足す。
-- **`onProgress` の partial にも `more` を含める**(`emit()` が `present()` をそのまま渡す現行のままで自動的にそうなる。特別扱いはしない)。理由: 段階描画の途中で `more` だけ欠けると app.js 側に「あるとき無いとき」の分岐が増えて事故りやすい。app.js は「展開済みフラグ」で出し分けるので、途中段階で more が入っていても画面は変わらない。
-- **`rank()` / `baseScore()` / 重み・閾値・カテゴリ多様性は一切触らない**。
+### 注意
+- 外部ドメイン(unpkg.com の leaflet.css / leaflet.js)は**絶対に fetch しない**。これは AUTOPILOT の「無料APIのマナー」に準じた必須条件。
+- `demo/hotel-page.html` の `href="#"` 3件はスキップされること。
+- 検査で見つかった NG を**この場で修正しない**。NG が出たら NIGHTLOG に事実を書き、ROADMAP に別タスクとして起票する(1サイクル1タスク)。
 
-### 2. app.js — state と描画
+## 完了条件
+- [ ] `node docs/check.mjs` が既存9項目 + リンク検査を出力し、**全て OK で exit code 0**(NG が出たら上記「注意」に従い起票して報告)
+- [ ] 出力に `docs/og.jpg`(og:image の絶対URL)の 200 確認行が含まれる
+- [ ] 出力に `demo/embed-check.html` 由来の `../index.html` → `index.html` の解決結果が含まれる
+- [ ] 出力に unpkg など外部ドメインを叩いた形跡が無い(「外部リンク N件(検査対象外)」の行のみ)
+- [ ] `node --check docs/check.mjs` が通る
 
-- `state`(**97〜105行目**)に2つ追加: `more: []`、`moreOpen: false`。
-- `state.cards = ...` / `state.far = ...` を代入している **4か所**(539〜540行目のデモ、581〜582行目のリセット、598〜599行目の partial、606〜607行目の done)すべてで `state.more` も同様に代入する。**リセット箇所(581〜582行目、623〜624行目)では `state.moreOpen = false` にも戻す**(別の宿に移ったら畳み直す)。
-- `farHtml(far)`(**710行目**)の**直前**に `moreHtml(more, open)` を新設する:
-  - `more.length === 0` なら `''` を返す。
-  - 未展開(`open === false`)のとき: `<button type="button" class="morebtn" id="more-btn">もっと見る（残り N 件）</button>` の1行だけ。
-  - 展開済み(`open === true`)のとき: ボタンは出さず `''` を返す(カード本体は下記のとおり `feedList` 側に描く)。
-- `renderFeed()`(**738行目**)の変更:
-  - **761行目** `var html = state.cards.map(cardHtml).join('');` の直後に、`state.moreOpen` が真なら追加カードを連結する。`cardHtml(card, index)` は `index + 1` を番号バッジに使う(684行目)ので、**通し番号が31から続くように index をずらす**:
-    `if (state.moreOpen) html += state.more.map(function (c, i) { return cardHtml(c, i + state.cards.length); }).join('');`
-  - **770〜772行目** の far 描画の**手前**に、`els.feedFar` とは別の入れ物に `moreHtml` を描く。`index.html` の **62行目 `<div class="feed" id="feed-list">` と 64行目 `<div id="feed-far" hidden>` の間**に `<div id="feed-more" hidden></div>` を1行足し、`els` に `feedMore` を登録して `innerHTML` と `hidden` を更新する(far と同じ書き方に揃える)。
-  - 読み込み中(`loading` が真)は「もっと見る」を出さない(スケルトンと並ぶと意味が分からないため)。`done` 段のみ表示する。
-- クリック処理: 既存のイベント委譲(1219行目・1236行目あたりで `els.feedList` に対してやっているもの)とは別に、`els.feedMore` に `click` リスナを1つ付ける。`#more-btn` が押されたら `state.moreOpen = true;` にして `renderFeed()` を呼ぶだけ。**外部APIは呼ばない**(配列は既に手元にある)。
-- **小地図のピンは `state.cards` の30件のままでよい**(`renderFeedMap()` 930行目・957行目は無変更)。31件目以降を足すとピンが密集して R8 で苦労した分離が壊れるため。
-- 受動ログ(**779〜790行目**)は `state.cards` ベースのまま変更しない。余力があれば `passivePush('more', { n: state.more.length })` を1行足してもよいが必須ではない。
-
-### 3. style.css
-
-`.morebtn` を末尾に追加。フィード幅いっぱい・**`min-height: 44px`**・角丸・カードと同じ背景・中央寄せ・上下に余白。既存のボタン系トークン(`.btn--secondary` など)の色を流用し、新しい色は足さない。
-
----
-
-## 完了条件(すべて検証可能)
-
-1. **`node scripts/check-engine.mjs`** に `more` のケースを追加して**全件 pass**(現行103件 → 追加後も全部緑)。追加するテスト:
-   - 候補が31件以上あるとき、31件目以降が `more` に入り、`cards` は30件のままであること。
-   - 候補が30件以下のとき `more` が**空配列**であること(`undefined` ではない)。
-   - `more` の先頭が、`cards` の末尾より順位が下(= rank 順が連続している)こと。
-   - `onProgress` の partial にも `more` キーが存在すること。
-2. **`node scripts/check-more.mjs`**(新規・Playwright。`scripts/check-a11y.mjs` の作り(ポート3000の自前起動・`file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs` 読み)をそのまま踏襲する)が全項目OK・exit 0:
-   - `?fixture=kusatsu` を開き、初期状態で `.feedcard` が **30枚**、`#more-btn` が**存在する**。
-   - `#more-btn` を **click** し、`.feedcard` の枚数が **30枚より増える**こと。
-   - 展開後の31枚目のカードの番号バッジが **`31`** であること。
-   - 展開後は `#more-btn` が**消えている**こと。
-   - コンソールエラー **0件**。
-3. **`node scripts/check-a11y.mjs`** の `TARGETS`(26〜33行目)に `{ selector: '.morebtn', label: 'もっと見る' }` を追加し、**44px 以上**で全件OK。
-4. 既存の回帰が全部緑: `node scripts/check-geo.mjs`(34件)、`node scripts/check-passive.mjs`、`node docs/check.mjs`、`node --check assets/app.js` / `assets/engine.js`。
-5. **`node scripts/dump-rank.mjs kusatsu` と `hakone` の上位30件が変更前と差分ゼロ**(rank を触っていない証明)。
-
----
-
-## 検証手順(撮影と目視)
-
-`node C:\workspace\tools\shot\shot.mjs <URL> --mobile` で以下を撮り、**必ず Read で画像を開いて目視**する:
-
-1. `http://127.0.0.1:3000/?fixture=kusatsu` の **展開前**(フィード末尾までスクロールした状態 or フルページ) — 「もっと見る（残り N 件）」の1行がカード30枚目の下・「もっと遠く」の上に出ていること。文字の折り返し崩れ・はみ出しなし。
-2. 同URLで `#more-btn` を click した **展開後** — 31枚目以降のカードが続き、番号バッジが 31, 32… と連番になっていること。画像・リンクチップの崩れなし。
-3. `http://127.0.0.1:3000/?fixture=hakone` の mobile — デグレなし(カード30枚・番号ピン1〜30判読可)。
-4. `http://127.0.0.1:3000/?fixture=kusatsu&embed=1` の mobile — 埋め込みモードでも「もっと見る」が破綻していないこと。
-
-撮影は全て fixture モードなので**外部API呼び出しは0回**。
-
----
+## 検証手順
+1. `node --check docs/check.mjs`
+2. `node docs/check.mjs` を実行し、**出力全文を NIGHTLOG に貼れる形で確認**する
+3. 既存検査のデグレが無いこと(`[OK] index.html (HTTP 200)` などが従来どおり出る)
+4. 回帰確認: `node docs/check.mjs` 以外は何も変えていないので、`node scripts/check-engine.mjs`(111件) と `node scripts/check-a11y.mjs` が従来どおり通ることだけ確認
+5. **撮影は不要**(画面を一切変更しないタスクのため)。ただし念のため `?fixture=kusatsu` mobile を1枚だけ撮って崩れが無いことを確認してもよい
 
 ## 変更禁止範囲
-
-- **`rank()` / `baseScore()` / 重み・閾値・カテゴリ多様性ルール**(engine.js)— 一切触らない
-- **`assets/geo.js`** — 無変更
-- **`fixtures/*.json`** — 無変更(再生成もしない)
-- `renderFeedMap()` / `nudgeOverlaps()` — 無変更(ピンは30件のまま)
+- `index.html` / `demo/*.html` / `assets/*` / `fixtures/*` / `scripts/*` は**一切変更しない**(検査で NG が出ても直さない)
+- `docs/ROADMAP.md` は `- [x] 2026-09-16 R22 ...` に更新するのみ
+- rank の重み・engine.js のロジックには触れない
 - git stash / reset --hard / checkout は禁止
 
----
-
-## 報告(NIGHTLOG に3行)
-
-やったこと / 見た目の確認結果(撮った画像と判定) / 次。実装が終わったら**まずコミットしてから**報告を書くこと。報告は簡潔に。
+## 終わったら
+1. **先にコミット**(`docs/check.mjs` + ROADMAP + NIGHTLOG 3行)→ `git push`
+2. 報告は簡潔に(長文の報告書を書かない)
