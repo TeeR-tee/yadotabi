@@ -114,6 +114,8 @@
   var hotelLayer = null;     // 宿ピンのレイヤ
   var feedMap = null;        // 状態Bの小さい地図
   var feedMarkers = [];
+  var feedSpotMarkers = [];  // 番号バッジ→ピンを引くための配列(state.cardsと同じ順)
+  var flashTimer = null;     // ピン点滅の連打対策(1本だけ持つ)
   var suggestItems = [];
   var lastSuggestQuery = '';
 
@@ -690,7 +692,7 @@
 
     return '<article class="card feedcard" data-index="' + index + '">' +
       '<div class="feedcard__media">' + media +
-        '<span class="feedcard__no" aria-hidden="true">' + (index + 1) + '</span>' +
+        '<button type="button" class="feedcard__no" data-no="' + (index + 1) + '" aria-label="' + (index + 1) + '番のピンを地図で光らせる">' + (index + 1) + '</button>' +
       '</div>' +
       '<div class="feedcard__body">' +
         '<h2 class="feedcard__name">' + escapeHtml(card.name) + '</h2>' +
@@ -944,6 +946,7 @@
 
     feedMarkers.forEach(function (m) { feedMap.removeLayer(m); });
     feedMarkers = [];
+    feedSpotMarkers = [];
 
     var hotelIcon = L.divIcon({
       className: 'pin pin--hotel',
@@ -966,6 +969,7 @@
       var m = L.marker([c.lat, c.lon], { icon: icon, title: c.name, zIndexOffset: 1000 - i }).addTo(feedMap);
       feedMarkers.push(m);
       spotMarkers.push(m);
+      feedSpotMarkers.push(m);
       points.push([c.lat, c.lon]);
     });
 
@@ -992,6 +996,25 @@
       });
       nudgeOverlaps(markerPoints, fixedPoints);
     }, 0);
+  }
+
+  // 番号バッジタップ時、小地図の該当ピンを1秒だけ光らせる(CSSアニメのみ)
+  function flashPin(i) {
+    var m = feedSpotMarkers[i];
+    if (!m || !m.getElement) return;
+    var el = m.getElement();
+    if (!el) return;
+    if (flashTimer) {
+      clearTimeout(flashTimer);
+      flashTimer = null;
+    }
+    var prev = feedMap ? feedMap.getContainer().querySelector('.pin--flash') : null;
+    if (prev) prev.classList.remove('pin--flash');
+    el.classList.add('pin--flash');
+    flashTimer = setTimeout(function () {
+      el.classList.remove('pin--flash');
+      flashTimer = null;
+    }, 1200);
   }
 
   // ---------------------------------------------------------------------------
@@ -1241,6 +1264,25 @@
 
     els.feedList.addEventListener('click', function (e) {
       var hotel = state.hotel;
+      var badge = e.target.closest('.feedcard__no');
+      if (badge) {
+        var badgeArticle = badge.closest('.feedcard');
+        var badgeCard = badgeArticle ? state.cards[Number(badgeArticle.dataset.index)] : null;
+        if (badgeCard && feedMap) {
+          if (hotel) {
+            passivePush('tap', {
+              hotelId: hotel.id,
+              cardId: badgeCard.id,
+              cardName: badgeCard.name,
+              index: Number(badgeArticle.dataset.index)
+            });
+          }
+          feedMap.panTo([badgeCard.lat, badgeCard.lon]);
+          els.feedMap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          flashPin(Number(badge.dataset.no) - 1);
+        }
+        return;
+      }
       var a = e.target.closest('a');
       if (a) {
         var art = a.closest('.feedcard');

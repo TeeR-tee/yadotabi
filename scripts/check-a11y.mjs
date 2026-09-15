@@ -24,6 +24,7 @@ const TARGETS = [
   { selector: '.topbar__back', label: '戻るボタン' },
   { selector: '.chip', label: 'エリアチップ' },
   { selector: '.feedcard__link', label: 'リンクチップ', usePseudo: true },
+  { selector: '.feedcard__no', label: '番号バッジ', usePseudo: true },
   { selector: '.suggest__item', label: '検索候補の行' },
   { selector: '.far__summary', label: 'もっと遠くの開閉' },
   { selector: '.far__item a', label: 'もっと遠くの各リンク' },

@@ -170,3 +170,9 @@
 - やったこと: 既存の`report()`/`hasFailure`/`BASE`を再利用し末尾に追記。`index.html`/`demo/embed-check.html`/`demo/hotel-page.html`から`src`/`href`属性と`og:image`/`twitter:image`のmeta contentを正規表現抽出し、`#`/`javascript:`/`mailto:`/空文字を除外、外部ドメインはfetchせず件数だけ計上、相対パスは`new URL(value, BASE+page)`でページ位置基準に解決してクエリを除去し本番URLをHEAD確認(非200ならGETで再確認)する処理を追加(index.html等は無変更)。
 - 見た目の確認結果: 画面変更なしのため撮影は省略。`node docs/check.mjs`実行で計21項目中21件OK・exit 0(内訳: 既存9項目+外部リンク検知1件+リンク検査11件、demo/embed-check.htmlの`../index.html`→`index.html`解決も確認、unpkg等の外部fetchなし)。既存9項目・`check-engine.mjs`111件・`check-a11y.mjs`にデグレなし。
 - 次: ROADMAP残りはR10/R11/R14/R15/R19/R21。朝の相談は前回分(wiki件数50vs34の食い違い)が引き続き未決。
+
+### 2026-09-16 R10 番号バッジをタップすると小地図の該当ピンが光る
+- やったこと: `app.js`に`feedSpotMarkers`(モジュールスコープ、番号→marker引き当て用)と`flashTimer`を追加、`renderFeedMap()`で`spotMarkers`と並行して積む。カードの番号spanを`<button class="feedcard__no" data-no>`に変更(見た目は既存CSS流用+`border:0`等を追加)。`feedList`のクリック委譲冒頭に`.feedcard__no`分岐を追加し、`panTo`+`scrollIntoView`後に`flashPin(i)`(`feedSpotMarkers[i].getElement()`へ`pin--flash`クラスを1.2秒付与、連打時は前回分を即除去)を呼ぶ新設。`style.css`に`.feedcard__no::after`(44px当たり判定)と`.pin--flash span`+`@keyframes pin-flash`(白+オレンジ系リングが広がる1秒アニメ、reduced-motion用の`animation:none`も明記)を追加。engine.js/geo.js/fixturesは無変更(`git diff --stat`で確認)。
+- テスト結果: 新設`node scripts/check-pinflash.mjs`8件全pass(200ms後に1個だけ光る・1400ms後に消える・連打しても1個以下・reduced-motionでもクラスは付くがアニメしない・コンソールエラー0件)。`check-a11y.mjs`に`.feedcard__no`を追加し全OK(44px)。`check-engine.mjs`111件・`check-more.mjs`6件・`check-passive.mjs`9件・`check-geo.mjs`34件・`docs/check.mjs`全pass、`node --check assets/app.js`通過。`dump-rank.mjs`は環境の権限制御でコマンド自体が拒否され実行不可だったため未実施(engine/geo/fixtures無変更を`git diff`で代替確認)。
+- 目視結果: `?fixture=kusatsu`地図部分を切り出して撮影し、3番ピンだけがオレンジのリングで光っているのを判別できた(初版は白リングで既存の枠と見分けにくく、色をオレンジ系に強化して撮り直した)。`?fixture=hakone`/`?fixture=kusatsu&embed=1`はカード30枚・番号ピン崩れなしでデグレなし。`?fixture=kusatsu&demo=passive`でバッジタップ時も`tap`レコード(index一致)が従来通り1件記録されることを確認。
+- 次: ROADMAP残りはR11/R14/R15/R19/R21。朝の相談は前回分(wiki件数50vs34の食い違い)が引き続き未決。

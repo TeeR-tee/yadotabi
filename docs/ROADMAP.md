@@ -26,7 +26,7 @@
 
 ## 小さな改善候補(手が空いたとき・コスト0円)
 - [x] 2026-09-16 R9 固定モードを草津以外にもう1件(箱根)追加し、`?fixture=` の切り替えで地形の違う土地でもピン配置が崩れないか確認できるようにする
-- [ ] R10 カードの番号バッジをタップすると小地図の該当ピンが一瞬光る(CSSアニメのみ)。「1番ってどれ?」を地図側からも解消する
+- [x] 2026-09-16 R10 カードの番号バッジをタップすると小地図の該当ピンが一瞬光る(CSSアニメのみ)。「1番ってどれ?」を地図側からも解消する
 - [ ] R11 小地図の高さがmobileで固定値なので、密集時だけ少し高くする(または縦横比を調整して詰まりを緩和する)余地がないか検討
 - [x] 2026-09-16 R12 OGPメタタグ: index.html に og:title / og:description / og:type / og:url / og:image / og:site_name / og:image:width・height・alt と twitter:card(summary_large_image) + canonical を追加。og:image は kusatsu fixture を1200x630で撮影しJPEG化した `docs/og.jpg`(絶対URL)。LINE/Xに貼ったときにタイトルと説明が出ることを目標にする(実投稿での確認は不要、メタタグの記述と本番URLでの取得可否まで)
 - [x] 2026-09-16 R13 アクセシビリティ最低限: タップ領域44px確保(戻るボタン・チップ・リンクチップ・もっと遠くの各行を `scripts/check-a11y.mjs`(Playwright)で機械検査、全件OK)、フォーカスリング強調、prefers-reduced-motion対応、番号ピン/宿ピンに aria-label、地図コンテナに role="region"、feed-status に role="status"。地図ピンは 24px を意図的に維持(密集分離が壊れるため、カード側の導線で代替)。コントラストは計算上すべて合格だった(faint はプレースホルダ専用のため対象外)
