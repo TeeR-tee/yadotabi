@@ -39,7 +39,7 @@
 - [ ] R24 `?hotel=` で名前(`name`)が無いときの見出し: 現在は一律「この宿」。座標しか無い入口でも「このあたり」等、地図から入った文脈に合う語にするか検討し、`?hotel=` の name 有無2パターンを撮影で比較する。文言のみの変更でロジックは触らない
 - [ ] R25 `docs/check.mjs` を GitHub Actions で毎日1回実行(無料枠内): `.github/workflows/check.yml` を新設し `schedule` + `workflow_dispatch` で `node docs/check.mjs` を走らせる。本番URLへの GET のみで外部APIは叩かない。失敗時に Actions が赤くなることがゴール(通知設定はユーザー判断なので触らない)
 - [ ] R26 README にスクリーンショットを追加: 既存の `screenshots/` から状態B(mobile)と埋め込みモードの2枚を `docs/` へ複製し README に貼る。新規撮影は fixture で1回まで。コード変更なし
-- [ ] R27 Leaflet の CDN を unpkg から cdnjs に変更(可用性): index.html の `<script>`/`<link>` を cdnjs の同一バージョン・同一 SRI に差し替える。バージョンは上げない。`node docs/check.mjs` と `?fixture=kusatsu` の撮影で地図が従来どおり描けることを確認する
+- [x] 2026-09-16 R27 Leaflet の CDN を unpkg から cdnjs に変更(可用性): index.html の `<script>`/`<link>` を cdnjs の同一バージョン・同一 SRI に差し替える。バージョンは上げない。`node docs/check.mjs` と `?fixture=kusatsu` の撮影で地図が従来どおり描けることを確認する
 - [ ] R21 README に英語1段落を追加(What this is / How to try / No API keys needed の3文程度)。海外から本番URLを見た人向け。コード変更なし
 - [x] 2026-09-16 R22 `docs/check.mjs` にリンク切れ検査を追加: index.html と demo/*.html 内の相対パス参照(css/js/画像/iframe src)を抽出し、本番URLで 200 が返るかを確認する。外部ドメインへのリンクは対象外(叩かない)
 - [x] 2026-09-16 R16 カードの「もっと見る」: 現在30件で打ち切っているランキングの31件目以降を、ボタン1つで追加10件ずつ展開する。追加のAPI呼び出しは無し(既に収集済みの配列から出す)。入力ゼロ原則に反しない(タップ1回で増えるだけ)

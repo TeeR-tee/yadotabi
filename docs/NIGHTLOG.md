@@ -187,3 +187,9 @@
 - テスト結果: `node scripts/check-geo.mjs`に3ケース追加し44件全pass(遅延100ms以上かかる/fixture経路でも外部fetch0回/パラメータ無しなら50ms未満で件数・先頭要素とも従来どおり不変)。`check-engine.mjs`111件・`check-r5.mjs`15件・`check-passive.mjs`・`check-more.mjs`6件・`check-pinflash.mjs`8件・`check-a11y.mjs`・`node --check`全通過。`dump-rank.mjs kusatsu`もengine/fixture無傷を確認。
 - 目視結果: `?fixture=kusatsu&slow=osm300,wiki3000`をwait1500msで撮ると「周辺を集めています…」表示でカードは写真なし・要約なしのプレースホルダのみ、wait5000msで撮ると写真・タイトル・要約入りの完成カードに切り替わっており、**段階描画(OSM先出し→Wikipedia後乗せ)が2段ではっきり確認できた**。`?fixture=kusatsu`(slowなし)mobileはカード30枚・ピン1〜30・崩れなしでデグレなし。
 - 次: ROADMAP残りはR11/R14/R19/R21/R23〜R27。朝の相談は前回分(wiki件数50vs34の食い違い)が引き続き未決。
+
+### 2026-09-16 R27 Leaflet の配信元を unpkg から cdnjs へ
+- やったこと: index.htmlの`<link>`(leaflet.css)と`<script>`(leaflet.js)のURLをunpkgからcdnjsに差し替え、SRIをcdnjs公式API(`api.cdnjs.com/libraries/leaflet/1.9.4?fields=sri`)から取得したsha512値に更新(`referrerpolicy="no-referrer"`も付与)。差し替え後に自分でも`curl -s <url> | openssl dgst -sha512`で再計算し、index.htmlのintegrity値と完全一致することを確認。
+- 見た目の確認結果: `?fixture=kusatsu`/`?demo=zoomout`mobileともに地図タイル・ピンが正常描画、コンソールエラー0件。
+- テスト結果: `node docs/check.mjs`(外部リンク2件のまま変化なし・全項目OK)、`node scripts/check-a11y.mjs`(全OK)、`node scripts/check-more.mjs`(6 pass/0 fail)すべて緑。
+- 次: ROADMAP残りはR11/R14/R19/R21/R23〜R26。朝の相談は前回分(wiki件数50vs34の食い違い)が引き続き未決。

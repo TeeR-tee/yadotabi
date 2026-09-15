@@ -1,109 +1,77 @@
-# NEXT: R23 カード画像の読み込み失敗時のフォールバック
+# NEXT: R27 Leaflet の CDN を unpkg から cdnjs へ
 
-**判断理由**: 残り候補(R11/R14/R19/R21/R23〜R27)のうち、Wikipedia のサムネイルは外部URLで 404・削除・遅延が実際に起きるため、壊れた枠が本番のユーザーに見える唯一の「見た目の実害」であり、検証も外部APIなしで完結できるので R23 を選ぶ。
-
-難易度: **sonnet** / 所要目安: **20〜30分**
-
----
-
-## 目的
-
-カード画像 `<img class="feedcard__img">` の src(Wikipedia サムネイル)が 404 や失敗で読めないとき、いまは画像枠(16:9・`--c-surface-2` の灰色面)が空白のまま残るか、壊れアイコンが出る。これを**画像なしカードと同じ見た目**(`.feedcard__ph` のカテゴリ絵文字+淡いグラデーション)へ差し替える。
-
----
+**選定理由**: 地図が出ないと本体が成立しない単一障害点を、SRI を正しく付け直すだけで可用性の高い CDN(Cloudflare)に移せる。index.html の2行のみで撮影検証も短く、夜間ループ向き(R24 は更に小さいが、地図の可用性のほうが実害が大きいので先)。
 
 ## 対象ファイル(絶対パス)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\index.html` … **これだけ**を編集する(25〜26行目の `<link>`、69〜70行目の `<script>`)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md` … R27 を `[x] 2026-09-16` に
+- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\NIGHTLOG.md` … 3行追記
 
-- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js` (主)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-imgfail.mjs` (新規)
-- 必要なら `C:\workspace\claude\旅行先用サイト\yadotabi\assets\style.css` (原則不要。既存の `.feedcard__ph` をそのまま使えば足りる)
-
-### 変更禁止範囲(厳守)
-
-- `assets/engine.js` / `assets/geo.js` / `fixtures/*.json` は**1バイトも変更しない**(`git diff --stat` で確認すること)
-- rank の重み・閾値・カテゴリ多様性ルールには触れない
-
----
-
-## 実装方針(実物の行番号つき)
-
-### 1. 画像を出している場所
-
-`assets/app.js` の `cardHtml(card, index)` (**682行目〜**)。**684〜687行目**が該当:
-
-- 684-685行: `card.imageUrl && safeUrl(card.imageUrl)` が真なら `<img class="feedcard__img" src="..." alt="" loading="lazy">`
-- 686-687行: 偽なら `<div class="feedcard__ph" data-cat="..."><span aria-hidden="true">絵文字</span></div>`
-
-この 686-687 行のプレースホルダ HTML を**そのまま再利用**するのが方針。`cardHtml` から `placeholderHtml(card)` のような小さな関数に切り出し、両方から呼ぶ形にすると差し替えが 1 行で済む(絵文字は同関数内の `emojiFor(card.categoryLabel)`、定義は **291行目**)。
-
-`<img>` タグ側には `data-ph` 等で**差し替えに必要な情報(カテゴリラベルと絵文字)を属性として持たせてもよい**が、その場合も値は必ず `escapeHtml()` (**225行目**) を通すこと。文字列連結で HTML を組む既存方針(ファイル先頭 10行目のコメント)を崩さない。
-
-### 2. onerror の付け方 — inline ではなく addEventListener(委譲)
-
-`index.html` に CSP の meta タグは**無い**ので inline `onerror=` でも現状は動くが、以下の理由で**イベント委譲を採用**する:
-
-- 将来 CSP を入れたときに黙って壊れない
-- `renderFeed()` (**759行目**) が `els.feedList.innerHTML = html` (**790行目**) で毎回 DOM を作り直すため、カードごとに個別リスナを張る方式は「もっと見る」展開・段階描画のたびに張り直しが必要になるが、委譲なら一度で済む
-
-具体的には、既存のクリック委譲と同じ場所(`els.feedList` は **1364行目**で取得。クリック委譲の登録箇所を grep して同じ関数内に置く)に、**キャプチャフェーズ**で1回だけ登録する:
-
+## 現状(計画役が実物を確認済み)
+index.html 25-26行目:
 ```
-els.feedList.addEventListener('error', handler, true);
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 ```
+index.html 69-70行目:
+```
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+  integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+```
+`unpkg` の参照はこの2箇所のみ(リポジトリ全文 grep 済み。`demo/*.html` は Leaflet を読み込んでいない)。
 
-**重要**: `error` イベントは `<img>` から**バブリングしない**ので、第3引数 `true`(capture)が必須。ここを落とすと一切発火せず、テストだけ通らないという事故になる。
+## 実装方針
+### 1. URL と integrity の差し替え
+cdnjs 公式 API(`https://api.cdnjs.com/libraries/leaflet/1.9.4?fields=sri`)から計画役が取得済みの値。**unpkg の sha256 をそのまま流用してはいけない**(cdnjs 配信ファイルはバイト列が異なるためハッシュが合わず、ブラウザが読み込みをブロックして地図が真っ白になる)。必ず下の sha512 に置き換えること。
 
-ハンドラの中身:
+`<link>`(25-26行目)を:
+```
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css"
+    integrity="sha512-Zcn6bjR/8RZbLEpLIeOwNtzREBAJnUKESxces60Mpoj+2okopSAcSUIUOseddDm0cxnGQzxIR7vJgsLZbdLE3w==" crossorigin="" referrerpolicy="no-referrer">
+```
+`<script>`(69-70行目)を:
+```
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"
+  integrity="sha512-BwHfrr4c9kmRkLw6iXFdzcdWV/PGkVgiIyIWLLlTSXzWQzxuSg4DiQUCpauz/EWjgk5TYQqX/kvn9pG1NpYfqg==" crossorigin="" referrerpolicy="no-referrer"></script>
+```
+- バージョンは 1.9.4 のまま上げない。`crossorigin=""` は SRI に必須なので残す。`referrerpolicy="no-referrer"` は cdnjs の推奨なので付ける(任意、付けなくても可)。
+- **ハッシュは1文字でも写し間違えると地図が消える**。コピー後に `grep -c "sha512-Zcn6\|sha512-BwHf" index.html` が 2 になることを確認する。
 
-1. `e.target` が `IMG` かつ `classList.contains('feedcard__img')` でなければ何もしない
-2. 同じ画像で無限に発火しないよう、処理前に `img.removeAttribute('src')` するか、差し替えで要素ごと消えるので実質1回で終わる(差し替え方式なら追加のガード不要)
-3. 親 `.feedcard__media` の中で、その `<img>` を `placeholderHtml(card 相当)` の DOM に**置換**する(`img.replaceWith(...)` か `img.outerHTML = ...`)。番号バッジ `.feedcard__no`(**695行目**で media の中に入っている)は消さないこと
-4. 置換後の要素が `.feedcard__ph` クラスを持つこと = 完了条件の判定対象
+### 2. マーカー画像の追従確認(重要)
+Leaflet の既定マーカー画像は CSS からの相対パス(`images/marker-icon.png`)で解決されるため、CSS の置き場が unpkg の `/dist/` から cdnjs の `/1.9.4/` に変わっても `https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png` に着地する(計画役が `curl -sI` で 200 を確認済み)。ただし本アプリのピンは `divIcon`(HTML)で自前実装なので、既定画像は実際には使っていない可能性が高い。**撮影でピンが従来どおり出ることを目で確認すれば足りる**。CSS の上書きや画像の自前ホストは不要(やらないこと)。
 
-`#feed-more` 側にも展開後のカードが入る可能性を確認すること。**795〜798行目**を読むと `els.feedMore` にはボタンだけが入り、展開カードは `feedList` 側(**783〜785行目**)に連結されるので、委譲は `feedList` 1箇所でよい。
+### 3. check.mjs は変更しない
+`docs/check.mjs` の 114〜139行目は「ホスト名が本番と違うものは外部ドメインとみなし fetch せず件数だけ報告する」実装。cdnjs も同じく外部扱いになるだけで、判定ロジックの変更は不要。**check.mjs は編集禁止**。ただし「外部リンク N件(検査対象外)」の件数が変更前後で同じ(=2件のまま)であることを実行結果で確認する。
 
-### 3. 撮影用フラグ `?demo=imgfail`
+## 完了条件(すべて検証可能)
+1. `curl -sI https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css` と `.../leaflet.js` が **200**(計画役確認済み、作業役も再実行してログに残す)。
+2. `node docs/check.mjs` が **全項目 [OK] / exit code 0**、外部リンク件数が変更前と同数。
+3. `?fixture=kusatsu` の mobile 撮影で **地図タイル(OSM の地形)が描画され、番号ピン 1〜30 と宿ピン♨が見える**。SRI 不一致なら地図枠が真っ白かグレーになるので一目で分かる。
+4. `?fixture=hakone` の mobile 撮影でもデグレなし(カード30枚・ピン判読可)。
+5. ブラウザコンソールに `Failed to find a valid digest` / `Subresource Integrity` を含むエラーが **0件**。
+6. `git diff --stat` が **index.html 1ファイル(+ROADMAP/NIGHTLOG)のみ**。
 
-`applyEntryPoint()` 内のデモ解釈(**1111〜1116行目**、`var demo = params.get('demo') || ''` が 1112行目)に 1 行追加し、モジュール変数 `demoImgFail`(**131〜135行目**の宣言群に合わせて追加、コメントも同じ書式で)を立てる。
+## 検証手順
+```
+node --check assets/app.js
+curl -sI https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css | head -1
+curl -sI https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js  | head -1
+node docs/check.mjs
+node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=kusatsu" --mobile
+node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=hakone"  --mobile
+node scripts/check-engine.mjs
+node scripts/check-a11y.mjs
+```
+撮影した画像は **必ず Read で開いて目視**する(地図が白くないか、ピンが出ているか)。コンソールエラーは shot の出力か check-a11y の結果で確認する。
+push 後に `curl -s https://teer-tee.github.io/yadotabi/ | grep -c cdnjs` が 2 になることも確認する。
 
-効かせる場所は `cardHtml`: `demoImgFail && index < 3` のとき、`card.imageUrl` を無視して**存在しない URL**(例 `'./__imgfail_test__.png'`、同一オリジンなので外部APIを叩かない)を src に入れる。これで先頭3枚が必ず error を起こす。
+## 変更禁止範囲
+- `assets/engine.js` / `assets/geo.js` / `assets/app.js` / `fixtures/*.json` … **一切触らない**(rank の重み・閾値・カテゴリ多様性も当然不可)。
+- `docs/check.mjs` および `scripts/*.mjs` … 触らない。
+- Leaflet のバージョンアップ、ローカルへの自前ホスト、別 CDN の併記(フォールバック)は **やらない**(今回の範囲外。必要なら ROADMAP に起票)。
+- `git stash` / `reset --hard` / `checkout` によるファイル復元は禁止。
+- 外部 API(Overpass/Wikipedia)を叩く撮影は不要。全て fixture で完結させる。
 
-**フラグが無いときは完全に従来どおり**であること(`demoFar` 等と同じく、既定値 false で分岐の外側は不変)。
-
----
-
-## 完了条件(検証可能)
-
-1. `node scripts/check-imgfail.mjs` が全項目 PASS・exitCode 0。最低限この5項目:
-   - `?fixture=kusatsu&demo=imgfail` を開き、**先頭3枚のカードのメディア部が `.feedcard__ph` になっている**(`.feedcard__img` が残っていない)
-   - 4枚目以降は従来どおり `.feedcard__img` が残っている(=全部潰していない)
-   - 先頭3枚のプレースホルダ内にカテゴリ絵文字のテキストが入っている(空の箱でない)
-   - 先頭3枚の番号バッジ `.feedcard__no` が消えていない(1・2・3 が読める)
-   - `?fixture=kusatsu`(フラグ無し)で `.feedcard` 30枚・`.feedcard__ph` の枚数が**修正前と同じ**(デグレなし)
-2. コンソールエラーは画像404由来のネットワークエラー以外0件
-3. `node --check assets/app.js` 通過
-4. 既存テストにデグレなし: `node scripts/check-engine.mjs` / `check-more.mjs` / `check-pinflash.mjs` / `check-passive.mjs` / `check-a11y.mjs` / `check-geo.mjs` / `check-r5.mjs` / `node docs/check.mjs`
-5. `git diff --stat` に `assets/engine.js` / `assets/geo.js` / `fixtures/` が**出ないこと**
-
-`scripts/check-imgfail.mjs` は `scripts/check-more.mjs` の作りを踏襲する(Playwright を `file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs` から絶対パスで読み、ポート3000のローカルサーバを自前で起動・停止。このプロジェクトに npm install はしない)。
-
----
-
-## 検証手順(撮影+目視)
-
-外部API 0回。すべて fixture で完結する。
-
-1. `node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=kusatsu&demo=imgfail" --mobile` — 先頭3枚が**灰色の空白枠ではなく、淡いグラデーション+カテゴリ絵文字**になっていること、番号バッジ 1・2・3 が読めること、カード高さが 16:9 のまま崩れていないことを Read で目視
-2. 同URLを desktop 幅で1枚
-3. `?fixture=kusatsu`(フラグ無し) mobile でデグレなし(カード30枚・番号ピン1〜30・写真あり)
-4. `?fixture=hakone` mobile でデグレなし
-
----
-
-## 記録とコミット
-
-- 実装が終わったら**まず先にコミット**する(コミットメッセージは1行の日本語)
-- `docs/ROADMAP.md` の R23 行を `- [x] 2026-09-16 R23 ...` にする
-- `docs/NIGHTLOG.md` に3行(やったこと / 見た目の確認結果 / 次)を追記
-- `git push` して本番に反映
-- 報告は簡潔に(長文の報告書を書かない)
+## 難易度・所要目安
+- 難易度: **sonnet**(差し替え2箇所+撮影確認)
+- 所要目安: **10〜15分**
