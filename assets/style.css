@@ -86,6 +86,18 @@ body {
 .suggest__item:hover, .suggest__item:focus-visible { background: var(--c-surface-2); }
 
 /*
+ * 検索候補のセクション見出し(「最近見た宿」「検索結果」)。
+ * ボタンではなく押せない要素。.suggest__item の高さ・padding には触れない(R13の44pxを維持)。
+ */
+.suggest__head {
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-xs);
+  color: var(--c-text-sub);
+  background: var(--c-surface-2);
+  border-bottom: 1px solid var(--c-border);
+}
+
+/*
  * 絵文字の見た目幅は字によってバラバラ(♨ は文字扱いで細く、🏨 は絵文字で太い)。
  * 幅を固定して中央に置かないと、行ごとに名前の左端がずれて列が波打つ。
  * font-family で絵文字フォントを先に当て、♨ も他と同じ絵文字として描かせる。

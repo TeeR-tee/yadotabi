@@ -256,3 +256,9 @@
 - テスト結果: `check-chipcurrent.mjs`10 pass/0 fail、`check-a11y.mjs`全OK、`check-more.mjs`6 pass/0 fail、`check-passive.mjs`全OK、`check-hotelparam.mjs`10 pass/0 fail、`check-engine.mjs`111 pass、`docs/check.mjs`exit0、`git diff --stat -- engine.js/geo.js/fixtures`空。
 - 目視結果: `?q=草津温泉`(実API1回)mobileで草津チップが紫枠で強調され横スクロールして画面内、他チップと高さ揃い。`?fixture=kusatsu`/`?demo=zoomout`mobileはデグレなし。
 - 次: ROADMAP残りはR11/R14/R19/R23/R28/R30〜R34。朝の相談は前回分(wiki件数50vs34の食い違い)が引き続き未決。
+
+### 2026-09-16 R32 検索候補に「最近見た宿」を見出し付きで統合
+- やったこと: `app.js`に`recentRows(limit)`(履歴→候補行の純粋関数)と`mergeWithRecent(rows,q)`を新設し、`runSuggest`の2文字以上の分岐で候補一致分の最近(最大3件)を`{act:'head'}`見出し付きで先頭に連結(一致0件なら見出しなし)。`renderSuggest`は`act==='head'`の行をdata-index無しの非ボタン`.suggest__head`として描画しクリック委譲の添字を壊さない。撮影用`?demo=recentmix`を新設。
+- テスト結果: 新設`check-recent.mjs`11 pass/0 fail、`check-all.mjs`12本全PASS、`node --check assets/app.js`OK、`dump-rank.mjs kusatsu`はengine/geo/fixtures無変更のため差分なしを確認。
+- 目視結果: `?demo=recentmix`/`?demo=recent`/`?fixture=kusatsu`mobileを確認、見出し・最近行・候補行の見分けがつき文字崩れ/重なり/はみ出しなし。行数が増えチップとの隙間はやや狭いがR2-1(候補とチップの重なり)は朝の相談待ちのため今回は手を付けず。
+- 次: ROADMAP残りはR11/R14/R19/R23/R28/R30/R31/R33/R34。朝の相談は前回分(wiki件数50vs34の食い違い)が引き続き未決。

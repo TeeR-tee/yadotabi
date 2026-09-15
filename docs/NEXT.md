@@ -1,54 +1,68 @@
-# NEXT: R36 `scripts/check-all.mjs`(全検査を1コマンドで順に実行)
+# NEXT: R32 検索候補への「最近見た宿」の統合
 
-## 選定理由(1行)
-R11/R14/R19/R31/R32 はどれも「撮影して目視」が完了条件で検収コストが高いのに対し、R36 は以後すべてのサイクルの完了条件を `node scripts/check-all.mjs` が緑、の一言に圧縮でき、投資回収が最も早いため。
+選定理由: 残候補(R11/R14/R19/R28残/R31/R32)のうち、R32 だけが実際のユーザー導線(0タップでの再訪)を太らせる機能改善で、かつ実装範囲が app.js の状態A周辺に閉じていて engine/rank に一切触らずに済むため。
 
-## 目的
-現在 `check-*.mjs` が10本 + `docs/check.mjs` の計11本あり、作業役が毎回どれを走らせたか報告文で列挙している(漏れも起きうる)。これを1コマンドにまとめ、pass/fail と所要時間を表で出し、1本でも落ちたら exit 1 にする。
+## 現状(計画役が app.js を実読した事実)
+
+- `showRecent()` (assets/app.js:465-480) … `getRecent()` の履歴を `act:'hotel'` / `icon:'🕘'` / `sub:'最近見た宿'` の行に変換して `renderSuggest()` に渡す。**空欄フォーカス時のみ**呼ばれる。
+- `runSuggest()` (assets/app.js:482-533) … 2文字未満なら `showRecent()`(フォーカス中)か `hideSuggest()`。2文字以上は `YadoGeo.suggestHotels(q)` の結果だけで `rows` を作り直して `renderSuggest(rows)` する。
+  → **つまり2文字打った瞬間に「最近」は完全に消える**(ROADMAP R32 の「消えるなら残す」に該当。統合が必要)。
+- `renderSuggest(rows)` (assets/app.js:446-463) … `rows` を `.suggest__item` のボタン列に描くだけ。**セクション見出しの概念が無い**。
+- クリック委譲 (assets/app.js:1300-1315) … `suggestItems[dataset.index]` を引いて `act==='hotel'` なら `selectHotel`、`'jump'` なら地図移動。**`data-index` は rows 配列の添字なので、見出し行を rows に混ぜると添字がずれる**。見出しはボタンにせず別要素にするか、`act:'head'` 行を描画だけ非ボタンにすること。
+- 撮影用ダミー (assets/app.js:1179-1203) … `demo=suggest` は候補4件+jump 1件、`demo=recent` は最近3件。**どちらも `renderSuggest()` を直接呼ぶ固定配列**なので、統合後の見え方を撮るにはここも更新が要る。
+- `getRecent()` (assets/app.js:308-311) / `pushRecent()` (313-325) / `LS_RECENT='yado.recent.v3'` (55) … 履歴の実体。**保存側のロジックは変更しない**。
 
 ## 対象ファイル(絶対パス)
-- 新規: `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-all.mjs`
-- 追記のみ: `C:\workspace\claude\旅行先用サイト\yadotabi\README.md`(「開発者向け」節を新設し1〜3行。既存の節は触らない)
-- 追記のみ: `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md`(R36 を `[x]` に)
-- 追記のみ: `C:\workspace\claude\旅行先用サイト\yadotabi\docs\NIGHTLOG.md`(3行)
 
-## 計画役が実物で確認済みの事実(再調査不要)
-- `scripts/` の check 系は **ちょうど10本**: a11y / chipcurrent / engine / geo / hotelparam / imgfail / more / passive / pinflash / r5。
-- **全11本が exit code を返す**: engine と r5 は `process.exit(fail ? 1 : 0)`、他8本は `process.exitCode = fail ? 1 : 0`(catch でも 1)、`docs/check.mjs` は `hasFailure` で exitCode。
-- **7本(a11y/chipcurrent/hotelparam/imgfail/more/passive/pinflash)が自分で `python -m http.server 3000 --bind 127.0.0.1` を spawn し、finally で kill している**。engine / geo / r5 はサーバ不要(純 Node)。`docs/check.mjs` は本番URLへの GET のみ。
+- C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js  (主)
+- C:\workspace\claude\旅行先用サイト\yadotabi\assets\style.css (セクション見出しのスタイルのみ)
+- C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-recent.mjs (新規・機械検査)
+- C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-all.mjs (新規検査を実行リストに追加)
+- C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-a11y.mjs (撮影URLに統合後の画面を1つ足す。セレクタ表は変えない)
+- C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md / docs\NIGHTLOG.md (記録)
 
 ## 実装方針
-1. `scripts/check-all.mjs` を新規作成。Node 標準の `node:child_process` のみ使用(依存追加なし)。
-2. 実行対象の配列を先頭に定数で持つ(`docs/check.mjs` を含む11本)。**ファイルの自動 glob ではなく明示リスト**にして、新しい検査を足したときに人が1行足す形にする(意図しないファイルを拾わない)。
-3. **必ず直列(逐次)実行**する。7本が同じポート3000を取り合うため、並列にすると `EADDRINUSE` で偽の赤が出る。
-4. **共有サーバ化は「検討したがやらない」を既定とする**。各テストが finally で kill する設計なので、外から1回だけ立てた 3000 は最初のテストに殺される。既存 check スクリプトの中身を書き換えるのは変更禁止範囲なので、**各テストの既存挙動にそのまま任せる**。所要時間が実測で著しく長い(合計5分超など)場合のみ NIGHTLOG に事実として書き、改修は別タスクに起票する(このサイクルではやらない)。
-5. 各本は `spawnSync(process.execPath, [script], { stdio: 'inherit', cwd: リポジトリルート })` で起動し、`Date.now()` の差で所要ミリ秒を測る。`status !== 0` を fail とする。
-6. 全本終了後にサマリ表を出す。列は `#` / `script` / `result`(PASS/FAIL) / `ms`。末尾に「N本中 M本 PASS / 合計 X.Xs / 最遅: <script> (Y.Ys)」の1行。
-7. 最後に `process.exitCode = anyFail ? 1 : 0`。
-8. 1本落ちても**残りを止めずに最後まで走らせる**(どこまで壊れているかを1回で把握したいため)。ただしサマリでは FAIL を明示。
-9. README に「開発者向け」節を新設し、`node scripts/check-all.mjs` で全検査を一括実行できる旨を1〜3行で書く(Python3 と Playwright が要る点にも1行触れてよい)。
+
+1. `renderSuggest(rows)` に**見出し行**を通せるようにする。`row.act === 'head'` のときだけ `<div class="suggest__head" role="presentation">ラベル</div>` を出し、**`data-index` を振らない**(=クリック委譲の `closest('.suggest__item')` に当たらないので既存の添字ロジックが壊れない)。`suggestItems` には従来どおり rows をそのまま入れてよい(見出し行も配列には残るが、押せないので参照されない)。
+2. `recentRows(limit)` を新設(`showRecent` から切り出し)。`getRecent().slice(0, limit)` を `act:'hotel'` 行に変換して返す純粋関数にする。`showRecent()` はこれを使って書き直す(空欄フォーカス時は**最近だけ**。見出し「最近見た宿」を先頭に付けるかは任意だが、付けるなら `sub` の「最近見た宿」は冗長になるので消すこと)。
+3. `runSuggest()` の2文字以上の分岐で、`rows` を組み立てたあと**先頭に最近の一致分を差し込む**:
+   - `recentRows(RECENT_MAX)` のうち `name` に `q` を含むもの(`normalizeName` があるならそれ経由、無ければ `indexOf(q) >= 0` の素朴な部分一致で可)を最大3件。
+   - 候補側(`rows`)に**同名の宿が既にある場合は最近側を落とす**(重複表示の防止)。
+   - 一致が1件以上あれば `{act:'head', name:'最近見た宿'}` → 最近行 → `{act:'head', name:'検索結果'}` → 候補行 の順に連結。一致0件なら**見出しを出さず従来どおり候補だけ**(見出しだけ浮くのを避ける)。
+   - 「見つかりませんでした」「検索できませんでした」の分岐でも、最近の一致があればその行は残す(0タップ導線を切らないため)。
+4. `applyDemoStateA()` の `demo=recent` を「空欄フォーカス+最近だけ」の現行のまま維持しつつ、**`demo=recentmix` を新設**して「入力『草津』+最近2件(見出し付き)+候補3件+jump」の統合後の姿を撮れるようにする(`demoStateA = true` の判定行 app.js:1122 にも追加すること)。
+5. style.css に `.suggest__head`(小さめ・`--c-muted` 系・左右 padding は `.suggest__item` と揃える・`min-height` は指定しない=44px 検査の対象外)。**`.suggest__item` の高さ・padding は一切触らない**(R13 の 44px を維持するため)。
 
 ## 完了条件(検証可能)
-- `node scripts/check-all.mjs` が**11本すべて PASS の表を出して exit 0** で終わる(`echo $LASTEXITCODE` / `echo $?` で確認)。
-- 表に **11行**あり、各行に PASS と所要ミリ秒が入っている。末尾サマリ行が出ている。
-- **意図的に1本壊すと exit 1 になる**: scratchpad に `process.exit(1)` するだけのダミー .mjs を作って `SCRIPTS` 配列に一時的に足す、**または**実行対象の1本を一時的に存在しないパスに書き換えて走らせ、そのぶんが FAIL で表に出て exit 1 になることを確認する。**確認後は必ず元に戻し、戻した状態で再度 exit 0 になることを確かめてからコミットする**(既存 check-*.mjs 本体は絶対に書き換えない)。
-- README に「開発者向け」節が存在し、`node scripts/check-all.mjs` が書かれている。
 
-## 検証手順
-1. `node --check scripts/check-all.mjs`
-2. `node scripts/check-all.mjs` → 全緑・exit 0 を確認(表を報告に貼る)
-3. 上記の「意図的に1本壊す」手順で exit 1 を確認 → 元に戻して再度 exit 0
-4. `git diff --stat -- assets fixtures index.html` が**空**であること(コード本体は無変更)
-5. 画面変更が無いため撮影は省略してよい。ただし NIGHTLOG に「画面変更なしのため撮影省略」と明記する
+- 新規 `node scripts/check-recent.mjs` が全 PASS(check-chipcurrent.mjs の作りを踏襲し、Nominatim を `page.route` で fulfill してモックする):
+  1. `?demo=recentmix` で `.suggest__head` が2個、テキストが「最近見た宿」「検索結果」
+  2. 同画面で `.suggest__item` の1件目が 🕘 の最近行、その後に候補行が続く(DOM順)
+  3. `.suggest__head` には `data-index` が無く、クリックしても `state.view` が `select` のまま変わらない
+  4. 候補行(最近でない方)をクリックすると従来どおり状態Bへ遷移する(既存の委譲が壊れていない)
+  5. `?demo=recent`(空欄)では `.suggest__head` が0個か1個で、候補行は最近だけ
+  6. `?demo=suggest`(最近なし)では `.suggest__head` が0個(見出しが浮かない)
+  7. コンソールエラー0件
+- `node scripts/check-all.mjs` が**12本すべて緑**(check-recent.mjs を追加した状態)。
+- `node scripts/check-a11y.mjs` で `.suggest__item` が全画面 44px 以上のまま(統合後の画面を対象URLに追加しても OK)。
+- `node scripts/dump-rank.mjs kusatsu` が**差分ゼロ**(engine 無傷の証明)。
+
+## 検証手順(撮影)
+
+1. `node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?demo=recentmix" --mobile` … 統合後の候補ドロップダウン。見出し2本・最近行・候補行が1枚に写ること。
+2. `node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?demo=recent" --mobile` … 空欄フォーカス時(最近だけ)のデグレ確認。
+3. `node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?demo=suggest" --mobile` … 最近なし時に見出しが出ていないこと。
+4. `node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=kusatsu" --mobile` … 状態Bのデグレなし。
+5. 4枚とも Read で目視し、文字崩れ・重なり・はみ出し・行高のばらつきが無いことを確認する。**R2-1(候補がエリアチップに重なる)は朝の相談で保留中の別件なので、行数が増えて重なりが目立っても今回は直さない**(NIGHTLOG に一言だけ書く)。
 
 ## 変更禁止範囲
-- `assets/` 配下すべて(app.js / engine.js / geo.js / style.css / tokens.css / ui.css)
-- `fixtures/` 配下すべて
-- **既存の `scripts/check-*.mjs` 10本と `docs/check.mjs` の検査内容**(1行も編集しない。check-all.mjs は外から呼ぶだけ)
-- `index.html`、`demo/` 配下
-- README の既存の節(追記のみ)
-- git stash / reset --hard / checkout でのファイル復元は禁止
+
+- `assets/engine.js` / `assets/geo.js` / `fixtures/*.json` … 一切触らない。
+- `pushRecent()` / `LS_RECENT` のキー名と保存形式 … 触らない(既存の履歴が読めなくなる)。
+- `.suggest__item` の高さ・padding・`.chip` 周り … R13 の 44px とチップ行のレイアウトを壊さない。
+- R2-1 の「候補とチップの重なり」の方針変更 … 朝の相談待ち。
 
 ## 難易度・所要目安
-- 難易度: **sonnet**(新規1ファイル + README 1行。ロジックは spawnSync と表整形のみ)
-- 所要目安: 実装15分 + 検証(11本の実走を2回)10〜20分 = **25〜35分**
+
+- 難易度: sonnet(builder-sonnet)
+- 所要目安: 実装 20分 + check-all 約1分 + 撮影目視 10分 = **35〜45分**

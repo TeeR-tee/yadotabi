@@ -442,7 +442,12 @@
     suggestItems = [];
   }
 
-  /** 候補と「最近」をまとめて描く。行の種類は data-act で区別する。 */
+  /**
+   * 候補と「最近」をまとめて描く。行の種類は data-act で区別する。
+   * `act === 'head'` の行はセクション見出しで、ボタンではなく押せない要素として描く
+   * (data-index を振らないので、クリック委譲の `closest('.suggest__item')` に当たらず、
+   * rows 配列の添字ロジックも壊れない)。
+   */
   function renderSuggest(rows) {
     if (!rows.length) {
       hideSuggest();
@@ -450,6 +455,9 @@
     }
     suggestItems = rows;
     var html = rows.map(function (row, i) {
+      if (row.act === 'head') {
+        return '<div class="suggest__head" role="presentation">' + escapeHtml(row.name) + '</div>';
+      }
       var sub = row.sub ? '<span class="suggest__sub">' + escapeHtml(row.sub) + '</span>' : '';
       return '<button type="button" class="suggest__item" role="option" data-index="' + i + '">' +
         '<span class="suggest__icon" aria-hidden="true">' + escapeHtml(row.icon) + '</span>' +
@@ -462,21 +470,48 @@
     els.suggest.hidden = false;
   }
 
-  function showRecent() {
-    var recent = getRecent();
-    if (!recent.length) {
-      hideSuggest();
-      return;
-    }
-    renderSuggest(recent.map(function (r) {
+  /** 最近見た宿を最大 limit 件、候補行の形に変換する純粋関数。 */
+  function recentRows(limit) {
+    return getRecent().slice(0, limit).map(function (r) {
       return {
         act: 'hotel',
         icon: '🕘',
         name: r.name,
-        sub: '最近見た宿',
         hotel: { name: r.name, lat: r.lat, lon: r.lon, kind: r.kind }
       };
-    }));
+    });
+  }
+
+  function showRecent() {
+    var rows = recentRows(RECENT_MAX);
+    if (!rows.length) {
+      hideSuggest();
+      return;
+    }
+    renderSuggest(rows);
+  }
+
+  /**
+   * 検索候補(2文字以上)の rows に、名前が一致する「最近見た宿」を先頭に差し込む。
+   * 候補側に同名の宿が既にあれば最近側は落とす(重複表示の防止)。
+   * 一致が1件も無ければ見出しを出さず rows をそのまま返す(見出しだけ浮くのを避ける)。
+   */
+  function mergeWithRecent(rows, q) {
+    var candidateNames = {};
+    rows.forEach(function (row) {
+      if (row.act === 'hotel' && row.name) candidateNames[row.name] = true;
+    });
+
+    var matches = recentRows(RECENT_MAX).filter(function (r) {
+      return r.name && r.name.indexOf(q) >= 0 && !candidateNames[r.name];
+    }).slice(0, 3);
+
+    if (!matches.length) return rows;
+
+    return [{ act: 'head', name: '最近見た宿' }]
+      .concat(matches)
+      .concat([{ act: 'head', name: '検索結果' }])
+      .concat(rows);
   }
 
   var runSuggest = debounce(function (query) {
@@ -519,14 +554,14 @@
         }
 
         if (!rows.length) {
-          renderSuggest([{ act: 'none', icon: '🔍', name: '見つかりませんでした', sub: '別の名前で探してみてください' }]);
-          return;
+          rows = [{ act: 'none', icon: '🔍', name: '見つかりませんでした', sub: '別の名前で探してみてください' }];
         }
-        renderSuggest(rows);
+        renderSuggest(mergeWithRecent(rows, q));
       })
       .catch(function () {
         if (q !== lastSuggestQuery) return;
-        renderSuggest([{ act: 'none', icon: '⚠️', name: '検索できませんでした', sub: '少し待ってからお試しください' }]);
+        var fallback = [{ act: 'none', icon: '⚠️', name: '検索できませんでした', sub: '少し待ってからお試しください' }];
+        renderSuggest(mergeWithRecent(fallback, q));
       });
   }, DEBOUNCE_SEARCH_MS);
 
@@ -1119,7 +1154,7 @@
     var demo = params.get('demo') || '';
     if (demo === 'far') demoFar = true;
     if (demo === 'zoomout') demoNoSaveView = true;
-    if (demo === 'suggest' || demo === 'recent' || demo === 'zoomout') demoStateA = true;
+    if (demo === 'suggest' || demo === 'recent' || demo === 'recentmix' || demo === 'zoomout') demoStateA = true;
     if (demo === 'passive') demoPassive = true;
     if (demo === 'imgfail') demoImgFail = true;
 
@@ -1194,9 +1229,32 @@
     if (demo === 'recent') {
       els.searchInput.value = '';
       renderSuggest([
-        { act: 'hotel', icon: '🕘', name: '草津温泉 湯畑の宿 佳乃や', sub: '最近見た宿' },
-        { act: 'hotel', icon: '🕘', name: 'ホテルヴィレッジ 草津温泉 ベルツの森リゾートアネックス館', sub: '最近見た宿' },
-        { act: 'hotel', icon: '🕘', name: '別府温泉 杉乃井ホテル', sub: '最近見た宿' }
+        { act: 'hotel', icon: '🕘', name: '草津温泉 湯畑の宿 佳乃や' },
+        { act: 'hotel', icon: '🕘', name: 'ホテルヴィレッジ 草津温泉 ベルツの森リゾートアネックス館' },
+        { act: 'hotel', icon: '🕘', name: '別府温泉 杉乃井ホテル' }
+      ]);
+      return;
+    }
+    if (demo === 'recentmix') {
+      // 統合後の姿(入力あり+最近の一致+候補)を撮るための固定配列。
+      // 候補行は実クリックでも状態Bへ遷移できるよう hotel 座標を持たせる。
+      els.searchInput.value = '草津';
+      renderSuggest([
+        { act: 'head', name: '最近見た宿' },
+        { act: 'hotel', icon: '🕘', name: '草津温泉 湯畑の宿 佳乃や',
+          hotel: { name: '草津温泉 湯畑の宿 佳乃や', lat: 36.6226, lon: 138.5960 } },
+        { act: 'hotel', icon: '🕘', name: '草津ナウリゾートホテル',
+          hotel: { name: '草津ナウリゾートホテル', lat: 36.6230, lon: 138.5965 } },
+        { act: 'head', name: '検索結果' },
+        { act: 'hotel', icon: '♨', name: '旅館 たむら', sub: '群馬県吾妻郡草津町',
+          hotel: { name: '旅館 たむら', lat: 36.6235, lon: 138.5970 } },
+        { act: 'hotel', icon: '🏨', name: '草津温泉 ホテル一井', sub: '群馬県吾妻郡草津町草津',
+          hotel: { name: '草津温泉 ホテル一井', lat: 36.6240, lon: 138.5975 } },
+        { act: 'hotel', icon: '♨', name: '西の河原の宿 松むら', sub: '群馬県吾妻郡草津町大字草津',
+          hotel: { name: '西の河原の宿 松むら', lat: 36.6245, lon: 138.5980 } },
+        { act: 'jump', icon: '📍', name: 'このあたりを見る（草津温泉）',
+          sub: '日本、群馬県吾妻郡草津町（温泉地）',
+          hotel: { name: '草津温泉', lat: 36.6226, lon: 138.5960 } }
       ]);
       return;
     }

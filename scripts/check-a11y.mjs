@@ -35,6 +35,7 @@ const PAGES = [
   { url: `${BASE}/?fixture=kusatsu`, label: '?fixture=kusatsu(状態B)' },
   { url: `${BASE}/?demo=zoomout`, label: '?demo=zoomout(状態A)' },
   { url: `${BASE}/?demo=suggest`, label: '?demo=suggest(検索候補)' },
+  { url: `${BASE}/?demo=recentmix`, label: '?demo=recentmix(最近+候補の統合)' },
   { url: `${BASE}/?fixture=hakone&demo=far`, label: '?fixture=hakone&demo=far(もっと遠く)' },
 ];
 
