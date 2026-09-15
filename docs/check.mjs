@@ -27,6 +27,17 @@ const MIN_JS_BYTES = 1000;
 
 let hasFailure = false;
 
+// --- R33: 応答時間(ms)の記録 ---
+const timings = []; // { label, ms }
+
+async function timedFetch(label, url, options) {
+  const t0 = performance.now();
+  const res = await fetch(url, options);
+  const ms = Math.round(performance.now() - t0);
+  timings.push({ label, ms });
+  return { res, ms };
+}
+
 function report(label, ok, detail) {
   const mark = ok ? 'OK' : 'NG';
   console.log(`[${mark}] ${label}${detail ? ' - ' + detail : ''}`);
@@ -35,9 +46,9 @@ function report(label, ok, detail) {
 
 async function checkTarget(path) {
   const url = BASE + path;
-  let res;
+  let res, ms;
   try {
-    res = await fetch(url);
+    ({ res, ms } = await timedFetch(path, url));
   } catch (err) {
     report(path, false, `fetch失敗: ${err.message}`);
     return;
@@ -47,7 +58,7 @@ async function checkTarget(path) {
     report(path, false, `HTTP ${res.status}`);
     return;
   }
-  report(`${path} (HTTP 200)`, true);
+  report(`${path} (HTTP 200)`, true, `${ms}ms`);
 
   const body = await res.text();
 
@@ -85,9 +96,9 @@ const HTML_PAGES = ['index.html', 'demo/embed-check.html', 'demo/hotel-page.html
 
 async function collectLinks(page) {
   const url = BASE + page;
-  let res;
+  let res, ms;
   try {
-    res = await fetch(url);
+    ({ res, ms } = await timedFetch(`${page} のリンク検査用取得`, url));
   } catch (err) {
     report(`${page} のリンク検査用取得`, false, `fetch失敗: ${err.message}`);
     return [];
@@ -145,23 +156,24 @@ async function collectLinks(page) {
 
 async function checkLink(page, path) {
   const url = BASE + path;
-  let res;
+  const label = `リンク ${page} → ${path}`;
+  let res, ms;
   try {
-    res = await fetch(url, { method: 'HEAD' });
+    ({ res, ms } = await timedFetch(label, url, { method: 'HEAD' }));
   } catch (err) {
-    report(`リンク ${page} → ${path}`, false, `fetch失敗: ${err.message}`);
+    report(label, false, `fetch失敗: ${err.message}`);
     return;
   }
   if (res.status !== 200) {
     // GitHub Pages が HEAD に非200を返す場合に備え、GETで1回だけ確認し直す
     try {
-      res = await fetch(url, { method: 'GET' });
+      ({ res, ms } = await timedFetch(label, url, { method: 'GET' }));
     } catch (err) {
-      report(`リンク ${page} → ${path}`, false, `fetch失敗: ${err.message}`);
+      report(label, false, `fetch失敗: ${err.message}`);
       return;
     }
   }
-  report(`リンク ${page} → ${path}`, res.status === 200, `HTTP ${res.status}`);
+  report(label, res.status === 200, `HTTP ${res.status} - ${ms}ms`);
 }
 
 for (const page of HTML_PAGES) {
@@ -171,6 +183,84 @@ for (const page of HTML_PAGES) {
   }
 }
 // --- ここまで R22 ---
+
+// --- R34: README.md の画像もリンク検査に含める ---
+// GitHub Pages は README.md をそのまま配信し、本番で HTTP 200 を返すことを確認済み。
+// そのため本番URLから GET して抽出する方式を採る(ローカルfsフォールバックは不要だった)。
+
+async function collectMarkdownLinks(page) {
+  const url = BASE + page;
+  let res, ms;
+  try {
+    ({ res, ms } = await timedFetch(`${page} のリンク検査用取得`, url));
+  } catch (err) {
+    report(`${page} のリンク検査用取得`, false, `fetch失敗: ${err.message}`);
+    return [];
+  }
+  if (res.status !== 200) {
+    report(`${page} のリンク検査用取得`, false, `HTTP ${res.status}`);
+    return [];
+  }
+
+  const body = await res.text();
+  const rawValues = [];
+  // <img src="..."> 形式(HTMLタグ)
+  const imgTagRe = /<img[^>]+src\s*=\s*"([^"]+)"/g;
+  // ![alt](path) 形式(Markdown記法)
+  const mdImgRe = /!\[[^\]]*\]\(([^)\s]+)/g;
+  let m;
+  while ((m = imgTagRe.exec(body))) rawValues.push(m[1]);
+  while ((m = mdImgRe.exec(body))) rawValues.push(m[1]);
+
+  const internalPaths = new Set();
+  let externalCount = 0;
+
+  for (const raw of rawValues) {
+    if (!raw || raw.startsWith('#') || raw.startsWith('javascript:') || raw.startsWith('mailto:')) {
+      continue;
+    }
+    if (/^https?:\/\//.test(raw)) {
+      if (raw.startsWith(BASE)) {
+        const resolved = new URL(raw);
+        internalPaths.add(resolved.pathname.replace(/^\/yadotabi\//, ''));
+      } else {
+        externalCount++;
+      }
+      continue;
+    }
+    const resolved = new URL(raw, url);
+    if (!resolved.href.startsWith(BASE)) {
+      report(`リンク ${page} → ${raw}`, false, 'サイト外に出た');
+      continue;
+    }
+    internalPaths.add(resolved.pathname.replace(/^\/yadotabi\//, ''));
+  }
+
+  if (externalCount > 0) {
+    report(`${page} 外部リンク ${externalCount}件(検査対象外)`, true);
+  }
+
+  return [...internalPaths];
+}
+
+const MARKDOWN_PAGES = ['README.md'];
+
+for (const page of MARKDOWN_PAGES) {
+  const links = await collectMarkdownLinks(page);
+  for (const path of links) {
+    await checkLink(page, path || 'index.html');
+  }
+}
+// --- ここまで R34 ---
+
+// --- R33: 集計行 ---
+if (timings.length > 0) {
+  const total = timings.reduce((sum, t) => sum + t.ms, 0);
+  const avg = Math.round(total / timings.length);
+  const slowest = timings.reduce((a, b) => (b.ms > a.ms ? b : a));
+  console.log(`合計 ${timings.length}件 / 総計 ${total}ms / 平均 ${avg}ms`);
+  console.log(`最遅: ${slowest.label} ${slowest.ms}ms`);
+}
 
 if (hasFailure) {
   process.exitCode = 1;
