@@ -61,8 +61,9 @@
   // 3回引き、pageid で重複排除して「遠いが有名な記事」を取りこぼさないようにする。
   var WIKI_NEARBY_RING_RADII_M = [3000, 6000, 10000];
   // 1回の fetchWikiNearby が発行する外部リクエストの総上限(無料APIのマナー)。
-  // 半径3段 + continue 1回ぶん。continue もこの数に含めて数える。
-  var WIKI_NEARBY_MAX_CALLS = 4;
+  // 半径3段(1周目)+ continue 最大3回(2周目)。continue もこの数に含めて数える。
+  // 4 にすると continue が1回しか追えず、要約(extract)の付かないカードが増えるため 6。
+  var WIKI_NEARBY_MAX_CALLS = 6;
 
   // ---------------------------------------------------------------------------
   // 固定データモード (fixture)
@@ -964,7 +965,8 @@
       if (okCount === 0 && lastError) throw lastError;
 
       // 2周目: 余った呼び出し回数で continue を追い、取り切れなかった extract を埋める。
-      // 近い半径ほど画面に出やすいので、近い順(conts の並び順)に消化する。
+      // conts は radii(昇順)を回る1周目で push しているので、並び順がそのまま
+      // 「近いリングから」になる。近い記事ほどカード上位に出るので要約を優先的に埋める。
       for (var ci = 0; ci < conts.length && calls < WIKI_NEARBY_MAX_CALLS; ci++) {
         var entry = conts[ci];
         for (var i = 0; i < WIKI_NEARBY_MAX_CONTINUE && calls < WIKI_NEARBY_MAX_CALLS; i++) {
