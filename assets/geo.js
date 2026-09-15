@@ -56,6 +56,13 @@
   // Wikipedia の extracts は1リクエストにつき20ページ分までしか返らないので continue を追う
   var WIKI_NEARBY_MAX_CONTINUE = 3;
   var WIKI_NEARBY_MAX_RADIUS_M = 10000;
+  // geosearch は ggslimit=50 が上限で、記事の密な土地では半径10kmを指定しても
+  // 近い順に50件(箱根なら約3.7km)で打ち切られる。そこで同じ中心で半径を変えて
+  // 3回引き、pageid で重複排除して「遠いが有名な記事」を取りこぼさないようにする。
+  var WIKI_NEARBY_RING_RADII_M = [3000, 6000, 10000];
+  // 1回の fetchWikiNearby が発行する外部リクエストの総上限(無料APIのマナー)。
+  // 半径3段 + continue 1回ぶん。continue もこの数に含めて数える。
+  var WIKI_NEARBY_MAX_CALLS = 4;
 
   // ---------------------------------------------------------------------------
   // 固定データモード (fixture)
@@ -849,8 +856,12 @@
    * 日本語版Wikipediaの「この座標の近くにある記事」を写真・要約つきで取得する。
    *
    * 注意: extracts(要約)は1リクエストにつき20ページ分までしか返らない(exlimit の上限)。
-   * geosearch は50件返せるので、残りは continue を追いかけて埋める(最大3回)。
+   * geosearch は50件返せるので、残りは continue を追いかけて埋める。
    * それでも取れなかった extract は null のままにする。
+   *
+   * さらに geosearch は1回あたり50件が上限なので、記事の密な土地では半径10kmでも
+   * 近い順に50件で打ち切られてしまう。そこで同じ中心・異なる半径(3/6/10km)で引いて
+   * pageid で重複排除する。外部リクエストは合計 WIKI_NEARBY_MAX_CALLS 回まで。
    *
    * @param {number} lat 中心の緯度
    * @param {number} lon 中心の経度
@@ -872,12 +883,12 @@
       if (cached) return cached;
     }
 
-    function baseParams() {
+    function baseParams(r) {
       return {
         action: 'query',
         generator: 'geosearch',
         ggscoord: lat + '|' + lon,
-        ggsradius: String(radius),
+        ggsradius: String(r),
         ggslimit: '50',
         prop: 'coordinates|pageimages|extracts',
         exintro: '1',
@@ -890,29 +901,67 @@
       };
     }
 
-    var pages = Object.create(null); // pageid → ページ情報(continue で少しずつ埋まる)
-    var cont = null;
+    // pageid → ページ情報。半径をまたいで同じ器に溜めるので、これがそのまま重複排除になる
+    // (同じ pageid は上書きマージされるだけ)。continue で少しずつ埋まるのも従来どおり。
+    var pages = Object.create(null);
 
-    for (var i = 0; i <= WIKI_NEARBY_MAX_CONTINUE; i++) {
-      var params = new URLSearchParams(baseParams());
-      if (cont) {
-        Object.keys(cont).forEach(function (k) { params.set(k, cont[k]); });
-      }
-
-      // 固定データモードは continue を追わず、保存済みの生レスポンスを1回流すだけ
-      var data = fixtureData ? fixtureData.wiki : await callWikipediaApi(params);
-      var got = (data && data.query && data.query.pages) || {};
-
+    /** got(query.pages)を pages にマージする。missing なページは捨てる。 */
+    function mergePages(got) {
       Object.keys(got).forEach(function (pid) {
         var page = got[pid];
         if (!page || page.missing !== undefined) return;
         var prev = pages[pid] || {};
-        // continue のたびに同じページの別プロパティが届くのでマージする
         pages[pid] = Object.assign({}, prev, page);
       });
+    }
 
-      cont = fixtureData ? null : ((data && data.continue) || null);
-      if (!cont) break;
+    if (fixtureData) {
+      // 固定データモードは半径ループも continue も回さず、保存済みの生レスポンスを1回流すだけ
+      // (外部fetch 0回。従来と完全に同じ挙動)。
+      mergePages((fixtureData.wiki && fixtureData.wiki.query && fixtureData.wiki.query.pages) || {});
+    } else {
+      // 同心円の半径を昇順・重複なしで組み立てる。呼び出し側が radius=5000 を渡す
+      // 既定経路も壊さないよう「radius 以下のリング + radius 自身」に限る。
+      var radii = [];
+      WIKI_NEARBY_RING_RADII_M.forEach(function (r) {
+        if (r <= radius && radii.indexOf(r) < 0) radii.push(r);
+      });
+      if (radii.indexOf(radius) < 0) radii.push(radius);
+      radii.sort(function (a, b) { return a - b; });
+
+      var calls = 0;      // 発行した外部リクエストの総数(WIKI_NEARBY_MAX_CALLS を超えない)
+      var okCount = 0;    // 成功した半径の数
+      var lastError = null;
+
+      for (var ri = 0; ri < radii.length; ri++) {
+        if (calls >= WIKI_NEARBY_MAX_CALLS) break;
+        var cont = null;
+        var radiusOk = false;
+
+        try {
+          for (var i = 0; i <= WIKI_NEARBY_MAX_CONTINUE; i++) {
+            if (calls >= WIKI_NEARBY_MAX_CALLS) break; // 上限に達したら取れた分で打ち切る
+            var params = new URLSearchParams(baseParams(radii[ri]));
+            if (cont) {
+              Object.keys(cont).forEach(function (k) { params.set(k, cont[k]); });
+            }
+
+            calls++;
+            var data = await callWikipediaApi(params);
+            mergePages((data && data.query && data.query.pages) || {});
+            radiusOk = true;
+
+            cont = (data && data.continue) || null;
+            if (!cont) break;
+          }
+        } catch (e) {
+          // 1つの半径が失敗しても他の半径の結果は活かす。全滅したときだけ後で throw する。
+          lastError = e;
+        }
+        if (radiusOk) okCount++;
+      }
+
+      if (okCount === 0 && lastError) throw lastError;
     }
 
     var articles = [];
