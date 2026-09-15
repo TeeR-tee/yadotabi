@@ -3,7 +3,8 @@
 ## R25 GitHub Actions 毎日死活チェック(2026-09-16)
 - やったこと: `.github/workflows/check.yml` を新規作成。`schedule`(UTC21:30=JST翌朝6:30頃)・`workflow_dispatch`・`push(main)` の3トリガーで `node docs/check.mjs` を実行。依存インストール不要のため setup-node のみ、`permissions: contents: read`・`timeout-minutes: 5` で最小権限。
 - 見た目の確認結果: 画面変更なしのため撮影省略。ローカルで `node docs/check.mjs` は全項目OK・exit 0、YAML はタブなし・パース成功を確認。
-- 次: (Actions実行結果は追記予定)
+- Actions実行結果: push トリガー(run 35028019952)・workflow_dispatch 手動実行(run 35028055000)ともに `completed success`(緑)。赤い実行なし。
+- 次: 残候補(R11/R14/R19/R21/R26/R27)から次サイクルで選定。
 
 ## R23 カード画像フォールバック(2026-09-16)
 - やったこと: Wikipediaサムネ画像が404等で読めないとき、`error`イベント委譲(capture=true)で画像なしカードと同じカテゴリ絵文字プレースホルダに差し替えるよう実装。`?demo=imgfail`で先頭3枚を強制失敗させて撮影確認できるようにした。
