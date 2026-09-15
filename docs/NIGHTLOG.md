@@ -176,3 +176,9 @@
 - テスト結果: 新設`node scripts/check-pinflash.mjs`8件全pass(200ms後に1個だけ光る・1400ms後に消える・連打しても1個以下・reduced-motionでもクラスは付くがアニメしない・コンソールエラー0件)。`check-a11y.mjs`に`.feedcard__no`を追加し全OK(44px)。`check-engine.mjs`111件・`check-more.mjs`6件・`check-passive.mjs`9件・`check-geo.mjs`34件・`docs/check.mjs`全pass、`node --check assets/app.js`通過。`dump-rank.mjs`は環境の権限制御でコマンド自体が拒否され実行不可だったため未実施(engine/geo/fixtures無変更を`git diff`で代替確認)。
 - 目視結果: `?fixture=kusatsu`地図部分を切り出して撮影し、3番ピンだけがオレンジのリングで光っているのを判別できた(初版は白リングで既存の枠と見分けにくく、色をオレンジ系に強化して撮り直した)。`?fixture=hakone`/`?fixture=kusatsu&embed=1`はカード30枚・番号ピン崩れなしでデグレなし。`?fixture=kusatsu&demo=passive`でバッジタップ時も`tap`レコード(index一致)が従来通り1件記録されることを確認。
 - 次: ROADMAP残りはR11/R14/R15/R19/R21。朝の相談は前回分(wiki件数50vs34の食い違い)が引き続き未決。
+
+### 2026-09-16 R15 撮影用の遅延パラメータ `?slow=osm800,wiki1500`
+- やったこと: `geo.js`に`slowDelays`(既存`simulateBusy`と同じ形のモジュール変数)と`setSlowDelays(d)`を追加し、`fetchSpots`(キャッシュ参照より後)と`fetchWikiNearby`(fixture分岐の直前、fixture/実API両経路にかかる位置)にそれぞれ1行`await delay(...)`を注入。公開APIに`setSlowDelays`を追加。`app.js`に`slowDelaysFromUrl(params)`を新設し`osm800,wiki1500`形式をパース(不正値は黙って無視、上限10000msでクランプ)、`applyEntryPoint()`から呼び出し。engine.js/fixturesは無変更。
+- テスト結果: `node scripts/check-geo.mjs`に3ケース追加し44件全pass(遅延100ms以上かかる/fixture経路でも外部fetch0回/パラメータ無しなら50ms未満で件数・先頭要素とも従来どおり不変)。`check-engine.mjs`111件・`check-r5.mjs`15件・`check-passive.mjs`・`check-more.mjs`6件・`check-pinflash.mjs`8件・`check-a11y.mjs`・`node --check`全通過。`dump-rank.mjs kusatsu`もengine/fixture無傷を確認。
+- 目視結果: `?fixture=kusatsu&slow=osm300,wiki3000`をwait1500msで撮ると「周辺を集めています…」表示でカードは写真なし・要約なしのプレースホルダのみ、wait5000msで撮ると写真・タイトル・要約入りの完成カードに切り替わっており、**段階描画(OSM先出し→Wikipedia後乗せ)が2段ではっきり確認できた**。`?fixture=kusatsu`(slowなし)mobileはカード30枚・ピン1〜30・崩れなしでデグレなし。
+- 次: ROADMAP残りはR11/R14/R19/R21/R23〜R27。朝の相談は前回分(wiki件数50vs34の食い違い)が引き続き未決。
