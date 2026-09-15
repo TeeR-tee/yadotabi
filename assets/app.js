@@ -46,6 +46,13 @@
   /** この倍率より引いた地図では宿を取りに行かない(Overpassに広い範囲を投げないため)。 */
   var MIN_HOTEL_ZOOM = 13;
 
+  /**
+   * 「次の0件合流点で1回だけ自動ズームアウトしてよい」券。
+   * flyTo() 経由(=?q=ジャンプ・検索候補・エリアチップ)のときだけ立てる。
+   * 使ったら(0件で1段引いたら)必ず false に戻すので多重発火は構造的に起きない。
+   */
+  var autoZoomArmed = false;
+
   var DEBOUNCE_SEARCH_MS = 500;
   var DEBOUNCE_MOVE_MS = 600;
 
@@ -366,7 +373,13 @@
     els.mapNote.textContent = text;
   }
 
+  // 自動ズーム(setZoom)は moveend を発火させるが、その場で loadHotelsInView を
+  // 直接呼んでいるので、debounce 後の onMapMoved による再取得は無駄な二重発火になる。
+  // 1回だけ吸収して構造的に防ぐ(立てたら必ず消費する)。
+  var suppressNextMoveEnd = false;
+
   var onMapMoved = debounce(function () {
+    if (suppressNextMoveEnd) { suppressNextMoveEnd = false; return; }
     if (state.view !== 'select' || !map) return;
     saveMapView();
     loadHotelsInView();
@@ -399,11 +412,29 @@
         // 待っている間に状態Bへ移っていたら描かない
         if (state.view !== 'select') return;
         renderHotelPins(hotels);
-        setMapNote(hotels.length ? '' : 'この範囲には宿が見つかりませんでした');
+        if (hotels.length) {
+          autoZoomArmed = false;
+          setMapNote('');
+          return;
+        }
+        // エリアへ飛んだ直後の0件なら、下限を割らない範囲で1回だけ引いて探し直す
+        if (autoZoomArmed && map.getZoom() - 1 >= MIN_HOTEL_ZOOM) {
+          autoZoomArmed = false; // 先に落とす(再入しても2回目は発動しない)
+          suppressNextMoveEnd = true; // この setZoom による moveend では再取得しない
+          map.setZoom(map.getZoom() - 1, { animate: false });
+          saveMapView();
+          setMapNote('もう少し広い範囲で探しています…');
+          loadHotelsInView(); // Overpass 追加1回・キャッシュがあれば0回
+          return;
+        }
+        autoZoomArmed = false;
+        setMapNote('この範囲には宿が見つかりませんでした');
       })
       .catch(function (err) {
         if (state.view !== 'select') return;
         hotelLayer.clearLayers();
+        // 混雑時は自動ズームしない(無料APIへの追加リクエストを増やさないため)
+        autoZoomArmed = false;
         // 範囲が広すぎるときはズーム不足と同じ案内にする(利用者にとっては同じこと)
         if (err && err.tooWide) {
           setMapNote('ズームすると宿が出ます');
@@ -434,6 +465,9 @@
     ensureMap();
     map.setView([lat, lon], zoom || DEFAULT_VIEW.zoom);
     saveMapView();
+    // エリアへ飛んだ直後の0件だけ、1回だけ自動でズームアウトしてよい券を立てる
+    // (ドラッグ由来の onMapMoved 経由では立てない)。
+    autoZoomArmed = true;
     // setView 直後の moveend は debounce 待ちなので、ここでは待たずに取得を始める
     loadHotelsInView();
   }
@@ -1168,6 +1202,25 @@
     if (demo === 'passive') demoPassive = true;
     if (demo === 'imgfail') demoImgFail = true;
     if (demo === 'nohotels') { demoStateA = true; demoNoHotels = true; }
+    // ?demo=autozoom: demoStateA は立てず、fetchHotelsInBbox を回数で差し替える
+    // (外部APIを叩かずに「0件→自動で1段引く→2回目で宿が出る」経路を再現する)。
+    // 1回目(初期 flyTo)=0件、2回目(自動ズーム後)=宿1件、3回目以降(ドラッグ等)=0件
+    // にして、「ドラッグ起点の0件では自動ズームが起きない」ことも同じ仕掛けで検証できるようにする。
+    if (demo === 'autozoom') {
+      var autoZoomFetchCount = 0;
+      YadoGeo.fetchHotelsInBbox = function (south, west, north, east) {
+        autoZoomFetchCount++;
+        if (autoZoomFetchCount === 2) {
+          // 自動ズーム後(2回目)だけ、範囲の中心にダミーの宿を1件返す
+          var lat = (south + north) / 2;
+          var lon = (west + east) / 2;
+          return Promise.resolve([
+            { id: 'demo-autozoom-1', name: '自動ズームで見つかった宿', lat: lat, lon: lon, kind: 'hotel' }
+          ]);
+        }
+        return Promise.resolve([]);
+      };
+    }
 
     var fixtureName = fixtureNameFromUrl(params);
 
@@ -1211,6 +1264,14 @@
           }
           applyNormalEntryPoint(params);
         });
+      return;
+    }
+
+    if (demo === 'autozoom') {
+      // ?q= ジャンプ等の外部APIを介さず、flyTo() 経由の0件合流だけを再現する
+      // (Nominatim を叩かずに済ませるため、初期位置への flyTo で代用する)。
+      ensureMap();
+      flyTo(DEFAULT_VIEW.lat, DEFAULT_VIEW.lon, DEFAULT_VIEW.zoom);
       return;
     }
 

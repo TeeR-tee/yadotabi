@@ -1,74 +1,69 @@
-# NEXT — R42 カード要約の「…」を句点優先で切る
+# NEXT: R44 `?q=` ジャンプ後に宿0件なら1回だけ自動ズームアウト
 
-**選定理由**: R2-1 は朝の相談待ち、R14/R19/R40 は Overpass を叩く(fixture 再生成)必要があり無料APIのマナー上サイクル内に収めにくい。R42 は engine.js の1関数 + テストだけで完結し、3 fixture で目視比較でき、外部API 0回で回せるため。
+**選定理由**: R43(ツールチップ)は見た目の追加だが、R44 は「エリア名で飛んだのに何も出ない」という入口の行き止まりを塞ぐ機能改善で、入力ゼロ原則(ユーザーにピンチアウトさせない)に最も合致するため。難易度 sonnet / 所要目安 25〜40分。
 
 ## 対象ファイル(絶対パス)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\engine.js` (実装)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-engine.mjs` (テスト追加・既存1件の修正)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js`(本体)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-autozoom.mjs`(新規)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-all.mjs`(新規1本をリストに追加 → 14本→15本)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md` / `docs\NIGHTLOG.md`(完了記録)
 
-## 現状(実物を読んだ結果)
-- `assets/engine.js:36` `var SUMMARY_MAX_CHARS = 120;`
-- `assets/engine.js:289-296` 要約整形の本体:
-  ```js
-  /** 文字列を最大長で切って「…」を付ける。null/空文字は null。 */
-  function truncate(text, maxChars) {
-    if (typeof text !== 'string') return null;
-    var s = text.trim();
-    if (!s) return null;
-    if (s.length <= maxChars) return s;
-    return s.slice(0, maxChars) + '…';
-  }
-  ```
-- 呼び出しは1か所だけ: `assets/engine.js:820`
-  `summary: truncate(stripCoordPrefix(item.summary), SUMMARY_MAX_CHARS),`
-- 前段の `stripCoordPrefix()` は `assets/engine.js:281`。**触らない**(座標除去はそのまま先に効かせる)。
+## 実物の確認結果(計画役が読んだ現状・行番号は 2026-09-16 時点)
+- `app.js:20` `DEFAULT_VIEW = { lat:36.6226, lon:138.5960, zoom:14 }` / `app.js:47` `MIN_HOTEL_ZOOM = 13`
+  → **ジャンプ直後は必ず zoom 14。1段引くと 13 で下限ちょうど。つまり自動ズームは常に1回だけ可能で、2段目は下限違反になる**(仕様と噛み合っている)。
+- `app.js:375 loadHotelsInView()` … `map.getZoom() < MIN_HOTEL_ZOOM` で早期 return、成功時 `app.js:402` で `setMapNote(hotels.length ? '' : 'この範囲には宿が見つかりませんでした')`。**0件はここが唯一の合流点**。
+- `app.js:433 flyTo(lat, lon, zoom)` … `setView` → `saveMapView()` → `loadHotelsInView()`。呼び元は3か所だけ:
+  - `app.js:1296` `?q=` 入口(`applyNormalEntryPoint`)
+  - `app.js:1382` 検索候補の `act === 'jump'`(地名を選んだとき)
+  - `app.js:1394` エリアチップのタップ
+  いずれも「エリアへ飛んだ」ケースなので **3か所すべてを対象にしてよい**。通常のドラッグは `onMapMoved`(`app.js:369`)経由で `flyTo` を通らないため、自動的に発動しない。
+- **重要(撮影方法の訂正)**: `?demo=nohotels` は `app.js:1170` で `demoStateA = true` も立て、`loadHotelsInView` は `app.js:378` の分岐で **fetch する前に return** する。よって **既存の `?demo=nohotels` だけでは再取得ロジックを通せない**。下記「実装方針」の (3) を採ること。
 
-## 実装方針
-1. `truncate()` を「上限手前の最後の句点で切る」方式に変える。関数名は `truncate` のまま(呼び出し側 engine.js:820 は無変更)。
-2. ロジック:
-   - `s.length <= maxChars` なら従来どおりそのまま返す(「…」なし)。
-   - そうでなければ `head = s.slice(0, maxChars)` の中で**最後の「。」の位置** `idx = head.lastIndexOf('。')` を取る。
-   - `idx >= 0 && (idx + 1) >= Math.floor(maxChars * 0.6)`(=120字なら72字以上)なら `s.slice(0, idx + 1)` を返す。**この場合「…」は付けない**(文として完結しているため)。
-   - 条件を満たさない(句点が無い/前すぎる)ときは従来どおり `s.slice(0, maxChars) + '…'`。
-3. 閾値 `0.6` は `var SUMMARY_SENTENCE_MIN_RATIO = 0.6;` のような名前付き定数にして `SUMMARY_MAX_CHARS` の近く(engine.js:36 付近)に置き、コメントで「短すぎる要約を避けるための下限」と書く。
-4. `rank()` / `baseScore()` / 重み・閾値・カテゴリ多様性・除外ルール・`stripCoordPrefix` は**一切触らない**。`truncate` は表示整形専用で順位に影響しないことを確認してから進めること(engine.js:820 の present 段でしか呼ばれない)。
+## 実装方針(app.js)
+1. **フラグを1つ追加**(無限ループ防止の要)。`demoNoHotels` 等の宣言が並ぶ `app.js:132-137` 付近ではなく、地図関連の近くに:
+   `var autoZoomArmed = false;`(「次の0件で1回だけ引いてよい」券)+ `var autoZoomUsed = false;` は不要 —— **券は使ったら必ず false に戻す方式**にする(これで多重発火が構造的に起きない)。
+2. `flyTo()`(`app.js:433`)の `loadHotelsInView()` を呼ぶ**直前**で `autoZoomArmed = true;` を立てる。`flyTo` 以外の経路(ドラッグ・`onMapMoved`)では絶対に立てない。
+3. `loadHotelsInView()` の成功ハンドラ(`app.js:398-403`)の 0件分岐を次の形にする:
+   ```
+   if (hotels.length) { autoZoomArmed = false; setMapNote(''); return; }
+   if (autoZoomArmed && map.getZoom() - 1 >= MIN_HOTEL_ZOOM) {
+     autoZoomArmed = false;            // ★先に落とす(再入しても2回目は発動しない)
+     map.setZoom(map.getZoom() - 1, { animate: false });
+     saveMapView();
+     setMapNote('もう少し広い範囲で探しています…');
+     loadHotelsInView();               // Overpass 追加1回・キャッシュがあれば0回
+     return;
+   }
+   autoZoomArmed = false;
+   setMapNote('この範囲には宿が見つかりませんでした');
+   ```
+   - ズーム下限13を割らない条件は `map.getZoom() - 1 >= MIN_HOTEL_ZOOM`。
+   - `setZoom` は `animate:false`(`app.js:1277` の `demo=zoomout` と同じ作法)。moveend の debounce と競合しないよう、その場で `loadHotelsInView()` を直接呼ぶ(`flyTo` と同じ考え方)。
+4. **混雑時は再取得しない**: `catch` 分岐(`app.js:404-416`)では自動ズームを一切行わず、`autoZoomArmed = false;` にして現行のバナー文言のままにする(`err.overpassBusy` / `err.tooWide` とも同じ)。AUTOPILOT 規約4(無料APIのマナー)の要請。
+5. **撮影用フラグを新設**: `?demo=autozoom` を `app.js:1170` 付近の demo 判定に追加する。これは `demoStateA` を**立てず**、代わりに「fetchHotelsInBbox の1回目だけ空配列を返す」差し替えを行う(2回目以降は fixture/通常経路)。外部APIを叩かずに「0件→自動で1段引く→2回目で宿が出る」の全経路を再現できる。既存 `?demo=nohotels`(常に0件)は触らない。
 
 ## 完了条件(検証可能)
-- [ ] `node --check assets/engine.js` 通過。
-- [ ] `node scripts/check-all.mjs` が **14本全 PASS(exit 0)**。
-- [ ] `scripts/check-engine.mjs` の**既存アサーション** `scripts/check-engine.mjs:119`
-  `ok(saino.summary.length === 121 && saino.summary.endsWith('…'), ...)`
-  は新仕様で成立しなくなる可能性が高い。実際の値を確かめ、**期待値を新仕様に合わせて書き直す**(無効化・削除はしない)。
-- [ ] 新規テストを最低5ケース追加:
-  1. 上限以下 → そのまま(「…」なし)
-  2. 上限超で 60%以降に句点あり → その句点までで終わり、末尾が「。」で「…」を含まない
-  3. 上限超で句点が 60%より手前にしかない → 従来どおり 120字+「…」(長さ121)
-  4. 句点が1つも無い長文 → 従来どおり 120字+「…」
-  5. 句点がちょうど境界(maxChars 直前/直後)にあるケースの off-by-one
-- [ ] `node scripts/dump-rank.mjs kusatsu` / `hakone` / `dogo` の**並び順に差分が無い**こと(要約文面だけが変わる。順位が動いたら実装が rank に触れている証拠なので差し戻す)。
+- `node scripts/check-autozoom.mjs`(新規・Playwright、`scripts/check-nohotels.mjs` の作りを踏襲)が全 PASS:
+  1. `?demo=autozoom` で、初期 zoom 14 → 最終 zoom が **13** になる(1段だけ引けている)
+  2. 2回目の取得で宿ピンが1個以上描かれ、`.mapnote` が空(hidden)になる
+  3. `?demo=nohotels`(常に0件)では zoom が **13 で止まり 12 にならない**(下限を割らない・2回引かない)
+  4. **地図ドラッグ起点の0件では自動ズームが起きない**(`autoZoomArmed` が立たない経路の確認。`map.panBy` 後に zoom 不変)
+  5. `simulate=overpass504` 相当の混雑時に zoom が変わらず、文言が「宿ピンの取得が混雑中です。…」のままである
+  6. コンソールエラー0件・外部ドメインへの fetch 0回
+- `node scripts/check-all.mjs` が **15本全 PASS**(新規1本を追加登録すること)。
+- `node --check assets/app.js` 通過。
 
 ## 検証手順(撮影+目視)
-1. ローカルサーバを立て、外部APIなしで以下を mobile で撮影(`node C:\workspace\tools\shot\shot.mjs <URL> --mobile`):
-   - `?fixture=kusatsu`(1位 光泉寺)
-   - `?fixture=hakone`(1位 早雲寺)
-   - `?fixture=dogo`(1位 伊佐爾波神社)
-2. 撮った3枚を **Read で開いて目視**し、次を確認して NIGHTLOG に書く:
-   - 1位カードの要約が**文の途中で切れていない**(末尾が「。」か、句点が無いケースだけ「…」)
-   - 要約が極端に短くなっていない(1行しか出ないカードが増えていないか)
-   - カード30枚・番号ピン1〜30 判読可・文字崩れ/重なり/はみ出しなし・コンソールエラー0件
-3. 余裕があれば before/after の1位要約文を NIGHTLOG に1行ずつ並べて比較を残す。
+1. `node scripts/check-autozoom.mjs` → 全 PASS。
+2. `node scripts/check-all.mjs` → 15本全 PASS・exit 0。
+3. 撮影(すべて外部APIなし):
+   - `?demo=autozoom` mobile … 自動ズーム後に宿ピンが出ている画面
+   - `?demo=nohotels` mobile … 従来どおりバナーが出て止まっている画面(デグレなし)
+   - `?fixture=kusatsu` mobile … 状態Bのデグレなし(カード30枚・番号ピン1〜30判読可)
+4. 3枚を Read で目視し、文字崩れ・重なり・はみ出し・バナーと Leaflet 帰属表示の重なりが無いことを確認する。
 
 ## 変更禁止範囲
-- `rank()` / `baseScore()` / 重み・閾値・カテゴリ多様性の減点(engine.js)
-- `assets/geo.js` 全体
-- `fixtures/*.json`(再生成しない。Overpass / Wikipedia を**叩かない**)
-- `stripCoordPrefix()` と `COORD_PREFIX_RE`
-
-## 難易度・所要
-- 難易度: **sonnet**
-- 所要目安: 25〜40分(実装10分 / テスト10分 / check-all 約1分 / 撮影・目視10分 / コミット+push)
-
-## 仕上げ
-- `docs/ROADMAP.md` の R42 を `[x] 2026-09-16` にする。
-- `docs/NIGHTLOG.md` に3行(やったこと / 見た目の確認結果 / 次)を追記。
-- コミット→`git push`(1行の日本語メッセージ)。
+- `assets/engine.js` / `assets/geo.js` / `fixtures/*.json` は**一切触らない**(rank の重み・閾値・除外ルール・Overpass クエリも同様)。
+- `MIN_HOTEL_ZOOM`(13)と `DEFAULT_VIEW.zoom`(14)の値は変更しない。
+- 既存 `check-*.mjs` の中身は編集しない(`check-all.mjs` のリストへの1行追加のみ可)。
+- Overpass への実呼び出しは、本番動作確認をするとしても1サイクル1回まで(原則ゼロでよい)。
