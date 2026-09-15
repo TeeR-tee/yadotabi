@@ -355,7 +355,7 @@
     hotels.forEach(function (h) {
       var icon = L.divIcon({
         className: 'pin pin--hotel',
-        html: '<span>' + hotelEmoji(h) + '</span>',
+        html: '<span role="img" aria-label="' + escapeHtml('宿 ' + h.name) + '">' + hotelEmoji(h) + '</span>',
         iconSize: [30, 30],
         iconAnchor: [15, 15]
       });
@@ -816,7 +816,7 @@
 
     var hotelIcon = L.divIcon({
       className: 'pin pin--hotel',
-      html: '<span>' + hotelEmoji(hotel) + '</span>',
+      html: '<span role="img" aria-label="' + escapeHtml('宿 ' + hotel.name) + '">' + hotelEmoji(hotel) + '</span>',
       iconSize: [30, 30],
       iconAnchor: [15, 15]
     });
@@ -828,7 +828,7 @@
     state.cards.forEach(function (c, i) {
       var icon = L.divIcon({
         className: 'pin pin--spot' + (i < 5 ? ' pin--top' : ''),
-        html: '<span>' + (i + 1) + '</span>',
+        html: '<span role="img" aria-label="' + escapeHtml((i + 1) + '番 ' + c.name) + '">' + (i + 1) + '</span>',
         iconSize: [24, 24],
         iconAnchor: [12, 12]
       });

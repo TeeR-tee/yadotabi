@@ -43,7 +43,7 @@
   </header>
 
   <div class="mapwrap">
-    <div id="map" class="mapwrap__map"></div>
+    <div id="map" class="mapwrap__map" role="region" aria-label="宿をさがす地図"></div>
     <div class="mapnote" id="map-note" hidden></div>
   </div>
 </section>
@@ -55,9 +55,9 @@
     <h1 class="topbar__title" id="feed-title"></h1>
   </header>
 
-  <div id="feed-map" class="feedmap"></div>
+  <div id="feed-map" class="feedmap" role="region" aria-label="周辺の地図"></div>
 
-  <p class="feedstatus" id="feed-status" hidden></p>
+  <p class="feedstatus" id="feed-status" role="status" aria-live="polite" hidden></p>
 
   <div class="feed" id="feed-list"></div>
 

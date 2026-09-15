@@ -72,3 +72,9 @@
 - 見た目の確認結果: `?fixture=kusatsu` の mobile 撮影でヘッダー「草津温泉(固定データ)」・地図ピン30件・カード表示に変化なし、コンソールエラー0件(head追記のみで見た目は不変)。
 - 次: push後の本番curl確認をこのあと追記。R2-1(検索候補とチップの重なり)は朝の相談で保留中。
 - 本番確認: push後、`curl https://teer-tee.github.io/yadotabi/ | grep og:` で og:type/site_name/title/description/url/image/image:width/height/altの9行がヒット。`curl -w "%{http_code} %{size_download}"` で og.jpg は `200 76741`(75KB、200KB以下)。`node docs/check.mjs` は全項目 [OK]、exit code 0。
+
+### 2026-09-16 R13 アクセシビリティ最低限(タップ44px/aria/フォーカス/reduced-motion)
+- やったこと: `.topbar__back` を36→44px、`.chip` に `min-height:44px`(padding不変)、`.feedcard__link` は見た目を太らせたくないので `::after` 疑似要素で当たり判定だけ44pxに広げる方式を選択(理由: リンクチップの視覚サイズを保ちR2の版組を崩さないため)、`gap` を `10px 8px` に。`.far__item a` は `min-height:44px` の inline-flex。番号ピン/宿ピンに `role="img" aria-label`、`#map`/`#feed-map` に `role="region" aria-label`、`#feed-status` に `role="status" aria-live="polite"` を追加。フォーカスリングを `.chip`等6セレクタで `outline:2px solid` に強調、`prefers-reduced-motion` でアニメ/トランジションを全体無効化。地図ピンは24px維持(密集分離への影響回避、方針通り)。
+- check-a11y結果(before→after、375px幅・Playwright実測): 戻るボタン 36→44px OK、エリアチップ 31〜32→44px OK、リンクチップ(判定領域) 28〜29→44px OK、検索候補71.9px OK(無変更)、もっと遠くの開閉46.1px OK(無変更)、もっと遠くの各行 22→44px OK。4画面×6セレクタで全件OK、exitCode 0。コントラストは再計算し表の数値と一致、4.5:1未満の色は増やしていない(faintは対象外のまま)。
+- 見た目の確認結果: `?fixture=kusatsu`/`?demo=zoomout`/`?fixture=hakone&demo=far`/`?fixture=kusatsu&embed=1` のmobile撮影を目視、カード30枚・番号ピン1〜30判読可・リンクチップ折り返し崩れなし・チップ行と検索欄の間延びなし・「もっと遠く」10件の間延びも許容範囲、コンソールエラー0件。
+- 次: R2-1(検索候補とチップの重なり)は朝の相談で保留中。ROADMAP残りはR10/R11/R14/R15/R16。

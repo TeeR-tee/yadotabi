@@ -125,6 +125,9 @@ body {
 
 .chip {
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   padding: 6px 14px;
   border: 1px solid var(--c-border-strong);
   border-radius: var(--r-full);
@@ -213,7 +216,7 @@ body {
 
 .topbar__back {
   flex: 0 0 auto;
-  width: 36px; height: 36px;
+  width: 44px; height: 44px;
   border: none;
   border-radius: var(--r-full);
   background: var(--c-surface-2);
@@ -340,10 +343,11 @@ body {
 .feedcard__links {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--sp-2);
+  gap: 10px 8px;
   margin-top: var(--sp-1);
 }
 .feedcard__link {
+  position: relative;
   padding: 5px 10px;
   border: 1px solid var(--c-border);
   border-radius: var(--r-full);
@@ -351,6 +355,15 @@ body {
   font-weight: 600;
   color: var(--c-text-sub);
   text-decoration: none;
+}
+/* 見た目のサイズは変えず、タップ判定だけ44pxに広げる */
+.feedcard__link::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 44px;
 }
 .feedcard__link:hover {
   border-color: var(--c-primary);
@@ -428,7 +441,12 @@ body {
   gap: var(--sp-2);
 }
 .far__item { font-size: var(--fs-sm); line-height: var(--lh-body); }
-.far__item a { color: var(--c-text); }
+.far__item a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--c-text);
+}
 /* 「🚗85分」は1つの塊。折り返しで「85」と「分」が泣き別れないよう内部で切らせない */
 .far__time {
   color: var(--c-text-sub);
@@ -458,3 +476,28 @@ body {
 
 /* 枠が狭いので下の余白は詰める(safe-area は iframe 内では 0) */
 body.is-embed .view--feed { padding-bottom: var(--sp-4); }
+
+/* --------------------------------------------------------------------------
+   アクセシビリティ: フォーカスリング / reduced-motion
+   -------------------------------------------------------------------------- */
+
+/* 白背景のチップ・リンクでは ui.css の淡い box-shadow が埋もれるので強調する */
+.chip:focus-visible,
+.feedcard__link:focus-visible,
+.topbar__back:focus-visible,
+.suggest__item:focus-visible,
+.far__summary:focus-visible,
+.far__item a:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
