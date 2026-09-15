@@ -22,7 +22,7 @@
 
 ## サイクル手順
 1. 計画役: `docs/NEXT.md` を書く(タスク名・目的・対象ファイル・完了条件・検証方法。150行以内)。
-2. 作業役: 実装 → `node --check` → 撮影(mobile+desktop、必要な画面) → 画像を目視 → `docs/ROADMAP.md` を `[x] 日付` に → `docs/NIGHTLOG.md` に3行追記 → コミット → `git push`。
+2. 作業役: 実装 → `node --check` → 撮影(mobile+desktop、必要な画面) → 画像を目視 → `node scripts/check-all.mjs` が緑であることを確認 → `docs/ROADMAP.md` を `[x] 日付` に → `docs/NIGHTLOG.md` に3行追記 → コミット → `git push`。
 3. 司令塔: 報告を確認し、push 済みかを `git status -sb` で確認。
 
 ## NIGHTLOG の書き方(みのるんが朝に読む)

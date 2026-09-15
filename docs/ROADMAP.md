@@ -1,6 +1,7 @@
 # ROADMAP(自動ループのバックログ。上から順に1つずつ)
 
 ## 品質・基盤
+- [x] 2026-09-16 **R36 `scripts/check-all.mjs`(全検査を1コマンドで)**: `scripts/check-*.mjs` 10本(a11y/chipcurrent/engine/geo/hotelparam/imgfail/more/passive/pinflash/r5)と `docs/check.mjs` を**直列で**順に実行し、各本の PASS/FAIL と所要msを表で出して、1本でも失敗なら exit 1 にする新規スクリプト。7本が同じポート3000に自前でサーバを立てて finally で落とすため並列は不可(EADDRINUSE)。既存 check スクリプトの中身は一切編集せず外から spawnSync で呼ぶだけ。以後の全サイクルの完了条件を「`node scripts/check-all.mjs` が緑」に一本化して検収を軽くするのが狙い。README に「開発者向け」節を新設して1行。詳細は docs/NEXT.md
 - [x] 2026-09-16 **R35 観光対象でない候補の除外漏れ**: R30 の道後観察で「愛媛大学教育学部附属特別支援学校」「松山地方気象台」「松山市青少年センター」等の教育・公共施設が上位30件に混入。rank ではなく除外ルール(`engine.js` の `TITLE_SUFFIX_NG`/`TITLE_KEYWORD_NG`/`EXTRACT_KEYWORD_NG`)の取りこぼし。**`isExcludedArticle` は wiki 側(engine.js:608)でしか呼ばれておらず OSM 側 `buildOsmItems` は素通し**なのが本命の原因。語ベースで除外を拡充し OSM 側にも適用する。誤爆防止に「記念館・資料館・美術館・博物館・道の駅・公園・神社・寺」は保護。rank の重みは触らない。同サイクルの小修正として dogo 1位「伊佐爾波神社」のカテゴリが「記念碑」になる件(geo.js の `CATEGORY_RULES` で `historic=monument` が `place_of_worship` より先)も直す。詳細は docs/NEXT.md
 - [x] 2026-09-16 **R18(最優先) 誤併合バグ**: 「草津温泉バスターミナル」「草津温泉スキー場」が engine.js `isSamePlace` の部分文字列一致により「草津温泉」の Wikipedia 要約・写真を誤って継承している(R17 の作業役が発見・未修正)。ユーザーに間違った情報を見せる実害があるため最優先。判定を厳格化し、R17 の妥当な併合(湯畑源泉→湯畑・光泉寺・石垣山)は維持する。rank の重みは触らない。詳細は docs/NEXT.md
 - [ ] R2-1 検索候補のドロップダウンがエリアチップ行の上に重なって出る(チップ「草津」が候補の背後から半分はみ出して見える)。候補を開いている間はチップを隠す/暗くする等、どちらを見せるか方針を決めて直す。デザイン判断が要るので朝の相談向き

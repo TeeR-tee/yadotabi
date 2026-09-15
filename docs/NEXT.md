@@ -1,98 +1,54 @@
-# NEXT: R33 + R34 — check.mjs に応答時間の記録を追加し、README の画像もリンク検査に含める
+# NEXT: R36 `scripts/check-all.mjs`(全検査を1コマンドで順に実行)
 
-**判断理由**: 残る未完了のうち R11/R14/R19 は rank・fixture 再生成や地図レイアウトの検討を伴い1サイクルに収まらず、R31/R32 は撮影と目視判断が主。R33 と R34 はどちらも `docs/check.mjs` 1ファイルの改修で閉じ、既に毎日 GitHub Actions が回っている足回りに「数字」と「検査範囲」を足すだけなので、まとめて1タスクにするのが最も安全かつ効果的。
+## 選定理由(1行)
+R11/R14/R19/R31/R32 はどれも「撮影して目視」が完了条件で検収コストが高いのに対し、R36 は以後すべてのサイクルの完了条件を `node scripts/check-all.mjs` が緑、の一言に圧縮でき、投資回収が最も早いため。
 
-- 難易度: **sonnet**
-- 所要目安: **20分**
-- 画面の変更: **なし**(撮影は不要。ただし後述の通り `node docs/check.mjs` の出力を貼ること)
-
----
+## 目的
+現在 `check-*.mjs` が10本 + `docs/check.mjs` の計11本あり、作業役が毎回どれを走らせたか報告文で列挙している(漏れも起きうる)。これを1コマンドにまとめ、pass/fail と所要時間を表で出し、1本でも落ちたら exit 1 にする。
 
 ## 対象ファイル(絶対パス)
+- 新規: `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-all.mjs`
+- 追記のみ: `C:\workspace\claude\旅行先用サイト\yadotabi\README.md`(「開発者向け」節を新設し1〜3行。既存の節は触らない)
+- 追記のみ: `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md`(R36 を `[x]` に)
+- 追記のみ: `C:\workspace\claude\旅行先用サイト\yadotabi\docs\NIGHTLOG.md`(3行)
 
-- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\check.mjs` — **この1本だけ**を編集する
-- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md` — R33・R34 を `[x] 2026-09-16` にする
-- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\NIGHTLOG.md` — 3行追記(**「## 朝のまとめ」節の直後**、R35 節の上に新しい節を置く。朝のまとめは常に最上部)
+## 計画役が実物で確認済みの事実(再調査不要)
+- `scripts/` の check 系は **ちょうど10本**: a11y / chipcurrent / engine / geo / hotelparam / imgfail / more / passive / pinflash / r5。
+- **全11本が exit code を返す**: engine と r5 は `process.exit(fail ? 1 : 0)`、他8本は `process.exitCode = fail ? 1 : 0`(catch でも 1)、`docs/check.mjs` は `hasFailure` で exitCode。
+- **7本(a11y/chipcurrent/hotelparam/imgfail/more/passive/pinflash)が自分で `python -m http.server 3000 --bind 127.0.0.1` を spawn し、finally で kill している**。engine / geo / r5 はサーバ不要(純 Node)。`docs/check.mjs` は本番URLへの GET のみ。
 
-## 実装方針(check.mjs の実物に即して)
-
-### (A) R33: 応答時間(ms)の記録
-
-現状 `report(label, ok, detail)` が `[OK] ラベル - 詳細` の1行を出している(30〜34行目)。fetch は3か所ある: `checkTarget`(40行目)、`collectLinks`(89行目)、`checkLink`(150行目・HEAD失敗時のGET再試行158行目)。
-
-1. 計測用の小さなヘルパを1つ足す。例:
-   ```js
-   const timings = []; // { label, ms }
-   async function timedFetch(label, url, options) {
-     const t0 = performance.now();
-     const res = await fetch(url, options);
-     const ms = Math.round(performance.now() - t0);
-     timings.push({ label, ms });
-     return { res, ms };
-   }
-   ```
-   `performance` は Node 18+ でグローバルに使える(`require`/`import` 不要)。
-2. 上記3か所の `fetch` をこのヘルパ経由に置き換え、**成功行の detail に `123ms` を併記**する。既存の detail がある行(JSサイズ等)は書式を壊さない範囲で併記してよいが、**HTTP 200 の行(50行目 `report(\`${path} (HTTP 200)\`, true)`)に ms を出すのが最低要件**。リンク検査の行(164行目)にも同様に併記する。
-3. fetch が例外を投げた場合は timings に積まない(計測不能なので)。
-4. **スクリプト末尾**(現状175行目の `if (hasFailure)` の直前)に集計を出す:
-   - `合計 N件 / 総計 XXXXms / 平均 XXXms`
-   - `最遅: <ラベル> XXXms`
-   これは `console.log` で素直に出す。`report()` を使わない(OK/NG の判定対象ではないため)。
-5. **閾値による失敗判定は絶対に付けない**。遅くても `hasFailure` を立てない(GitHub Pages の揺らぎで Actions を赤くしないため)。
-
-### (B) R34: README.md の画像もリンク検査に含める
-
-現状 `HTML_PAGES`(84行目)は3つのHTMLのみ。README.md は Markdown なので `collectLinks` の HTML 用正規表現とは別扱いにする。
-
-1. `collectMarkdownLinks(page)` を新設し、`BASE + 'README.md'` を GET する。
-   - **注意**: GitHub Pages は README.md をそのまま配信する(Jekyll の有無で挙動が変わる可能性がある)。もし本番で README.md が 404 になる場合は、**リポジトリ内のローカルファイル `README.md` を `node:fs` で読んで参照先だけ本番URLで検査する**方式に切り替えてよい。どちらを採ったか NIGHTLOG に1行書くこと。
-2. 抽出する2形式:
-   - `<img src="docs/shots/state-a.jpg" ...>` — HTML タグ形式(現状 README にある3件はこれ)
-   - `![alt](docs/xxx.jpg)` — Markdown 記法(将来のため対応しておく)
-     正規表現例: `/!\[[^\]]*\]\(([^)\s]+)/g`
-3. 抽出したパスは既存の `checkLink(page, path)` にそのまま流す。ラベルは `リンク README.md → docs/shots/state-a.jpg` の形になる。
-4. **外部ドメイン(`https?://` で始まり BASE 以外)は従来どおり fetch しない**。件数だけ `(検査対象外)` として1行 OK 表示するのは既存 `collectLinks` と同じ扱いでよい。
-5. アンカー(`#...`)、`mailto:`、`javascript:` は既存同様スキップ。
-
-### やらないこと
-
-- 既存の OK/NG 判定ロジック・TARGETS の中身は変えない。
-- README.md 自体を書き換えない(画像を足したり減らしたりしない)。
-- 外部ドメインへの fetch を増やさない。
+## 実装方針
+1. `scripts/check-all.mjs` を新規作成。Node 標準の `node:child_process` のみ使用(依存追加なし)。
+2. 実行対象の配列を先頭に定数で持つ(`docs/check.mjs` を含む11本)。**ファイルの自動 glob ではなく明示リスト**にして、新しい検査を足したときに人が1行足す形にする(意図しないファイルを拾わない)。
+3. **必ず直列(逐次)実行**する。7本が同じポート3000を取り合うため、並列にすると `EADDRINUSE` で偽の赤が出る。
+4. **共有サーバ化は「検討したがやらない」を既定とする**。各テストが finally で kill する設計なので、外から1回だけ立てた 3000 は最初のテストに殺される。既存 check スクリプトの中身を書き換えるのは変更禁止範囲なので、**各テストの既存挙動にそのまま任せる**。所要時間が実測で著しく長い(合計5分超など)場合のみ NIGHTLOG に事実として書き、改修は別タスクに起票する(このサイクルではやらない)。
+5. 各本は `spawnSync(process.execPath, [script], { stdio: 'inherit', cwd: リポジトリルート })` で起動し、`Date.now()` の差で所要ミリ秒を測る。`status !== 0` を fail とする。
+6. 全本終了後にサマリ表を出す。列は `#` / `script` / `result`(PASS/FAIL) / `ms`。末尾に「N本中 M本 PASS / 合計 X.Xs / 最遅: <script> (Y.Ys)」の1行。
+7. 最後に `process.exitCode = anyFail ? 1 : 0`。
+8. 1本落ちても**残りを止めずに最後まで走らせる**(どこまで壊れているかを1回で把握したいため)。ただしサマリでは FAIL を明示。
+9. README に「開発者向け」節を新設し、`node scripts/check-all.mjs` で全検査を一括実行できる旨を1〜3行で書く(Python3 と Playwright が要る点にも1行触れてよい)。
 
 ## 完了条件(検証可能)
-
-1. `node docs/check.mjs` が **exit 0**(全項目 OK)で終わる。
-2. 出力の各成功行に応答時間 `NNNms` が併記されている。
-3. 末尾に「合計件数 / 総計ms / 平均ms / 最遅項目」の集計行が出ている。
-4. 出力に `リンク README.md → docs/shots/state-a.jpg`(および state-b.jpg / embed.jpg)の3行があり、いずれも OK。
-5. わざと壊した場合に NG になることを1回だけ確認する: 一時的に README の画像パスを存在しない名前に差し替えた文字列でテストするか、`checkLink` に存在しないパスを1回渡して NG 行が出ることを確かめ、**確認後は必ず元に戻す**(コミット前に `git diff` で check.mjs 以外に差分が無いことを見る)。
-6. 遅い応答でも `hasFailure` が立たない(= exit 0 のまま)ことをコード上で確認する。
+- `node scripts/check-all.mjs` が**11本すべて PASS の表を出して exit 0** で終わる(`echo $LASTEXITCODE` / `echo $?` で確認)。
+- 表に **11行**あり、各行に PASS と所要ミリ秒が入っている。末尾サマリ行が出ている。
+- **意図的に1本壊すと exit 1 になる**: scratchpad に `process.exit(1)` するだけのダミー .mjs を作って `SCRIPTS` 配列に一時的に足す、**または**実行対象の1本を一時的に存在しないパスに書き換えて走らせ、そのぶんが FAIL で表に出て exit 1 になることを確認する。**確認後は必ず元に戻し、戻した状態で再度 exit 0 になることを確かめてからコミットする**(既存 check-*.mjs 本体は絶対に書き換えない)。
+- README に「開発者向け」節が存在し、`node scripts/check-all.mjs` が書かれている。
 
 ## 検証手順
-
-```
-node --check docs/check.mjs
-node docs/check.mjs            # 出力全文を NIGHTLOG に貼らず、要点(件数・最遅・README3行)だけ書く
-echo $LASTEXITCODE             # PowerShell の場合。0 であること
-node scripts/check-engine.mjs  # デグレ確認(engine/geo は触っていないが念のため)
-node scripts/check-geo.mjs
-```
-
-撮影は不要(画面に変更がないため)。ただし NIGHTLOG の「見た目の確認結果」には「画面変更なしのため撮影省略。`node docs/check.mjs` の全項目OK・exit 0 を確認」と正直に書くこと。
+1. `node --check scripts/check-all.mjs`
+2. `node scripts/check-all.mjs` → 全緑・exit 0 を確認(表を報告に貼る)
+3. 上記の「意図的に1本壊す」手順で exit 1 を確認 → 元に戻して再度 exit 0
+4. `git diff --stat -- assets fixtures index.html` が**空**であること(コード本体は無変更)
+5. 画面変更が無いため撮影は省略してよい。ただし NIGHTLOG に「画面変更なしのため撮影省略」と明記する
 
 ## 変更禁止範囲
+- `assets/` 配下すべて(app.js / engine.js / geo.js / style.css / tokens.css / ui.css)
+- `fixtures/` 配下すべて
+- **既存の `scripts/check-*.mjs` 10本と `docs/check.mjs` の検査内容**(1行も編集しない。check-all.mjs は外から呼ぶだけ)
+- `index.html`、`demo/` 配下
+- README の既存の節(追記のみ)
+- git stash / reset --hard / checkout でのファイル復元は禁止
 
-- `assets/` 配下(app.js / geo.js / engine.js / style.css / tokens.css / ui.css)— **一切触らない**
-- `fixtures/` 配下の JSON — **一切触らない**(再生成もしない)
-- `index.html`、`demo/*.html`、`README.md` — 今回は読むだけ
-- `scripts/check-*.mjs`(10本)— 今回は実行するだけで編集しない
-- rank の重み・閾値 — 無関係なので触らない
-- git stash / reset --hard / checkout でのファイル復元は禁止(AUTOPILOT 規約7)
-
-## 最後にやること
-
-1. `docs/ROADMAP.md` の R33・R34 を `- [x] 2026-09-16 ...` にする
-2. `docs/NIGHTLOG.md` の **朝のまとめ節の直後**に3行(やったこと / 見た目の確認結果 / 次)を追記
-3. **まず先にコミット**して `git push`。コミットメッセージは1行の日本語で簡潔に
-4. 報告は簡潔に(長文の報告書を書かない)
+## 難易度・所要目安
+- 難易度: **sonnet**(新規1ファイル + README 1行。ロジックは spawnSync と表整形のみ)
+- 所要目安: 実装15分 + 検証(11本の実走を2回)10〜20分 = **25〜35分**

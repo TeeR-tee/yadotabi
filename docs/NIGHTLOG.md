@@ -145,6 +145,11 @@
 - 見た目の確認結果: `?demo=zoomout` の mobile/desktop でチップ全20件が横1行に並び、文字切れ・改行なし、右端にフェードが見える(desktopは`.chips{max-width:560px}`配下でも同様に機能)。`?fixture=kusatsu&simulate=empty` の mobile で説明文が2行に収まった。`?fixture=kusatsu`/`?fixture=hakone` の mobile はカード30枚・番号ピン判読可でデグレなし。`node --check assets/app.js` 通過、コンソールエラー0件。
 - 次: ROADMAP の残り(F3 受動ログ / R10・R11 の小改善)へ。R2-1 は朝の相談待ち。
 
+### 2026-09-16 R36 `scripts/check-all.mjs`(全検査を1コマンドで直列実行)
+- やったこと: 新規 `scripts/check-all.mjs` を作成。`node:child_process` の `spawnSync` のみで既存 `check-*.mjs` 10本 + `docs/check.mjs` を明示リストの順に直列実行し、各本の PASS/FAIL と所要msを表で出力、1本でも FAIL なら `process.exitCode=1` にした(既存 check 本体は無編集)。README に「開発者向け」節、`docs/AUTOPILOT.md` のサイクル手順に検証項目を1行ずつ追記。
+- 見た目の確認結果: 画面変更なしのため撮影省略。11本全PASSの表を目視、意図的に1本を存在しないパスへ差し替えて FAIL+exit 1 を確認後、元に戻して再度全PASS+exit 0 を確認した。
+- 次: `node scripts/check-all.mjs`(合計約54秒)を以後の全サイクルの完了条件にする。ROADMAP残りはR11/R14/R19/R23/R28/R31/R32/R33/R34。朝の相談は前回分(wiki件数50vs34の食い違い)が引き続き未決。
+
 ## 朝の相談(判断が要るもの)
 
 - **検索候補を開いたとき、エリアチップをどうするか(R2-1)**: 候補のドロップダウンは検索欄の真下に出るので、その下にあるエリアチップ行に必ず重なる。いまはチップが候補の背後から半分はみ出して見えていて雑な印象。(a)候補が開いている間はチップを隠す、(b)チップを薄くする、(c)このままでよい、のどれがよいか。実装はどれも数行だが「入力中にチップが消えるのは親切か」という好みの話なので判断を仰ぎたい。
