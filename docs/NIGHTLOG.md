@@ -273,3 +273,8 @@
 - やったこと: `engine.js`の`buildLinks(item, hotel)`が、宿座標が有限なら`https://www.google.com/maps/dir/?api=1&origin=<宿>&destination=<スポット>&travelmode=walking`を返すよう変更(`toCard`から`hotel`を渡すだけ)。宿座標が非有限なら従来の検索URLへフォールバック。`check-engine.mjs`にdir形式・origin/destination/travelmode・フォールバック・far側の4観点を追加。
 - テストと目視: `check-engine.mjs`159 pass/0 fail、`check-all.mjs`13本全PASS。`dump-rank.mjs kusatsu/hakone`は変更前後で完全に差分ゼロ(順位・名前・カテゴリ・距離は不変、このツールはlinksを出力しないため差分なしが期待通り)。`?fixture=kusatsu`mobileをRead目視しカード30枚・番号ピン判読可・リンクチップ崩れなしを確認。Playwrightで光泉寺の実リンクを1件取得: `https://www.google.com/maps/dir/?api=1&origin=36.6226%2C138.596&destination=36.6218107%2C138.5952868&travelmode=walking`(叩いていない)。
 - 次: ROADMAP残りはR11/R14/R19/R23/R28/R30/R33/R34。朝の相談は前回分(wiki件数50vs34の食い違い)が引き続き未決。
+
+### 2026-09-16 R41 README「仕組み」節を現状に合わせて更新(文書のみ)
+- やったこと: README.mdの「仕組み(かんたん解説)」節に段階描画・重複マージ・除外ルール・Wikipedia同心円3段geosearch・受動ログの説明を追記し、URLパラメータ一覧(hotel/q/fixture/embed/slow/perf/simulate/demoの8種、app.js実装とgrepで照合)を新設。「自動リトライはしません」の誤記(R4実装後は誤り)と「10本」の誤記(実際は12本+docs/check.mjsで計13本)を修正、ファイル構成にscripts/fixtures/demo/docsの説明を追加。「今後」節の実装済み項目(埋め込み・受動ログ)を削除。docs/ROADMAP.mdは完了済み[x]を「## 完了(2026-09-16)」節に集約(未完了8件はR2-1/R11/R14/R19/R28/R37/R39/R40のまま元の文面で残置)。
+- 確認結果: `node docs/check.mjs`全OK、`node scripts/check-all.mjs`13本全PASS、`git diff --stat -- assets fixtures index.html demo scripts`は空(コード無変更)。画面変更なしのため撮影は省略。
+- 次: ROADMAP残りはR2-1(朝の相談向き)/R11/R14/R19/R28/R37/R39/R40。
