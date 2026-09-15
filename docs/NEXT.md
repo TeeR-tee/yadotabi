@@ -1,68 +1,54 @@
-# NEXT: R17 候補収集の取りこぼし調査と修正
+# NEXT: R18 誤併合の修正(施設語つきの別スポットが「草津温泉」の要約・写真を継承する)
 
-難易度: opus / 所要目安: 40〜60分
+難易度: **opus** / 所要目安: 60〜90分 / 1サイクル1タスク
 
-## なぜこれを選んだか(1行)
-09ノートの観察は rank の偏りに見えるが、事前調査で大涌谷・彫刻の森は座標も半径条件も満たしており「rank で負けている」のではなく collect 段階で落ちているバグ寄りの問題なので、研究課題(R2-1等)より先に潰す価値がある。
+## 選定理由(1行)
+R17 の作業役が発見した未修正バグで、**ユーザーに間違った写真と説明を見せる正確性の実害**があるため、他の見た目改善(R10/R11/R14/R15/R16)より最優先。
 
-## 前提(計画役が実測済み・ここから始めてよい)
-`node -e` で fixtures を直接読んで確認した事実。**NIGHTLOG の「大涌谷は座標欠落」は誤りなので信じないこと。**
+## 何が起きているか
+`engine.js` の `isSamePlace()`(348〜364行)の最後の1行
+```js
+return na.indexOf(nb) !== -1 || nb.indexOf(na) !== -1;   // 363行
+```
+が「一方の名前が他方を含む」だけで同一地点とみなす。その結果:
 
-- `fixtures/hakone.json` の `overpass.elements`
-  - 大涌谷 = `way/727045804`。`lat`/`lon` は `undefined` だが **`center: {lat:35.2467581, lon:139.0250167}` を持つ**。宿(35.2324,139.1069)から **7.6km**。tags に `natural=valley` `tourism=attraction` `wikipedia=ja:大涌谷` `wikidata=Q1134429`。
-  - 彫刻の森美術館 = `node/5182750902`。`lat=35.2442838 lon=139.0520834` と**正常な座標を持つ**。**5.2km**。
-  - どちらも `engine.js` の `OSM_RADIUS_M = 15000`(21行目)の内側。
-  - `geo.js` の 703〜706 行は既に `el.center` フォールバックを実装済み。つまり **座標は落ちていない**。
-- `fixtures/hakone.json` の `wiki.query.pages` は 50件。座標つき40件の距離は **最小6m〜最大3,720m**。`WIKI_RADIUS_M = 10000` を指定しているのに 50件上限で **3.7km で頭打ち**。大涌谷・彫刻の森の記事は 50件に入っていない。
-- `fixtures/kusatsu.json` も Wikipedia 50件で、**「湯畑」の記事は含まれない**。湯畑の OSM 要素は `relation/12852884`(`leisure=hot_spring` `tourism=attraction` `name=湯畑`、`wikipedia`/`wikidata` タグ**なし**)。
+- 「草津温泉バスターミナル」「草津温泉スキー場」が「草津温泉」(Wikipedia記事)を**含む**ため、150m以内なら記事の要約・写真・リンクを**誤って継承**する。
+- 逆方向の危険もある: `mergeOsmDuplicates()`(380〜413行)は代表名に**短い方**を採るので、誤併合すると長い方(=実在の別施設)の名前が消える。
 
-→ 仮説は3本立て。(a)(b) は OSM 側のどこかの絞り込み、(c) は Wikipedia geosearch の 50件上限。
+一方で R17 が意図的に入れた**妥当な併合は維持しなければならない**:
+「湯畑源泉」→「湯畑」、「草津山 光泉寺」→「光泉寺」、「石垣山城 / 石垣山一夜城 / 史跡 石垣山」→「石垣山」。
 
 ## 対象ファイル(絶対パス)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\geo.js`
-- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\engine.js`
-- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\NIGHTLOG.md`(記録)
-- `C:\workspace\claude\旅行先用サイト\計画書一式\09_研究ノート_認知外を提案するアルゴリズム.md`(原因の追記、「6. 実験ログ」の 2026-09-16 節)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\engine.js` (唯一の実装変更対象)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-engine.mjs` (テスト追加。**注意: R17 の NIGHTLOG は「80件 pass」と書いているが、このファイルは git 管理下に存在しない**。無ければ既存の `scripts/check-a11y.mjs` / `scripts/dump-rank.mjs` の作法に合わせて新規作成し、今回のケースを最低限カバーすること)
 
-## 実装方針(必ず実物を読んでから)
-### 手順1: どこで消えるかを特定する(コードを書く前)
-scratchpad に使い捨ての Node スクリプトを置き、fixture を読んで `geo.js` / `engine.js` の各段の通過数を数える。以下の順に大涌谷・彫刻の森が生き残っているかを1段ずつ確認すること。
-
-1. `geo.js` `buildOverpassQuery()`(510行) — **最有力候補**。`around` 句に続くタグフィルタの列挙に `natural=valley` や `tourism=museum` が入っているか。fixture は `make-fixture.mjs` が別のクエリで取った生データなので、**fixture には在るがアプリのクエリでは取らない**という食い違いがあり得る。ただし fixture モードでは Overpass を叩かないのでクエリは効かない → その場合は下の 2〜4 が原因。
-2. `geo.js` `pickName(tags)`(603行) — `name` を拾えているか。
-3. `geo.js` `detectCategory(tags)`(532行) — `natural=valley` が分類不能で除外されていないか。**分類できないものを捨てているなら、それが取りこぼしの本体**。
-4. `geo.js` `fetchSpots()` の dedupeKey(708行) — `name + '@' + lat.toFixed(3) + ',' + lon.toFixed(3)`。同名の別要素が先に `seen` に入って後勝ちで消えていないか(湯畑・大涌谷は node と relation の両方があり得る)。
-5. `engine.js` `buildOsmItems()`(400行)の `isFinite(spot.lat)` — ここまで来ていれば通るはず。
-6. `engine.js` `isExcludedArticle()`(226行) / `isHotelItself()`(322行) / `isSamePlace()`+`mergeIntoOsm()`(343・357行)の dedupe — `normalizeName()`(141行)の正規化で別物が同一視されて片方消えていないか。
-
-**先に `grep` で fixture の生JSONを確認すること**(上の「前提」は計画役が実施済みなので再確認は任意)。特定できた行番号と理由を NIGHTLOG に必ず書く。
-
-### 手順2: 取りこぼしの解消だけを直す
-許される修正は「本来拾えるはずのものを拾えるようにする」ものに限る。想定される修正:
-- `detectCategory` に `natural=valley`(景勝)・`tourism=museum`(美術館博物館) など**取りこぼしているタグの追加**、および分類不能時に除外せず `other` に落とす方針への変更。
-- `buildOverpassQuery` に不足タグを追加(実APIでも取れるようにする。fixture 再生成はしない)。
-- dedupe の名前正規化の改善(`normalizeName`)。同名異所を潰さないよう座標も見る等。
-- Wikipedia geosearch の 50件上限回避: `fetchWikiNearby()`(861行)で**半径を分割して複数回問い合わせる**(例: 0-3km / 3-6km / 6-10km)かリスト分割。**fixture モードでは外部APIを叩かないので、fixture に無い記事は取れない。その場合は「fixture の Wikipedia 50件に湯畑・大涌谷の記事が無い」ことを結論として 09 に追記し、コードは実APIで効く形に直すだけでよい。**
-
-## 変更禁止範囲(厳守)
-- `engine.js` の `rank()` / `baseScore()` / `seasonBonus()` の**重み・係数・閾値を一切変えない**。
-- `fixtures/*.json` を**再生成しない・編集しない**(Overpass を叩かない)。
-- `OSM_RADIUS_M` / `WIKI_RADIUS_M` の値変更は原則しない(必要と判断したら NIGHTLOG に理由を書いて相談に回す)。
-- UI/CSS は触らない。
+## 実装方針
+1. **まず実物を読む**: `engine.js` の `normalizeName`(141行)/ `isSamePlace`(348行)/ `mergeOsmDuplicates`(380行)/ `collect` 内の wiki 突き合わせ(536〜555行)を読み、どの経路で誤継承が起きるかを特定する。
+2. **誤併合の具体例を全部列挙してから直す**: `fixtures/kusatsu.json` と `fixtures/hakone.json` を Node で読み、`normalizeName` を使って「一方が他方を包含し、かつ 150m 以内」の組を**全ペア洗い出して一覧にする**(scratchpad の使い捨てスクリプトでよい)。そのうち妥当な併合／誤併合を目視で仕分けし、修正後に「誤併合だけが消え、妥当な併合は残る」ことを同じスクリプトで確認する。
+3. **判定の厳格化(方針)**: 包含が成立したとき、**含む側の余り部分(差分文字列)**を見て判断する。
+   - 差分が施設・付帯設備を表す語(例: 駅・バスターミナル・ターミナル・バス停・スキー場・ゴルフ場・駐車場・IC・インターチェンジ・入口・出口・前・口・源泉…ではなく**源泉は除外**、ロープウェイ・ゴンドラ・索道・停留所・トンネル・橋・郵便局・支所・出張所 等)なら**別物**とする。
+   - 逆に R17 の妥当ケースは差分が「源泉」「城」「一夜城」「史跡」「草津山(山号)」なので、**これらは併合を維持**する。除外語リストは「施設語(=別物)」を列挙する方式にし、迷ったら**併合しない側**に倒す(誤継承の害 > 重複カードの害)。
+   - 施設語リストは `engine.js` 冒頭の定数群(`DEDUPE_NEAR_M` が 38行にある付近)に定数として置き、コメントで判断基準を書く。
+   - 併用案として、包含一致だけの組は距離しきい値をより厳しく(例: 50m)してもよい。ただし湯畑源泉(20m差)・光泉寺・石垣山が維持できることを 2. の一覧で確認してから採用すること。
+4. **rank には一切触らない**。`rank()` / `baseScore()` / 重み・閾値・カテゴリ多様性は変更禁止。
 
 ## 完了条件(検証可能)
-1. `node scripts/dump-rank.mjs hakone` で **大涌谷と彫刻の森美術館が候補30件(または far)に現れる**。順位は問わない。現れない場合は「fixture に無い/クエリで取れない」原因を特定し 09 に書けば可とする。
-2. `node scripts/dump-rank.mjs kusatsu` で **湯畑が上位10位以内かつ source=both**。
-   - ただし kusatsu.json の Wikipedia 50件に湯畑の記事が無いことは実測済みなので、fixture モードでは source=both は原理的に達成できない可能性が高い。その場合は **(a)順位が26位より上がったこと (b)both にできない理由(geosearch 50件上限)** の2点を 09 と NIGHTLOG に書けば完了とみなす。無理に rank をいじって順位を上げてはいけない。
-3. 既存テスト `check-engine.mjs`(scratchpad) が**全 pass**。
-4. `node --check assets/geo.js` と `node --check assets/engine.js` が通る。
+- `node scripts/dump-rank.mjs kusatsu` と `node scripts/dump-rank.mjs hakone` の出力で、名前に「バスターミナル」「スキー場」「駐車場」「駅」を含む候補が **Wikipedia 要約・写真を持たない(source=osm)** こと。
+- R17 の妥当な併合が**維持**されている: 草津で「湯畑」1件(「湯畑源泉」が別カードとして復活していない)、「光泉寺」が写真+要約+公式サイト付きで上位、箱根で「石垣山」が1件に集約されたまま。
+- `node scripts/check-engine.mjs` が全 pass(誤併合ケースのテストを**追加**した状態で)。追加するテスト最低3件: (a)「草津温泉バスターミナル」vs「草津温泉」→ 別物、(b)「湯畑源泉」vs「湯畑」→ 同一、(c)「草津山 光泉寺」vs「光泉寺」→ 同一。
+- `node --check assets/engine.js` 通過。
+- `node docs/check.mjs` は push 後に実行し全項目 OK。
 
 ## 検証手順
-1. 修正**前**に `node scripts/dump-rank.mjs kusatsu` と `... hakone` の出力を scratchpad に保存(before)。
-2. 修正後に同じ2コマンドを実行(after)。**before/after の差分(順位が動いた件名と順位)を NIGHTLOG に表で残す。**
-3. 撮影: `node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=kusatsu" --mobile` と `?fixture=hakone` の mobile 2枚。画像を Read で開き、カード枚数・番号ピンの判読性・リンクチップの折り返しにデグレが無いことを目視。
-4. `node docs/check.mjs`(push 後)。
-5. NIGHTLOG に3行 + 差分表、09 の「6. 実験ログ」に原因を追記。
+1. `node scripts/dump-rank.mjs kusatsu > before.md` を**修正前に**取り、修正後と差分を取って「消えたカード／増えたカード」を全部説明できること(説明できない差分があれば直しきれていない)。箱根も同様。
+2. `node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=kusatsu" --mobile` と `?fixture=hakone` を撮影し、画像を Read で目視。カード30枚・番号ピン1〜30判読可・リンクチップの折り返し崩れなし・コンソールエラー0件。
+3. 誤併合していたカードが「正しい写真なし/要約なし」になっているか、カード本文を目視で1件ずつ確認する。
 
-## 完了したら
-ROADMAP の R17 を `[x] 2026-09-16` に。**まずコミットしてから、報告は簡潔に(長文の報告書を書かない)。**
+## 変更禁止範囲
+- `rank` の重み・閾値・カテゴリ多様性減点(朝の相談で保留中の設計判断)
+- `fixtures/*.json`(再生成しない。Overpass を叩かない)
+- `assets/geo.js`
+- git stash / reset --hard / checkout でのファイル復元
+
+## 終わったら
+実装が終わったら**まず先にコミット**し、`docs/ROADMAP.md` の R18 を `[x] 日付` に、`docs/NIGHTLOG.md` に3行(やったこと/見た目の確認結果/次)を追記して push。報告は簡潔に(長文の報告書を書かない)。

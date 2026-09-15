@@ -39,6 +39,82 @@
   // ホテル自身とみなす距離
   var HOTEL_SELF_M = 50;
 
+  /**
+   * 「長い名前が短い名前を含む」ときに、それでも**別物**とみなす差分語。
+   *
+   * 包含だけを根拠に併合すると、「天成園足湯」が温泉ホテル「天成園」の記事を、
+   * 「草津温泉バスターミナル」が「草津温泉」の記事を継承してしまう。
+   * 写真と要約が別物のものに化けるのは、カードが1枚重複するより実害が大きい。
+   *
+   * 判断基準: 差分が「その場所そのもの(別表記・山号・旧称・指定名)」なら併合、
+   * 差分が「その場所の中/近くにある別の施設・設備」なら別物。迷ったら別物に倒す。
+   * 例: 「湯畑源泉」-「湯畑」の差分は『源泉』= 同じ湯畑を指す別表記なので併合する。
+   *     「天成園足湯」-「天成園」の差分は『足湯』= 敷地内の別施設なので併合しない。
+   *
+   * 逆に「本堂」「庫裡」「社殿」は寺社の主要建物で、記事も写真も寺社そのものを
+   * 指すため、あえてここには入れない(併合を維持する)。
+   */
+  var FACILITY_DIFF_WORDS = [
+    // 交通
+    '駅', 'バスターミナル', 'ターミナル', 'バス停', '停留所', '駐車場', 'パーキング',
+    'インターチェンジ', 'ジャンクション', 'ロープウェイ', 'ゴンドラ', '索道',
+    'リフト', 'ケーブルカー', '乗り場', '乗場', '船着場',
+    // 付帯設備・入口
+    '入口', '入り口', '出口', '登山口', '広場', 'トイレ', '売店',
+    '休憩所', '案内所', 'ビジターセンター', '展望台', '展望所',
+    // 敷地内の別施設
+    '足湯', '浴場', '露天風呂', 'スキー場', 'ゴルフ場', 'キャンプ場',
+    '遊園地', '動物園', '植物園', 'グラウンド', 'グランド',
+    'ホテル', '旅館', '会館', '支所', '出張所', '郵便局',
+    // 土木構造物
+    'トンネル', 'ダム'
+  ];
+
+  /**
+   * 短い名前の**後ろ**に付いたときだけ別物とみなす語(「〜の末端に付く施設」)。
+   * 前に付くときは正式名の修飾でしかないので効かせない。
+   * 例: 「伊東市観光会館別館」(後ろ=別施設) vs
+   *     「小田原市郷土文化館分館 松永記念館」(前=正式名の修飾。同じ場所)
+   * 「前」「口」「橋」など1文字語は他の語に紛れ込みやすいので、
+   * 後片の**末尾**に来たときだけ効かせる。
+   */
+  var FACILITY_TAIL_WORDS = ['前', '口', '橋', '港', '堰', 'ic', '別館', '分館'];
+
+  /**
+   * 差分(長い名前から短い名前を抜いた残り)が施設語かどうか。
+   * 残りのどこかに施設語が現れたら別物とみなす。誤って別物にしても
+   * 重複カードが1枚出るだけで済むので、迷ったら別物に倒す。
+   *
+   * 差分は normalizeName 済みの文字列(長音「ー」が落ち、小文字化されている)なので、
+   * 語の方も同じ正規化を通してから比べる。normalizeName は下で定義されるため、
+   * 初回呼び出し時に一度だけ作る。
+   * @param {string[]} parts 短い名前で分割した残り。parts[0] が前片、
+   *                         parts[1] 以降が後片(短い名前より後ろ)。
+   */
+  var facilityWordsNorm = null;
+  var facilityTailNorm = null;
+
+  function diffLooksLikeFacility(parts) {
+    if (!facilityWordsNorm) {
+      facilityWordsNorm = FACILITY_DIFF_WORDS.map(normalizeName).filter(Boolean);
+      facilityTailNorm = FACILITY_TAIL_WORDS.map(normalizeName).filter(Boolean);
+    }
+    for (var p = 0; p < parts.length; p++) {
+      var diff = parts[p];
+      if (!diff) continue;
+      for (var i = 0; i < facilityWordsNorm.length; i++) {
+        if (diff.indexOf(facilityWordsNorm[i]) !== -1) return true;
+      }
+      // 末端語は「短い名前より後ろの片」の末尾に来たときだけ
+      if (p === 0) continue;
+      for (var j = 0; j < facilityTailNorm.length; j++) {
+        var w = facilityTailNorm[j];
+        if (diff.length >= w.length && diff.slice(-w.length) === w) return true;
+      }
+    }
+    return false;
+  }
+
   // ---------------------------------------------------------------------------
   // 除外ルール(信頼の最低ライン)
   //
@@ -343,7 +419,8 @@
   /**
    * 同じ場所かどうか。
    * (1) 正規化した名前が一致する、または
-   * (2) 150m 以内で、一方の名前が他方を含む(「草津温泉」と「草津温泉 湯畑」など)
+   * (2) 150m 以内で、一方の名前が他方を含み、かつ差分が施設語でない
+   *     (「湯畑源泉」と「湯畑」は同じ。「天成園足湯」と「天成園」は別物)
    */
   function isSamePlace(a, b) {
     // OSM 要素が wikipedia タグで記事を名指ししているときは、それが最も確かな一致。
@@ -360,7 +437,12 @@
     if (na === nb) return true;
     var d = distanceBetween(a.lat, a.lon, b.lat, b.lon);
     if (d > DEDUPE_NEAR_M) return false;
-    return na.indexOf(nb) !== -1 || nb.indexOf(na) !== -1;
+    // 包含が成立しないなら別物
+    var longer = na.length >= nb.length ? na : nb;
+    var shorter = na.length >= nb.length ? nb : na;
+    if (longer.indexOf(shorter) === -1) return false;
+    // 包含していても、差分が「敷地内の別施設」を表す語なら別物として扱う
+    return !diffLooksLikeFacility(longer.split(shorter));
   }
 
   /**
