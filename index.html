@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>やどたび - ホテル周辺おでかけプラン</title>
+  <link rel="stylesheet" href="assets/tokens.css">
+  <link rel="stylesheet" href="assets/ui.css">
+  <link rel="stylesheet" href="assets/style.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="navbar__inner">
+      <a class="navbar__brand" href="#">🧳 やどたび</a>
+    </div>
+  </nav>
+
+  <main class="container yado-main">
+    <p class="text-sub yado-lead">ホテル名を入れるだけ。泊まる人が行っている定番と、ちょっとした発見を提案します。</p>
+
+    <!-- 入力部: ホテル名だけで1タップ。条件は折りたたみの中。 -->
+    <section class="card yado-input-card">
+      <div class="card__body stack">
+        <div class="field">
+          <label class="field__label" for="hotel-input">泊まるホテル名</label>
+          <input class="input" id="hotel-input" type="text" placeholder="例: 草津白根観光ホテル櫻井" inputmode="search" autocomplete="off">
+        </div>
+
+        <button class="btn btn--primary btn--lg btn--full" id="search-btn" type="button">提案を見る</button>
+
+        <details class="yado-conditions" id="conditions-details">
+          <summary class="yado-conditions__summary">条件を変える</summary>
+          <div class="stack yado-conditions__body">
+            <div class="field">
+              <span class="field__label">泊数</span>
+              <div class="seg" id="nights-seg" role="tablist" aria-label="泊数">
+                <button type="button" class="seg__btn is-active" data-value="1" role="tab" aria-selected="true">1泊</button>
+                <button type="button" class="seg__btn" data-value="2" role="tab" aria-selected="false">2泊</button>
+              </div>
+            </div>
+
+            <div class="field">
+              <span class="field__label">移動手段</span>
+              <div class="seg" id="mode-seg" role="tablist" aria-label="移動手段">
+                <button type="button" class="seg__btn" data-value="walk" role="tab" aria-selected="false">🚶 徒歩</button>
+                <button type="button" class="seg__btn is-active" data-value="transit" role="tab" aria-selected="true">🚃 公共交通</button>
+                <button type="button" class="seg__btn" data-value="car" role="tab" aria-selected="false">🚗 車</button>
+              </div>
+            </div>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <!-- 状態表示 -->
+    <div id="status-area" class="yado-status" hidden></div>
+
+    <!-- 候補確認 -->
+    <section id="candidates-area" class="card" hidden>
+      <div class="card__header"><h3 class="card__title">ホテル候補を選んでください</h3></div>
+      <div class="card__body stack" id="candidates-list"></div>
+    </section>
+
+    <!-- 結果表示 -->
+    <section id="result-area" hidden>
+      <div id="map" class="yado-map"></div>
+
+      <p class="yado-visit-summary text-sm" id="visit-summary" hidden></p>
+
+      <!-- 🏨 定番 -->
+      <section class="yado-section" id="classics-area" hidden>
+        <h2 class="yado-section__title" id="classics-title"></h2>
+        <p class="yado-section__note text-xs" id="classics-note" hidden></p>
+        <div id="classics-list"></div>
+      </section>
+
+      <!-- ✨ 発見 -->
+      <section class="yado-section" id="discoveries-area" hidden>
+        <h2 class="yado-section__title">✨ ちょっと足を伸ばすと…発見</h2>
+        <div id="discoveries-list"></div>
+      </section>
+
+      <!-- 🗓 時間枠プラン -->
+      <section class="yado-section" id="boxes-area" hidden>
+        <h2 class="yado-section__title">🗓 時間枠プラン</h2>
+        <div id="plan-boxes" class="yado-plan-boxes"></div>
+      </section>
+
+      <!-- ⚠ 近そうで行けない -->
+      <section class="yado-section" id="excluded-area" hidden>
+        <h2 class="yado-section__title">⚠ 近そうで行けない</h2>
+        <div id="excluded-list"></div>
+      </section>
+    </section>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="assets/geo.js"></script>
+  <script src="assets/planner.js"></script>
+  <script src="assets/visits.js"></script>
+  <script src="assets/app.js"></script>
+</body>
+</html>

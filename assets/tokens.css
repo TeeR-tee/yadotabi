@@ -1,0 +1,152 @@
+/* ============================================================
+   tokens.css — デザイントークン(全ての見た目の源泉)
+   ルール: アプリ側のCSSで色・余白・角丸を直書きしない。
+           必ずこのファイルの var(--xxx) を参照すること。
+   テーマ切替: <html data-theme="dark"> を付けるとダークモード。
+               何も付けなければOSの設定に追従する。
+   ============================================================ */
+
+:root {
+  /* ---- ブランドカラー(プロジェクトごとに差し替えてよいのはここだけ) ---- */
+  --brand-h: 243;                 /* 色相: 243=インディゴ。変えると全体の雰囲気が変わる */
+  --c-primary:        hsl(var(--brand-h) 75% 59%);
+  --c-primary-hover:  hsl(var(--brand-h) 70% 52%);
+  --c-primary-active: hsl(var(--brand-h) 68% 46%);
+  --c-on-primary:     #ffffff;
+
+  /* ---- セマンティックカラー(意味を持つ色。用途以外で使わない) ---- */
+  --c-success: #16a34a;
+  --c-warning: #d97706;
+  --c-danger:  #dc2626;
+  --c-info:    #0284c7;
+
+  /* ---- ニュートラル(明るさの段階。ライトテーマの値) ---- */
+  --c-bg:          #f7f7f9;   /* ページ背景 */
+  --c-surface:     #ffffff;   /* カード等の面 */
+  --c-surface-2:   #f1f1f4;   /* 面の中の面(コード枠、テーブルヘッダ等) */
+  --c-border:      #e3e3e8;   /* 標準の枠線 */
+  --c-border-strong:#c9c9d2;  /* 入力欄など目立たせたい枠線 */
+  --c-text:        #1a1a23;   /* 本文 */
+  --c-text-sub:    #5c5c6b;   /* 補足テキスト */
+  --c-text-faint:  #9494a3;   /* プレースホルダ、無効状態 */
+
+  /* ---- ソフトカラー(バッジやアラートの背景に使う薄い色) ---- */
+  --c-primary-soft: hsl(var(--brand-h) 80% 59% / .12);
+  --c-success-soft: #16a34a1f;
+  --c-warning-soft: #d977061f;
+  --c-danger-soft:  #dc26261f;
+  --c-info-soft:    #0284c71f;
+
+  /* ---- タイポグラフィ ---- */
+  --font-body: "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", Meiryo,
+               system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: Consolas, "SF Mono", Menlo, monospace;
+  --fs-xs: 0.75rem;    /* 12px 注釈 */
+  --fs-sm: 0.8125rem;  /* 13px 補足・ラベル */
+  --fs-md: 0.9375rem;  /* 15px 本文(基準) */
+  --fs-lg: 1.125rem;   /* 18px 小見出し */
+  --fs-xl: 1.375rem;   /* 22px セクション見出し */
+  --fs-2xl: 1.75rem;   /* 28px ページタイトル */
+  --fs-3xl: 2.25rem;   /* 36px ヒーロー・数値 */
+  --lh-tight: 1.3;
+  --lh-body: 1.7;      /* 日本語は英語より広めに取る */
+
+  /* ---- スペーシング(4pxの倍数だけを使う) ---- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+  --sp-8: 64px;
+
+  /* ---- 角丸 ---- */
+  --r-sm: 6px;    /* バッジ、小さい部品 */
+  --r-md: 10px;   /* ボタン、入力欄 */
+  --r-lg: 14px;   /* カード、モーダル */
+  --r-full: 999px;/* ピル型、アバター */
+
+  /* ---- 影(ライトテーマ用) ---- */
+  --shadow-sm: 0 1px 2px rgb(20 20 30 / .06);
+  --shadow-md: 0 2px 8px rgb(20 20 30 / .08), 0 1px 2px rgb(20 20 30 / .06);
+  --shadow-lg: 0 12px 32px rgb(20 20 30 / .16);
+
+  /* ---- その他 ---- */
+  --transition: 150ms ease;
+  --focus-ring: 0 0 0 3px hsl(var(--brand-h) 80% 59% / .35);
+  --container-max: 1080px;
+
+  color-scheme: light;
+}
+
+/* ============ ダークテーマ ============ */
+/* OS設定がダークで、明示指定が無いとき */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --c-primary:        hsl(var(--brand-h) 85% 70%);
+    --c-primary-hover:  hsl(var(--brand-h) 88% 76%);
+    --c-primary-active: hsl(var(--brand-h) 88% 80%);
+    --c-on-primary:     hsl(var(--brand-h) 45% 14%);
+
+    --c-success: #4ade80;
+    --c-warning: #fbbf24;
+    --c-danger:  #f87171;
+    --c-info:    #38bdf8;
+
+    --c-bg:           #131318;
+    --c-surface:      #1c1c24;
+    --c-surface-2:    #26262f;
+    --c-border:       #32323d;
+    --c-border-strong:#4a4a58;
+    --c-text:         #ececf1;
+    --c-text-sub:     #a2a2b0;
+    --c-text-faint:   #6b6b7a;
+
+    --c-primary-soft: hsl(var(--brand-h) 80% 70% / .16);
+    --c-success-soft: #4ade8026;
+    --c-warning-soft: #fbbf2426;
+    --c-danger-soft:  #f8717126;
+    --c-info-soft:    #38bdf826;
+
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / .4);
+    --shadow-md: 0 2px 8px rgb(0 0 0 / .5);
+    --shadow-lg: 0 12px 32px rgb(0 0 0 / .6);
+
+    color-scheme: dark;
+  }
+}
+
+/* data-theme="dark" が明示されたとき(上と同じ値を再宣言) */
+:root[data-theme="dark"] {
+  --c-primary:        hsl(var(--brand-h) 85% 70%);
+  --c-primary-hover:  hsl(var(--brand-h) 88% 76%);
+  --c-primary-active: hsl(var(--brand-h) 88% 80%);
+  --c-on-primary:     hsl(var(--brand-h) 45% 14%);
+
+  --c-success: #4ade80;
+  --c-warning: #fbbf24;
+  --c-danger:  #f87171;
+  --c-info:    #38bdf8;
+
+  --c-bg:           #131318;
+  --c-surface:      #1c1c24;
+  --c-surface-2:    #26262f;
+  --c-border:       #32323d;
+  --c-border-strong:#4a4a58;
+  --c-text:         #ececf1;
+  --c-text-sub:     #a2a2b0;
+  --c-text-faint:   #6b6b7a;
+
+  --c-primary-soft: hsl(var(--brand-h) 80% 70% / .16);
+  --c-success-soft: #4ade8026;
+  --c-warning-soft: #fbbf2426;
+  --c-danger-soft:  #f8717126;
+  --c-info-soft:    #38bdf826;
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / .4);
+  --shadow-md: 0 2px 8px rgb(0 0 0 / .5);
+  --shadow-lg: 0 12px 32px rgb(0 0 0 / .6);
+
+  color-scheme: dark;
+}
