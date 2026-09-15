@@ -1,71 +1,68 @@
-# NEXT: S1 研究ノートの実験ログに v3 暫定 rank の実測を記録する
+# NEXT: R17 候補収集の取りこぼし調査と修正
 
-- **タスクID**: S1(ROADMAP「研究(09ノート)」節)
-- **難易度**: sonnet
-- **所要目安**: 25〜40分
-- **判断理由**: 朝にみのるんが読む価値が最も高く、外部API不要(fixture のみ)で、本人が「ずっと考え続ける」と決めた領域の材料になる。残る R10/R11/R14/R15/R16 はどれもコード改修で、深夜に1件進めるより「観察結果の記録」を先に積む方が翌朝の判断材料になる。
+難易度: opus / 所要目安: 40〜60分
 
-## 目的
-v3 の暫定 rank が実際にどう並べているかを、**結論を急がず事実だけ**記録する。仮説の検証ではなく観察。
-見たい観点は3つ:
-1. **有名どころ偏り** — 上位に来るのが定番(湯畑・大涌谷級)ばかりか、そうでないか
-2. **Wikipedia記事の有無への依存** — WIKI_IMAGE(25)+WIKI_SUMMARY(15)+SOURCE_BOTH(20) で最大60点が Wikipedia 由来。記事が無い OSM 単独スポットが上位に食い込めているか
-3. **カテゴリ分散の効き方** — CATEGORY_PENALTY(18)/CATEGORY_FREE_SLOTS(2) が上位30件のカテゴリ構成にどれだけ効いているか
+## なぜこれを選んだか(1行)
+09ノートの観察は rank の偏りに見えるが、事前調査で大涌谷・彫刻の森は座標も半径条件も満たしており「rank で負けている」のではなく collect 段階で落ちているバグ寄りの問題なので、研究課題(R2-1等)より先に潰す価値がある。
+
+## 前提(計画役が実測済み・ここから始めてよい)
+`node -e` で fixtures を直接読んで確認した事実。**NIGHTLOG の「大涌谷は座標欠落」は誤りなので信じないこと。**
+
+- `fixtures/hakone.json` の `overpass.elements`
+  - 大涌谷 = `way/727045804`。`lat`/`lon` は `undefined` だが **`center: {lat:35.2467581, lon:139.0250167}` を持つ**。宿(35.2324,139.1069)から **7.6km**。tags に `natural=valley` `tourism=attraction` `wikipedia=ja:大涌谷` `wikidata=Q1134429`。
+  - 彫刻の森美術館 = `node/5182750902`。`lat=35.2442838 lon=139.0520834` と**正常な座標を持つ**。**5.2km**。
+  - どちらも `engine.js` の `OSM_RADIUS_M = 15000`(21行目)の内側。
+  - `geo.js` の 703〜706 行は既に `el.center` フォールバックを実装済み。つまり **座標は落ちていない**。
+- `fixtures/hakone.json` の `wiki.query.pages` は 50件。座標つき40件の距離は **最小6m〜最大3,720m**。`WIKI_RADIUS_M = 10000` を指定しているのに 50件上限で **3.7km で頭打ち**。大涌谷・彫刻の森の記事は 50件に入っていない。
+- `fixtures/kusatsu.json` も Wikipedia 50件で、**「湯畑」の記事は含まれない**。湯畑の OSM 要素は `relation/12852884`(`leisure=hot_spring` `tourism=attraction` `name=湯畑`、`wikipedia`/`wikidata` タグ**なし**)。
+
+→ 仮説は3本立て。(a)(b) は OSM 側のどこかの絞り込み、(c) は Wikipedia geosearch の 50件上限。
 
 ## 対象ファイル(絶対パス)
-- 新規: `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\dump-rank.mjs`(集計スクリプト)
-- 追記: `C:\workspace\claude\旅行先用サイト\計画書一式\09_研究ノート_認知外を提案するアルゴリズム.md` の「## 6. 実験ログ」と「## 7. 未解決の問い」
-- 更新: `docs\ROADMAP.md`(S1 を `[x] 2026-09-16`)、`docs\NIGHTLOG.md`(3行追記)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\geo.js`
+- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\engine.js`
+- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\NIGHTLOG.md`(記録)
+- `C:\workspace\claude\旅行先用サイト\計画書一式\09_研究ノート_認知外を提案するアルゴリズム.md`(原因の追記、「6. 実験ログ」の 2026-09-16 節)
 
-### コミット先が2つに分かれる点に注意
-- **09_研究ノート は yadotabi リポジトリの外**(親リポジトリ `C:\workspace` 管理)。
-  コミットは親側で行う: `git -C C:/workspace add "claude/旅行先用サイト/計画書一式/09_研究ノート_認知外を提案するアルゴリズム.md"` → `git -C C:/workspace commit -m "研究ノート09に実験ログv3を追記"`
-- **dump-rank.mjs / ROADMAP / NIGHTLOG は yadotabi リポジトリ**。従来どおり yadotabi 内でコミットして `git push`。
-- 親リポジトリにはリモートが無いので push は不要(yadotabi 側のみ push)。
+## 実装方針(必ず実物を読んでから)
+### 手順1: どこで消えるかを特定する(コードを書く前)
+scratchpad に使い捨ての Node スクリプトを置き、fixture を読んで `geo.js` / `engine.js` の各段の通過数を数える。以下の順に大涌谷・彫刻の森が生き残っているかを1段ずつ確認すること。
 
-## 実装方針
-`scripts/dump-rank.mjs`(Node、外部依存なし)を新規作成する。
+1. `geo.js` `buildOverpassQuery()`(510行) — **最有力候補**。`around` 句に続くタグフィルタの列挙に `natural=valley` や `tourism=museum` が入っているか。fixture は `make-fixture.mjs` が別のクエリで取った生データなので、**fixture には在るがアプリのクエリでは取らない**という食い違いがあり得る。ただし fixture モードでは Overpass を叩かないのでクエリは効かない → その場合は下の 2〜4 が原因。
+2. `geo.js` `pickName(tags)`(603行) — `name` を拾えているか。
+3. `geo.js` `detectCategory(tags)`(532行) — `natural=valley` が分類不能で除外されていないか。**分類できないものを捨てているなら、それが取りこぼしの本体**。
+4. `geo.js` `fetchSpots()` の dedupeKey(708行) — `name + '@' + lat.toFixed(3) + ',' + lon.toFixed(3)`。同名の別要素が先に `seen` に入って後勝ちで消えていないか(湯畑・大涌谷は node と relation の両方があり得る)。
+5. `engine.js` `buildOsmItems()`(400行)の `isFinite(spot.lat)` — ここまで来ていれば通るはず。
+6. `engine.js` `isExcludedArticle()`(226行) / `isHotelItself()`(322行) / `isSamePlace()`+`mergeIntoOsm()`(343・357行)の dedupe — `normalizeName()`(141行)の正規化で別物が同一視されて片方消えていないか。
 
-1. `fixtures/<area>.json` を読む(`kusatsu` / `hakone`)。
-2. `assets/engine.js` は `window`/`globalThis` にぶら下がる IIFE なので、`node:fs` で読んで `new Function` か `vm.runInThisContext` で `globalThis` に評価し、`globalThis.YadoEngine` を取り出す。`geo.js` が無くても engine 側に haversine のフォールバックがあるので engine.js 単体でよい。
-3. fixture の生レスポンス(overpass elements / wiki pages)から `collect()` が作るのと同じ候補配列を得る。**collect() は fetch を伴うので、fixture の raw を整形する部分だけ engine.js の公開 API で賄えないなら、`rank()` に渡す item 配列を dump-rank 側で組み立ててよい**(ただし項目名・意味は engine.js の実装に厳密に合わせる。ずれたら観察の意味が無い)。
-   - 楽な代替案: `?fixture=...&perf=1` 相当を Playwright で開いて `YadoEngine` の結果を `page.evaluate` で吸い出す。`scripts/check-a11y.mjs` に Playwright 利用の前例があるので、そちらが速ければそれでよい。**どちらを選んだかを NIGHTLOG に1行書くこと。**
-4. 出力は **markdown 表**を stdout へ。列は:
-   `順位 | 名前 | カテゴリ | 距離m | Wikipedia要約有 | 画像有 | 公式サイト有 | source(osm/wiki/both) | score`
-   これを草津・箱根それぞれ**上位30件**。
-5. 表の下に集計3行を付ける(これが観点1〜3の素材):
-   - 上位30件のカテゴリ内訳(カテゴリ名: 件数)
-   - 上位30件のうち source 別件数(osm単独 / wiki単独 / both)
-   - 上位30件の距離の中央値と最大値
+**先に `grep` で fixture の生JSONを確認すること**(上の「前提」は計画役が実施済みなので再確認は任意)。特定できた行番号と理由を NIGHTLOG に必ず書く。
 
-## 09_研究ノートへの書き方
-- 「6. 実験ログ」の既存表に **1行追加**(| 2026-09-16 | v3暫定rankの上位30件を草津・箱根のfixtureで実測 | … | … |)。
-- その表の**直後**に `### 2026-09-16 v3 暫定rank 上位30件(生データ)` の小見出しを立て、草津・箱根の表と集計3行を貼る。
-- **事実だけを書く**。「だから鍵はXだ」「やはりYが原因」のような結論は書かない。観察して言えることだけ(例:「上位10件のうち Wikipedia要約を持つものが N 件」)。
-- 「7. 未解決の問い」に今夜見えた問いを **2〜4個**追記する。候補(実データで裏が取れたものだけ書く):
-  - 座標付き Wikipedia 記事の網羅性が地域で大きく違う可能性(草津50件/箱根50件でいずれも取得上限50に到達しており、実際の記事数は不明のまま)
-  - fixture の `far`(車1時間以上)が草津では構造的に0件、箱根では10件出た。地方ほど「遠くの選択肢」が痩せるのではないか
-  - Wikipedia記事の有無に60点が乗る現在の重みで、OSM単独スポットが上位に出る余地がどれだけあるか
+### 手順2: 取りこぼしの解消だけを直す
+許される修正は「本来拾えるはずのものを拾えるようにする」ものに限る。想定される修正:
+- `detectCategory` に `natural=valley`(景勝)・`tourism=museum`(美術館博物館) など**取りこぼしているタグの追加**、および分類不能時に除外せず `other` に落とす方針への変更。
+- `buildOverpassQuery` に不足タグを追加(実APIでも取れるようにする。fixture 再生成はしない)。
+- dedupe の名前正規化の改善(`normalizeName`)。同名異所を潰さないよう座標も見る等。
+- Wikipedia geosearch の 50件上限回避: `fetchWikiNearby()`(861行)で**半径を分割して複数回問い合わせる**(例: 0-3km / 3-6km / 6-10km)かリスト分割。**fixture モードでは外部APIを叩かないので、fixture に無い記事は取れない。その場合は「fixture の Wikipedia 50件に湯畑・大涌谷の記事が無い」ことを結論として 09 に追記し、コードは実APIで効く形に直すだけでよい。**
 
-## 完了条件
-1. `scripts/dump-rank.mjs` が `node scripts/dump-rank.mjs kusatsu` / `hakone` で markdown 表を出す。
-2. 09_研究ノートの「6. 実験ログ」に表1行+生データ節(草津30件・箱根30件・集計各3行)が入っている。
-3. 09_研究ノートの「7. 未解決の問い」が2〜4個増えている。
-4. ROADMAP の S1 が `[x] 2026-09-16`、NIGHTLOG に3行。
-5. 親リポジトリ側・yadotabi側それぞれでコミット済み、yadotabi は push 済み。
+## 変更禁止範囲(厳守)
+- `engine.js` の `rank()` / `baseScore()` / `seasonBonus()` の**重み・係数・閾値を一切変えない**。
+- `fixtures/*.json` を**再生成しない・編集しない**(Overpass を叩かない)。
+- `OSM_RADIUS_M` / `WIKI_RADIUS_M` の値変更は原則しない(必要と判断したら NIGHTLOG に理由を書いて相談に回す)。
+- UI/CSS は触らない。
 
-## 検証手順(文書タスクなので撮影は不要)
-- `node scripts/dump-rank.mjs kusatsu` と `hakone` が exit code 0 で、**行数がちょうど30件**であること(ヘッダ・区切り行を除く)。
-- 貼り付けた表の**列が7項目+score の8列**そろっていること、markdown の `|` 数が全行一致していること(崩れた表を貼らない)。
-- 草津の上位に湯畑・西の河原など既知の定番が入っているか、逆に聞いたことのない名前が何件あるかを**目視で数えて**その数を実験ログに書く(これが「有名どころ偏り」の実態)。
-- 念のため `node docs/check.mjs` を最後に1回(本番が生きていることの確認のみ)。
-- 撮影は不要。既存の r13 系スクリーンショットで画面は問題なしと確認済み。
+## 完了条件(検証可能)
+1. `node scripts/dump-rank.mjs hakone` で **大涌谷と彫刻の森美術館が候補30件(または far)に現れる**。順位は問わない。現れない場合は「fixture に無い/クエリで取れない」原因を特定し 09 に書けば可とする。
+2. `node scripts/dump-rank.mjs kusatsu` で **湯畑が上位10位以内かつ source=both**。
+   - ただし kusatsu.json の Wikipedia 50件に湯畑の記事が無いことは実測済みなので、fixture モードでは source=both は原理的に達成できない可能性が高い。その場合は **(a)順位が26位より上がったこと (b)both にできない理由(geosearch 50件上限)** の2点を 09 と NIGHTLOG に書けば完了とみなす。無理に rank をいじって順位を上げてはいけない。
+3. 既存テスト `check-engine.mjs`(scratchpad) が**全 pass**。
+4. `node --check assets/geo.js` と `node --check assets/engine.js` が通る。
 
-## 変更禁止範囲
-- **`assets/engine.js` の rank/WEIGHT/CATEGORY_* は一切変更しない**。今回は観察だけ。「重みがおかしい」と思っても直さず、気づきを「7. 未解決の問い」に書いて終える。
-- `assets/app.js` / `geo.js` / `style.css` / `index.html` / `fixtures/*.json` も無変更。
-- 計画書一式の 09 以外のファイルは触らない。
-- git stash / reset --hard / checkout でファイルを戻す操作は禁止(AUTOPILOT 規約7)。
+## 検証手順
+1. 修正**前**に `node scripts/dump-rank.mjs kusatsu` と `... hakone` の出力を scratchpad に保存(before)。
+2. 修正後に同じ2コマンドを実行(after)。**before/after の差分(順位が動いた件名と順位)を NIGHTLOG に表で残す。**
+3. 撮影: `node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=kusatsu" --mobile` と `?fixture=hakone` の mobile 2枚。画像を Read で開き、カード枚数・番号ピンの判読性・リンクチップの折り返しにデグレが無いことを目視。
+4. `node docs/check.mjs`(push 後)。
+5. NIGHTLOG に3行 + 差分表、09 の「6. 実験ログ」に原因を追記。
 
-## 報告(NIGHTLOG 3行)
-- やったこと / 観察できた事実(数字を1つ以上) / 次
+## 完了したら
+ROADMAP の R17 を `[x] 2026-09-16` に。**まずコミットしてから、報告は簡潔に(長文の報告書を書かない)。**

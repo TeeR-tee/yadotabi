@@ -266,6 +266,11 @@
       website: spot.website || null,
       imageUrl: null,
       summary: null,
+      // OSM 要素自身が持つ Wikipedia 紐づけ。geosearch の 50件上限の外にある記事
+      // (大涌谷・彫刻の森美術館など)でも「Wikipedia に載っている」ことは分かるので、
+      // 2ソース一致の判定材料としてここまで運ぶ。記事本文(写真・要約)は別途取得しない。
+      wikipediaTitle: spot.wikipediaTitle || null,
+      wikidataId: spot.wikidataId || null,
       source: 'osm'
     };
   }
@@ -341,6 +346,14 @@
    * (2) 150m 以内で、一方の名前が他方を含む(「草津温泉」と「草津温泉 湯畑」など)
    */
   function isSamePlace(a, b) {
+    // OSM 要素が wikipedia タグで記事を名指ししているときは、それが最も確かな一致。
+    // 「彫刻の森美術館」(OSM) と「箱根 彫刻の森美術館」(記事名) のように表記が
+    // 違っても結び付けられる。
+    var at = normalizeName(a.wikipediaTitle);
+    var bt = normalizeName(b.wikipediaTitle);
+    if (at && normalizeName(b.name) === at) return true;
+    if (bt && normalizeName(a.name) === bt) return true;
+
     var na = normalizeName(a.name);
     var nb = normalizeName(b.name);
     if (!na || !nb) return false;
@@ -348,6 +361,55 @@
     var d = distanceBetween(a.lat, a.lon, b.lat, b.lon);
     if (d > DEDUPE_NEAR_M) return false;
     return na.indexOf(nb) !== -1 || nb.indexOf(na) !== -1;
+  }
+
+  /**
+   * OSM 内どうしの重複をまとめる。
+   *
+   * geo.js の dedupe は「名前が完全一致し、かつ小数3桁(約100m)まで同じ座標」しか
+   * 潰せないため、同じ場所が表記違いの別要素として残る。
+   * 例: 草津の湯畑は relation「湯畑」(leisure=hot_spring) と node「湯畑源泉」
+   * (natural=hot_spring) の2件に割れていて、どちらも中途半端な順位に沈んでいた。
+   *
+   * ここでは isSamePlace(名前の包含 + 150m 以内)で同じ場所とみなせるものを1件に寄せる。
+   * 名前は「短い方」を残す。湯畑源泉(55m)と湯畑(75m)なら、fetchSpots が距離順に
+   * 並べている都合で先に来るのは湯畑源泉だが、人が探すのは「湯畑」の方であり、
+   * 修飾の付いた長い名前は下位概念(源泉・入口・駐車場)であることが多いため。
+   * 裏付け(公式サイト・wikipedia 紐づけ)は両方から拾い上げて失わない。
+   */
+  function mergeOsmDuplicates(items) {
+    var kept = [];
+    items.forEach(function (item) {
+      for (var i = 0; i < kept.length; i++) {
+        if (!isSamePlace(kept[i], item)) continue;
+        var base = kept[i];
+        // 片方にしか無い裏付けは捨てない
+        var website = base.website || item.website || null;
+        var wikipediaTitle = base.wikipediaTitle || item.wikipediaTitle || null;
+        var wikidataId = base.wikidataId || item.wikidataId || null;
+        // 短い名前(＝より一般に通る呼び名)の方を代表にする
+        if (item.name.length < base.name.length) {
+          base.id = item.id;
+          base.name = item.name;
+          base.lat = item.lat;
+          base.lon = item.lon;
+          base.distanceM = item.distanceM;
+          base.category = item.category;
+          base.categoryLabel = item.categoryLabel;
+        }
+        // カテゴリは分類できている方を優先する('other' は「分からなかった」の意)
+        if (base.category === 'other' && item.category !== 'other') {
+          base.category = item.category;
+          base.categoryLabel = item.categoryLabel;
+        }
+        base.website = website;
+        base.wikipediaTitle = wikipediaTitle;
+        base.wikidataId = wikidataId;
+        return;
+      }
+      kept.push(item);
+    });
+    return kept;
   }
 
   /**
@@ -409,7 +471,7 @@
           items.push(item);
         });
       }
-      return items;
+      return mergeOsmDuplicates(items);
     }
 
     /**
@@ -479,6 +541,17 @@
         }
       }
       merged.push(wikiItem);
+    });
+
+    // geosearch は 1回 50件が上限で、宿の周りに記事が密集していると打ち切り半径が
+    // 数km まで縮む(箱根では 3.7km で頭打ち)。その外側にある大涌谷・彫刻の森美術館は
+    // 「記事があるのに wiki 側の候補に現れない」ため osm 単独のままだった。
+    // OSM 要素自身の wikipedia / wikidata タグは記事の存在を示す独立した裏付けなので、
+    // 突き合わせに失敗しても 2ソース一致として扱う(写真・要約は無いままで、
+    // 付くのは SOURCE_BOTH の加点だけ。rank の重みには手を触れていない)。
+    merged.forEach(function (item) {
+      if (item.source !== 'osm') return;
+      if (item.wikipediaTitle || item.wikidataId) item.source = 'both';
     });
 
     if (typeof onStage === 'function') onStage('wiki', merged.slice(), meta);
