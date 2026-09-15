@@ -30,6 +30,8 @@
   var TTL_GEOCODE_MS = 30 * DAY_MS;
   var TTL_SPOTS_MS = 7 * DAY_MS;
   var TTL_FAME_MS = 7 * DAY_MS;
+  // 取得に失敗した/値が無かったものは短めに保持し、毎回の再取得を防ぎつつ復旧も待てるようにする
+  var TTL_FAME_TRIED_MS = 1 * DAY_MS;
 
   // Wikidata wbgetentities は1リクエストあたり50IDまで
   var WIKIDATA_BATCH_SIZE = 50;
@@ -537,27 +539,38 @@
     return out;
   }
 
-  /** キャッシュに残っている人気度を先に反映し、まだ引く必要があるスポットだけ返す。 */
-  function applyFameCache(spots, keyOf, field) {
-    var pending = [];
-    spots.forEach(function (spot) {
-      var key = keyOf(spot);
-      if (!key) return;
-      var cached = cacheGet('fame:' + key);
-      if (cached && typeof cached[field] === 'number') {
-        spot.fame[field] = cached[field];
-        return;
-      }
-      pending.push(spot);
-    });
-    return pending;
+  /**
+   * キャッシュ済みなら値をスポットに反映し true を返す(=もう取りに行かなくてよい)。
+   * 取得を試みて失敗した記録(tried_*)が残っている場合も、値は null のまま true を返す。
+   * こうしないと「Wikidataに存在しないQ番号」等を再検索のたびに引き直してしまう。
+   */
+  function applyFameCache(spot, key, field) {
+    if (!key) return true; // そもそも引けない(IDが無い)ので対象外
+    var cached = cacheGet('fame:' + key);
+    if (!cached) return false;
+    if (typeof cached[field] === 'number') {
+      spot.fame[field] = cached[field];
+      return true;
+    }
+    // 値は無いが「試して駄目だった」印がある間は再取得しない
+    return cached['tried_' + field] === true;
   }
 
   /** 取得済みの値をキャッシュに書き戻す(sitelinks と monthlyViews を同じキーにマージ)。 */
-  function saveFameCache(key, patch) {
+  function saveFameCache(key, patch, ttlMs) {
     if (!key) return;
     var existing = cacheGet('fame:' + key) || {};
-    cacheSet('fame:' + key, Object.assign({}, existing, patch), TTL_FAME_MS);
+    cacheSet('fame:' + key, Object.assign({}, existing, patch), ttlMs || TTL_FAME_MS);
+  }
+
+  /**
+   * 「取得を試みたが値が得られなかった」印を短めのTTLで残す。
+   * 一時的な障害からは短期間で回復させたいので、成功時(7日)より短くしておく。
+   */
+  function markFameTried(key, field) {
+    var patch = {};
+    patch['tried_' + field] = true;
+    saveFameCache(key, patch, TTL_FAME_TRIED_MS);
   }
 
   /**
@@ -565,8 +578,11 @@
    * 多言語で記事があるほど国際的に有名なスポット、という近似指標に使う。
    */
   async function fetchSitelinks(spots) {
-    var pending = applyFameCache(spots, function (s) { return s.wikidataId; }, 'sitelinks');
-    var targets = pending.filter(function (s) { return s.wikidataId; });
+    var targets = spots.filter(function (s) {
+      if (!s.wikidataId) return false;
+      // キャッシュ(取得失敗の記録を含む)で解決できたものは対象外
+      return !applyFameCache(s, s.wikidataId, 'sitelinks');
+    });
     if (!targets.length) return;
 
     // 同じQ番号が複数スポットに付くことがあるのでID単位にまとめる
@@ -577,7 +593,8 @@
     });
     var ids = Object.keys(byId);
 
-    var batches = chunk(ids, WIKIDATA_BATCH_SIZE).map(async function (batch) {
+    var idBatches = chunk(ids, WIKIDATA_BATCH_SIZE);
+    var batches = idBatches.map(async function (batch) {
       var params = new URLSearchParams({
         action: 'wbgetentities',
         ids: batch.join('|'),
@@ -597,27 +614,46 @@
 
       batch.forEach(function (id) {
         var entity = entities[id];
-        if (!entity || !entity.sitelinks) return;
+        if (!entity || !entity.sitelinks) {
+          // 存在しない/削除済みのQ番号。毎回問い合わせても無駄なので印を残す
+          markFameTried(id, 'sitelinks');
+          return;
+        }
         var count = Object.keys(entity.sitelinks).length;
         byId[id].forEach(function (s) { s.fame.sitelinks = count; });
         saveFameCache(id, { sitelinks: count });
       });
     });
 
-    // 一部のバッチが失敗しても他の結果は活かす
-    await Promise.allSettled(batches);
+    // 一部のバッチが失敗しても他の結果は活かす。
+    // 失敗したバッチのIDにも印を残し、再検索のたびに叩き直さないようにする。
+    var results = await Promise.allSettled(batches);
+    results.forEach(function (r, i) {
+      if (r.status === 'rejected') {
+        idBatches[i].forEach(function (id) { markFameTried(id, 'sitelinks'); });
+      }
+    });
   }
 
   /**
    * 日本語版Wikipediaの先月の月間ページビューを取得する。
    * 1スポット1リクエストになるので、ホテルから近い順に PAGEVIEWS_MAX 件までに絞る。
+   *
+   * 重要: 「上位PAGEVIEWS_MAX件に絞る」→「その中の未取得だけ取りに行く」の順で処理する。
+   * 逆順(未取得だけ集めてから上位を取る)にすると、候補が PAGEVIEWS_MAX を超える密集エリアで
+   * 毎回まだ取っていない別の12件が選ばれ、再検索のたびに新規fetchが発生し続ける。
    */
   async function fetchPageviews(spots) {
-    var pending = applyFameCache(spots, function (s) { return s.wikipediaTitle; }, 'monthlyViews');
-    var targets = pending
+    // まず対象集合を距離だけで確定させる(キャッシュ状況に左右されないようにする)
+    var candidates = spots
       .filter(function (s) { return s.wikipediaTitle; })
       .sort(function (a, b) { return a.distanceM - b.distanceM; })
       .slice(0, PAGEVIEWS_MAX);
+
+    // 確定した集合のうち、キャッシュで解決できないものだけを実際に取りに行く
+    var targets = candidates.filter(function (s) {
+      return !applyFameCache(s, s.wikipediaTitle, 'monthlyViews');
+    });
     if (!targets.length) return;
 
     var range = lastMonthRange();
@@ -627,27 +663,35 @@
       var title = encodeURIComponent(spot.wikipediaTitle.replace(/ /g, '_'));
       var url = PAGEVIEWS_URL + title + '/monthly/' + range.start + '/' + range.end;
 
-      var res = await fetchWithTimeout(
-        url,
-        { method: 'GET', headers: { Accept: 'application/json' } },
-        TIMEOUT_FAME_MS,
-        'ページビューの取得がタイムアウトしました。'
-      );
+      try {
+        var res = await fetchWithTimeout(
+          url,
+          { method: 'GET', headers: { Accept: 'application/json' } },
+          TIMEOUT_FAME_MS,
+          'ページビューの取得がタイムアウトしました。'
+        );
 
-      // 404は「その記事に閲覧記録が無い/記事が存在しない」なので0扱いにする
-      if (res.status === 404) {
-        spot.fame.monthlyViews = 0;
-        saveFameCache(spot.wikipediaTitle, { monthlyViews: 0 });
-        return;
+        // 404は「その記事に閲覧記録が無い/記事が存在しない」なので0扱いにする
+        if (res.status === 404) {
+          spot.fame.monthlyViews = 0;
+          saveFameCache(spot.wikipediaTitle, { monthlyViews: 0 });
+          return;
+        }
+        if (!res.ok) throw new Error('pageviews ' + res.status);
+
+        var data = await res.json();
+        var items = (data && data.items) || [];
+        if (!items.length || typeof items[0].views !== 'number') {
+          markFameTried(spot.wikipediaTitle, 'monthlyViews');
+          return;
+        }
+
+        spot.fame.monthlyViews = items[0].views;
+        saveFameCache(spot.wikipediaTitle, { monthlyViews: items[0].views });
+      } catch (e) {
+        // 通信断・タイムアウト・5xxなど。再検索のたびに叩き直さないよう印を残す
+        markFameTried(spot.wikipediaTitle, 'monthlyViews');
       }
-      if (!res.ok) throw new Error('pageviews ' + res.status);
-
-      var data = await res.json();
-      var items = (data && data.items) || [];
-      if (!items.length || typeof items[0].views !== 'number') return;
-
-      spot.fame.monthlyViews = items[0].views;
-      saveFameCache(spot.wikipediaTitle, { monthlyViews: items[0].views });
     });
 
     await Promise.allSettled(tasks);
