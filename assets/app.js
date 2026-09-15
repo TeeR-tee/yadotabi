@@ -1,509 +1,788 @@
-/* やどたび v1 - app.js
-   UI制御のみを担当する。地理情報検索(geo.js)・プラン生成(planner.js)・
-   「行った！」記録(visits.js)は window.YadoGeo / YadoPlanner / YadoVisits の
-   契約に従って呼び出す。
+/**
+ * やどたび v3.0 — 画面本体
+ *
+ * ゴールはただ1つ「宿を選んだら提案が出る」。ユーザーに入力させる要素は置かない。
+ * 画面は1つ、状態は2つだけ。
+ *   状態A(select) … 地図＋検索＋エリアチップ。宿を「選ぶ」だけの面。
+ *   状態B(feed)   … 選んだ宿の周辺提案フィード。スクロールして眺めるだけの面。
+ *
+ * 状態は state に集約し、描画は render() 経由に一本化する。
+ * DOM文字列を組み立てる箇所は必ず escapeHtml を通す。
+ */
+(function (global) {
+  'use strict';
 
-   状態は state ひとつに集約し、描き直しはすべて render() を通す。
-   「行った！」のトグルも、人気度(enrichFame)取得後の更新も、
-   state を書き換えて render() を呼ぶだけで済むようにするための構成。 */
+  // ---------------------------------------------------------------------------
+  // 定数
+  // ---------------------------------------------------------------------------
 
-(function () {
-  "use strict";
+  /** 初期位置(草津温泉)。位置情報の許可ダイアログは「操作」になるので使わない。 */
+  var DEFAULT_VIEW = { lat: 36.6226, lon: 138.5960, zoom: 14 };
 
-  // ---- 状態 ----
-  // hotel: 確定したホテル / spots: 取得したスポット配列(enrichFameで書き換わる)
-  // reco : buildRecommendation の結果 / nights・mode: 検索条件
-  const state = {
-    hotel: null,
-    spots: [],
-    reco: null,
-    nights: 1,
-    mode: "transit",
+  /** エリアチップ。座標は直書き(ジオコーディングのAPI呼び出しを増やさないため)。 */
+  var AREAS = [
+    { label: '草津', lat: 36.6226, lon: 138.5960 },
+    { label: '伊香保', lat: 36.4886, lon: 138.9200 },
+    { label: '箱根', lat: 35.2324, lon: 139.1069 },
+    { label: '熱海', lat: 35.0959, lon: 139.0717 },
+    { label: '別府', lat: 33.2794, lon: 131.5006 },
+    { label: '由布院', lat: 33.2647, lon: 131.3870 },
+    { label: '城崎', lat: 35.6247, lon: 134.8055 },
+    { label: '道後', lat: 33.8521, lon: 132.7861 }
+  ];
+
+  /** この倍率より引いた地図では宿を取りに行かない(Overpassに広い範囲を投げないため)。 */
+  var MIN_HOTEL_ZOOM = 13;
+
+  var DEBOUNCE_SEARCH_MS = 500;
+  var DEBOUNCE_MOVE_MS = 600;
+
+  var SKELETON_COUNT = 4;
+  var RECENT_MAX = 5;
+
+  var LS_RECENT = 'yado.recent.v3';
+  var LS_MAPVIEW = 'yado.mapview.v3';
+
+  var TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+  var TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+
+  /**
+   * カテゴリラベル → 絵文字。
+   * Card には category が無く categoryLabel しか入らないので、ラベル文字列で引く。
+   * engine.js 独自の「自然・景勝」も含める。
+   */
+  var CATEGORY_EMOJI = {
+    'テーマパーク': '🎡',
+    '美術館・博物館': '🖼',
+    '動物園': '🦁',
+    '水族館': '🐟',
+    '展望・景観': '🔭',
+    '観光名所': '📷',
+    '城・城跡': '🏯',
+    '記念建造物': '🗿',
+    '記念碑': '🗿',
+    '遺跡': '🏛',
+    '庭園': '🌸',
+    '公園': '🌳',
+    '神社・寺院': '⛩',
+    '共同浴場': '♨',
+    '滝': '💧',
+    '湧水': '💧',
+    '温泉': '♨',
+    '温泉源': '♨',
+    '洞窟': '🕳',
+    '山頂': '⛰',
+    '展望地': '🔭',
+    '灯台': '🗼',
+    '自然・景勝': '🏞',
+    'スポット': '📍'
   };
 
-  let map = null;
-  let mapMarkers = [];
-  let mapTileLayer = null;
+  // ---------------------------------------------------------------------------
+  // 状態
+  // ---------------------------------------------------------------------------
 
-  // ---- DOM ----
-  const hotelInput = document.getElementById("hotel-input");
-  const nightsSeg = document.getElementById("nights-seg");
-  const modeSeg = document.getElementById("mode-seg");
-  const searchBtn = document.getElementById("search-btn");
-  const statusArea = document.getElementById("status-area");
-  const candidatesArea = document.getElementById("candidates-area");
-  const candidatesList = document.getElementById("candidates-list");
-  const resultArea = document.getElementById("result-area");
-  const visitSummary = document.getElementById("visit-summary");
-  const classicsArea = document.getElementById("classics-area");
-  const classicsTitle = document.getElementById("classics-title");
-  const classicsNote = document.getElementById("classics-note");
-  const classicsList = document.getElementById("classics-list");
-  const discoveriesArea = document.getElementById("discoveries-area");
-  const discoveriesList = document.getElementById("discoveries-list");
-  const boxesArea = document.getElementById("boxes-area");
-  const planBoxesEl = document.getElementById("plan-boxes");
-  const excludedArea = document.getElementById("excluded-area");
-  const excludedList = document.getElementById("excluded-list");
+  var state = {
+    view: 'select',   // "select" | "feed"
+    hotel: null,      // {id?, name, lat, lon}
+    cards: [],
+    far: [],
+    stage: null       // null | "loading" | "osm" | "wiki" | "done" | "error"
+  };
 
-  const RADIUS_BY_MODE = { walk: 4000, transit: 15000, car: 40000 };
-  const BADGE_CLASS = { walk: "badge--ok", transit: "badge--caution", car: "badge--caution", unreachable: "badge--ng" };
+  /** 提案リクエストの世代番号。戻る→別の宿、の取り違えを防ぐ。 */
+  var requestSeq = 0;
 
-  // ---- セグメント選択の共通処理 ----
-  function setupSegment(container) {
-    container.addEventListener("click", (e) => {
-      const btn = e.target.closest(".seg__btn");
-      if (!btn) return;
-      container.querySelectorAll(".seg__btn").forEach((b) => {
-        b.classList.remove("is-active");
-        b.setAttribute("aria-selected", "false");
-      });
-      btn.classList.add("is-active");
-      btn.setAttribute("aria-selected", "true");
-    });
-  }
-  setupSegment(nightsSeg);
-  setupSegment(modeSeg);
+  var els = {};
+  var map = null;            // 状態Aの地図(1回だけ生成して使い回す)
+  var hotelLayer = null;     // 宿ピンのレイヤ
+  var feedMap = null;        // 状態Bの小さい地図
+  var feedMarkers = [];
+  var suggestItems = [];
+  var lastSuggestQuery = '';
 
-  function getSegValue(container) {
-    const active = container.querySelector(".seg__btn.is-active");
-    return active ? active.dataset.value : null;
-  }
-
-  // ---- 状態表示 ----
-  function showStatus(html) {
-    statusArea.innerHTML = html;
-    statusArea.hidden = false;
-  }
-  function hideStatus() {
-    statusArea.hidden = true;
-    statusArea.innerHTML = "";
-  }
-  function showSpinner(message) {
-    showStatus(
-      '<div class="yado-spinner" aria-hidden="true"></div><span>' + escapeHtml(message) + "</span>"
-    );
-  }
-  function showError(message) {
-    showStatus(
-      '<div class="alert alert--danger" style="width:100%;"><span>⚠️</span><div><p class="alert__title">エラー</p><p class="mb-0">' +
-        escapeHtml(message) +
-        "</p></div></div>"
-    );
-  }
+  // ---------------------------------------------------------------------------
+  // 小物
+  // ---------------------------------------------------------------------------
 
   function escapeHtml(str) {
-    const div = document.createElement("div");
-    div.textContent = String(str);
-    return div.innerHTML;
+    if (str == null) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
-  function resetResult() {
-    state.hotel = null;
-    state.spots = [];
-    state.reco = null;
-    resultArea.hidden = true;
-    candidatesArea.hidden = true;
-    candidatesList.innerHTML = "";
-    classicsList.innerHTML = "";
-    discoveriesList.innerHTML = "";
-    planBoxesEl.innerHTML = "";
-    excludedList.innerHTML = "";
-    classicsArea.hidden = true;
-    discoveriesArea.hidden = true;
-    boxesArea.hidden = true;
-    excludedArea.hidden = true;
-    visitSummary.hidden = true;
+  /** http/https だけをリンクとして通す。javascript: 等を href に出さない。 */
+  function safeUrl(url) {
+    if (typeof url !== 'string') return null;
+    var s = url.trim();
+    return /^https?:\/\//i.test(s) ? s : null;
   }
 
-  // ---- 検索ボタン ----
-  searchBtn.addEventListener("click", async () => {
-    const query = hotelInput.value.trim();
-    if (!query) {
-      showError("ホテル名を入力してください。");
-      return;
-    }
-    if (typeof window.YadoGeo === "undefined") {
-      showError("YadoGeo未定義: geo.js が読み込まれていません。");
-      return;
-    }
-
-    resetResult();
-    hideStatus();
-    showSpinner("宿を探しています…");
-    searchBtn.disabled = true;
-
-    try {
-      const candidates = await window.YadoGeo.geocodeHotel(query);
-
-      if (!candidates || candidates.length === 0) {
-        hideStatus();
-        showError("見つかりませんでした。ホテル名や住所を変えて試してください。");
-        return;
-      }
-
-      if (candidates.length === 1) {
-        await selectHotel(candidates[0]);
-      } else {
-        hideStatus();
-        renderCandidates(candidates);
-      }
-    } catch (err) {
-      hideStatus();
-      showError(err && err.message ? err.message : "検索中にエラーが発生しました。");
-    } finally {
-      searchBtn.disabled = false;
-    }
-  });
-
-  hotelInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") searchBtn.click();
-  });
-
-  // ---- 候補リスト表示 ----
-  function renderCandidates(candidates) {
-    candidatesList.innerHTML = "";
-    candidates.forEach((c) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "candidate-btn";
-      btn.textContent = c.displayName || c.name;
-      btn.addEventListener("click", () => {
-        candidatesArea.hidden = true;
-        searchBtn.disabled = true;
-        selectHotel(c).finally(() => {
-          searchBtn.disabled = false;
-        });
-      });
-      candidatesList.appendChild(btn);
-    });
-    candidatesArea.hidden = false;
-  }
-
-  // ---- ホテル確定後の処理 ----
-  // 段階的に見せる: スポット取得 → 先に描画 → 人気度が揃ったら描き直す。
-  // enrichFame は数秒かかるので、待たせずに一度描いてしまうのが肝。
-  async function selectHotel(hotel) {
-    candidatesArea.hidden = true;
-
-    if (typeof window.YadoPlanner === "undefined") {
-      showError("YadoPlanner未定義: planner.js が読み込まれていません。");
-      return;
-    }
-
-    state.hotel = { name: hotel.name, lat: hotel.lat, lon: hotel.lon, displayName: hotel.displayName };
-    state.mode = getSegValue(modeSeg) || "transit";
-    state.nights = parseInt(getSegValue(nightsSeg), 10) === 2 ? 2 : 1;
-
-    const radiusM = RADIUS_BY_MODE[state.mode];
-
-    showSpinner("周辺のスポットを集めています…");
-
-    try {
-      state.spots = await window.YadoGeo.fetchSpots(hotel.lat, hotel.lon, radiusM);
-    } catch (err) {
-      hideStatus();
-      showError(err && err.message ? err.message : "スポット取得中にエラーが発生しました。");
-      return;
-    }
-
-    if (!state.spots.length) {
-      hideStatus();
-      showError("このホテルの周辺では観光スポットが見つかりませんでした。移動手段を「車」にすると範囲が広がります。");
-      return;
-    }
-
-    // 人気度が無いまま一度描く(体感速度優先)
-    if (!rebuildReco()) return;
-    render();
-
-    // 人気度を取りに行き、揃ったら同じ state を描き直す
-    showSpinner("みんなの人気度を調べています…");
-    try {
-      await window.YadoGeo.enrichFame(state.spots);
-    } catch (err) {
-      // enrichFame は例外を投げない契約だが、念のため握りつぶして描画を続ける
-    }
-    hideStatus();
-    if (!rebuildReco()) return;
-    render();
-  }
-
-  /** state.spots から推薦を組み直す。失敗したらエラー表示して false。 */
-  function rebuildReco() {
-    try {
-      state.reco = window.YadoPlanner.buildRecommendation({
-        hotel: { name: state.hotel.name, lat: state.hotel.lat, lon: state.hotel.lon },
-        spots: state.spots,
-        nights: state.nights,
-        mode: state.mode,
-      });
-      return true;
-    } catch (err) {
-      hideStatus();
-      showError(err && err.message ? err.message : "プランの作成に失敗しました。");
-      return false;
-    }
-  }
-
-  // ---- 描画(state を丸ごと描き直す) ----
-  function render() {
-    if (!state.hotel || !state.reco) return;
-    const reco = state.reco;
-
-    resultArea.hidden = false;
-    renderMap();
-    renderVisitSummary();
-    renderClassics(reco.classics || []);
-    renderDiscoveries(reco.discoveries || []);
-    renderPlanBoxes(reco.boxes || []);
-    renderExcluded(reco.excluded || []);
-  }
-
-  // ---- 地図 ----
-  // map もタイルレイヤーも1回だけ生成する。再検索ではマーカーだけ入れ替える。
-  // (v0ではここで毎回 tileLayer を追加していて、タイルが重なっていた)
-  function renderMap() {
-    const hotel = state.hotel;
-    const mapEl = document.getElementById("map");
-
-    if (!map) {
-      map = L.map(mapEl);
-    }
-    if (!mapTileLayer) {
-      mapTileLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-        maxZoom: 19,
-      }).addTo(map);
-    }
-
-    mapMarkers.forEach((m) => map.removeLayer(m));
-    mapMarkers = [];
-
-    const bounds = [];
-
-    const hotelIcon = L.divIcon({
-      className: "",
-      html: '<div style="background:var(--c-primary,#3b82f6);width:16px;height:16px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 4px rgba(0,0,0,.4);"></div>',
-      iconSize: [16, 16],
-      iconAnchor: [8, 8],
-    });
-    const hotelMarker = L.marker([hotel.lat, hotel.lon], { icon: hotelIcon }).addTo(map);
-    hotelMarker.bindPopup("🏨 " + escapeHtml(hotel.name));
-    mapMarkers.push(hotelMarker);
-    bounds.push([hotel.lat, hotel.lon]);
-
-    // 同じスポットが定番と箱の両方に出るので、座標キーで重複マーカーを避ける
-    const seen = Object.create(null);
-    const allItems = [];
-    const reco = state.reco;
-    [reco.classics, reco.discoveries, reco.excluded].forEach((list) => {
-      (list || []).forEach((item) => allItems.push(item));
-    });
-    (reco.boxes || []).forEach((box) => allItems.push(...(box.items || [])));
-
-    allItems.forEach((item) => {
-      const spot = item.spot;
-      if (!spot) return;
-      const key = spot.id != null ? String(spot.id) : spot.lat + "," + spot.lon;
-      if (seen[key]) return;
-      seen[key] = true;
-
-      const marker = L.marker([spot.lat, spot.lon]).addTo(map);
-      marker.bindPopup(escapeHtml(spot.name) + " " + escapeHtml(item.badgeLabel || ""));
-      mapMarkers.push(marker);
-      bounds.push([spot.lat, spot.lon]);
-    });
-
-    if (bounds.length > 1) {
-      map.fitBounds(bounds, { padding: [24, 24] });
-    } else {
-      map.setView(bounds[0], 15);
-    }
-
-    setTimeout(() => map.invalidateSize(), 100);
-  }
-
-  // ---- あなたの記録 ----
-  function renderVisitSummary() {
-    if (typeof window.YadoVisits === "undefined" || !state.hotel) {
-      visitSummary.hidden = true;
-      return;
-    }
-    const hotelKey = window.YadoVisits.hotelKeyOf(state.hotel);
-    const here = window.YadoVisits.listByHotel(hotelKey).length;
-    const all = window.YadoVisits.countAll();
-    visitSummary.textContent = "あなたの記録: このホテルで " + here + "件 / 全体 " + all + "件";
-    visitSummary.hidden = false;
-  }
-
-  // ---- 定番 ----
-  function renderClassics(classics) {
-    if (!classics.length) {
-      classicsArea.hidden = true;
-      return;
-    }
-    const fallback = Boolean(classics[0] && classics[0].fallback);
-
-    if (fallback) {
-      // 「定番」と言い切れる人気度のスポットが無かったケース。
-      // 人気度が取れなかった場合と、取れたが基準に届かなかった場合の両方があるので、
-      // どちらでも嘘にならない書き方にする(盛らないことが信頼の源泉)。
-      classicsTitle.textContent = "まずはここ(周辺の主要スポット)";
-      classicsNote.textContent =
-        "この周辺には「定番」と言い切れるほど広く知られたスポットが見つかりませんでした。距離と種類をもとに選んでいます。";
-      classicsNote.hidden = false;
-    } else {
-      classicsTitle.textContent = "🏨 " + state.hotel.name + "に泊まる人の定番";
-      classicsNote.hidden = true;
-      classicsNote.textContent = "";
-    }
-
-    classicsList.innerHTML = "";
-    classics.forEach((item) => classicsList.appendChild(renderPlanItemCard(item)));
-    classicsArea.hidden = false;
-  }
-
-  // ---- 発見 ----
-  function renderDiscoveries(discoveries) {
-    if (!discoveries.length) {
-      discoveriesArea.hidden = true;
-      return;
-    }
-    discoveriesList.innerHTML = "";
-    discoveries.forEach((item) => discoveriesList.appendChild(renderPlanItemCard(item)));
-    discoveriesArea.hidden = false;
-  }
-
-  // ---- 時間枠プラン ----
-  function renderPlanBoxes(boxes) {
-    const filled = boxes.filter((box) => (box.items || []).length > 0);
-    if (!filled.length) {
-      boxesArea.hidden = true;
-      return;
-    }
-    planBoxesEl.innerHTML = "";
-    filled.forEach((box) => {
-      const section = document.createElement("div");
-      section.className = "plan-box";
-
-      const title = document.createElement("div");
-      title.className = "plan-box__title";
-      title.textContent = box.label;
-      section.appendChild(title);
-
-      (box.items || []).forEach((item) => {
-        section.appendChild(renderPlanItemCard(item));
-      });
-
-      planBoxesEl.appendChild(section);
-    });
-    boxesArea.hidden = false;
-  }
-
-  // ---- 近そうで行けない ----
-  function renderExcluded(excluded) {
-    if (!excluded || excluded.length === 0) {
-      excludedArea.hidden = true;
-      return;
-    }
-    excludedList.innerHTML = "";
-    excluded.forEach((item) => {
-      excludedList.appendChild(renderPlanItemCard(item, true));
-    });
-    excludedArea.hidden = false;
-  }
-
-  // ---- スポットカード ----
-  function renderPlanItemCard(item, isExcluded) {
-    const spot = item.spot || {};
-    const card = document.createElement("div");
-    card.className = "card plan-item";
-
-    const badgeClass = BADGE_CLASS[item.badge] || "badge--caution";
-
-    const mapsUrl =
-      "https://www.google.com/maps/search/?api=1&query=" +
-      encodeURIComponent(spot.lat + "," + spot.lon);
-
-    const meta =
-      escapeHtml(spot.categoryLabel || "") +
-      (spot.distanceM != null ? " ・ " + escapeHtml(formatDistance(spot.distanceM)) : "") +
-      (item.stayMin ? " ・ 滞在目安 " + item.stayMin + "分" : "") +
-      (item.travelLabel && item.travelLabel !== "−" ? " ・ " + escapeHtml(item.travelLabel) : "");
-
-    // 根拠の行。人気度(fameLabel)が取れていればそれを、無ければ選定理由を出す。
-    const evidence = item.fameLabel
-      ? '<div class="plan-item__fame">📊 ' + escapeHtml(item.fameLabel) + "</div>"
-      : "";
-    const reason = item.reason
-      ? '<div class="plan-item__reason">' + escapeHtml(item.reason) + "</div>"
-      : "";
-
-    const website = isSafeUrl(spot.website)
-      ? '<a class="plan-item__link" href="' + escapeHtml(spot.website) + '" target="_blank" rel="noopener">公式サイト →</a>'
-      : "";
-
-    card.innerHTML =
-      '<div class="card__body">' +
-      '<div class="plan-item__header">' +
-      '<span class="plan-item__name">' + escapeHtml(spot.name || "") + "</span>" +
-      '<span class="badge ' + badgeClass + '">' + escapeHtml(item.badgeLabel || "") + "</span>" +
-      "</div>" +
-      '<div class="plan-item__meta">' + meta + "</div>" +
-      evidence +
-      reason +
-      '<div class="plan-item__actions">' +
-      '<a class="plan-item__link" href="' + mapsUrl + '" target="_blank" rel="noopener">Googleマップで見る →</a>' +
-      website +
-      "</div>" +
-      "</div>";
-
-    if (!isExcluded) {
-      card.querySelector(".plan-item__actions").appendChild(buildVisitButton(spot));
-    }
-
-    return card;
-  }
-
-  /** 「行った！」トグルボタン。描画のたびに YadoVisits.has で現在の状態を復元する。 */
-  function buildVisitButton(spot) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "btn btn--sm visit-btn";
-
-    const visits = window.YadoVisits;
-    const hotelKey = visits ? visits.hotelKeyOf(state.hotel) : null;
-    const applyLabel = (on) => {
-      btn.classList.toggle("is-active", on);
-      btn.setAttribute("aria-pressed", on ? "true" : "false");
-      btn.textContent = on ? "✓ 行った！" : "行った！";
+  function debounce(fn, ms) {
+    var timer = null;
+    return function () {
+      var args = arguments, self = this;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(function () {
+        timer = null;
+        fn.apply(self, args);
+      }, ms);
     };
+  }
 
-    applyLabel(Boolean(visits && spot.id && visits.has(hotelKey, spot.id)));
+  /** localStorage はプライベートモード等で例外を投げるので、読み書きとも黙って諦める。 */
+  function lsGet(key) {
+    try {
+      var raw = global.localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
+    }
+  }
 
-    btn.addEventListener("click", () => {
-      if (!visits || !spot.id) return;
-      const on = visits.toggle(state.hotel, spot);
-      applyLabel(on);
-      // 同じスポットが別セクションにも出ているので、まとめて描き直す
+  function lsSet(key, value) {
+    try {
+      global.localStorage.setItem(key, JSON.stringify(value));
+    } catch (e) {
+      // 保存できなくても体験は続く
+    }
+  }
+
+  function emojiFor(categoryLabel) {
+    return CATEGORY_EMOJI[categoryLabel] || '📍';
+  }
+
+  /** 宿の種別で絵文字を変える。旅館・温泉宿は ♨。 */
+  function hotelEmoji(hotel) {
+    var kind = hotel && hotel.kind;
+    if (kind === 'ryokan') return '♨';
+    if (/旅館|温泉/.test((hotel && hotel.name) || '')) return '♨';
+    return '🏨';
+  }
+
+  // ---------------------------------------------------------------------------
+  // 最近選んだ宿
+  // ---------------------------------------------------------------------------
+
+  function getRecent() {
+    var list = lsGet(LS_RECENT);
+    return Array.isArray(list) ? list : [];
+  }
+
+  function pushRecent(hotel) {
+    if (!hotel || !isFinite(hotel.lat) || !isFinite(hotel.lon)) return;
+    var entry = { name: hotel.name, lat: hotel.lat, lon: hotel.lon, kind: hotel.kind || null };
+    var list = getRecent().filter(function (r) {
+      if (!r) return false;
+      // 同じ宿を別の入口(ピン/検索/URL)から選ぶと座標が微妙に違うことがあるので、
+      // 名前が同じならまず同一とみなす。名前が無いものだけ座標で見る。
+      if (r.name && entry.name) return r.name !== entry.name;
+      return !(Math.abs(r.lat - entry.lat) < 0.0005 && Math.abs(r.lon - entry.lon) < 0.0005);
+    });
+    list.unshift(entry);
+    lsSet(LS_RECENT, list.slice(0, RECENT_MAX));
+  }
+
+  // ---------------------------------------------------------------------------
+  // 状態A: 地図
+  // ---------------------------------------------------------------------------
+
+  function saveMapView() {
+    if (!map) return;
+    var c = map.getCenter();
+    lsSet(LS_MAPVIEW, { lat: c.lat, lon: c.lng, zoom: map.getZoom() });
+  }
+
+  function initialView() {
+    var saved = lsGet(LS_MAPVIEW);
+    if (saved && isFinite(saved.lat) && isFinite(saved.lon) && isFinite(saved.zoom)) {
+      return { lat: saved.lat, lon: saved.lon, zoom: saved.zoom };
+    }
+    return { lat: DEFAULT_VIEW.lat, lon: DEFAULT_VIEW.lon, zoom: DEFAULT_VIEW.zoom };
+  }
+
+  function ensureMap() {
+    if (map) return map;
+    var view = initialView();
+    map = L.map(els.map, { zoomControl: true }).setView([view.lat, view.lon], view.zoom);
+    // タイルレイヤは1回だけ足す(状態を行き来しても重複追加しない)
+    L.tileLayer(TILE_URL, { maxZoom: 19, attribution: TILE_ATTR }).addTo(map);
+    hotelLayer = L.layerGroup().addTo(map);
+
+    map.on('moveend', onMapMoved);
+    return map;
+  }
+
+  function setMapNote(text) {
+    if (!text) {
+      els.mapNote.hidden = true;
+      els.mapNote.textContent = '';
+      return;
+    }
+    els.mapNote.hidden = false;
+    els.mapNote.textContent = text;
+  }
+
+  var onMapMoved = debounce(function () {
+    if (state.view !== 'select' || !map) return;
+    saveMapView();
+    loadHotelsInView();
+  }, DEBOUNCE_MOVE_MS);
+
+  function loadHotelsInView() {
+    if (!map) return;
+
+    if (map.getZoom() < MIN_HOTEL_ZOOM) {
+      hotelLayer.clearLayers();
+      setMapNote('ズームすると宿が出ます');
+      return;
+    }
+
+    var b = map.getBounds();
+    setMapNote('宿を探しています…');
+
+    YadoGeo.fetchHotelsInBbox(b.getSouth(), b.getWest(), b.getNorth(), b.getEast())
+      .then(function (hotels) {
+        // 待っている間に状態Bへ移っていたら描かない
+        if (state.view !== 'select') return;
+        renderHotelPins(hotels);
+        setMapNote(hotels.length ? '' : 'この範囲には宿が見つかりませんでした');
+      })
+      .catch(function (err) {
+        if (state.view !== 'select') return;
+        hotelLayer.clearLayers();
+        // 範囲が広すぎるときはズーム不足と同じ案内にする(利用者にとっては同じこと)
+        setMapNote(err && err.tooWide ? 'ズームすると宿が出ます' : (err && err.message) || '宿を取得できませんでした');
+      });
+  }
+
+  function renderHotelPins(hotels) {
+    hotelLayer.clearLayers();
+    hotels.forEach(function (h) {
+      var icon = L.divIcon({
+        className: 'pin pin--hotel',
+        html: '<span>' + hotelEmoji(h) + '</span>',
+        iconSize: [30, 30],
+        iconAnchor: [15, 15]
+      });
+      var marker = L.marker([h.lat, h.lon], { icon: icon, title: h.name }).addTo(hotelLayer);
+      marker.on('click', function () { selectHotel(h); });
+    });
+  }
+
+  function flyTo(lat, lon, zoom) {
+    ensureMap();
+    map.setView([lat, lon], zoom || DEFAULT_VIEW.zoom);
+    saveMapView();
+    // setView 直後の moveend は debounce 待ちなので、ここでは待たずに取得を始める
+    loadHotelsInView();
+  }
+
+  // ---------------------------------------------------------------------------
+  // 状態A: 検索候補
+  // ---------------------------------------------------------------------------
+
+  function hideSuggest() {
+    els.suggest.hidden = true;
+    els.suggest.innerHTML = '';
+    suggestItems = [];
+  }
+
+  /** 候補と「最近」をまとめて描く。行の種類は data-act で区別する。 */
+  function renderSuggest(rows) {
+    if (!rows.length) {
+      hideSuggest();
+      return;
+    }
+    suggestItems = rows;
+    var html = rows.map(function (row, i) {
+      var sub = row.sub ? '<span class="suggest__sub">' + escapeHtml(row.sub) + '</span>' : '';
+      return '<button type="button" class="suggest__item" role="option" data-index="' + i + '">' +
+        '<span class="suggest__icon" aria-hidden="true">' + escapeHtml(row.icon) + '</span>' +
+        '<span class="suggest__text">' +
+          '<span class="suggest__name">' + escapeHtml(row.name) + '</span>' + sub +
+        '</span>' +
+      '</button>';
+    }).join('');
+    els.suggest.innerHTML = html;
+    els.suggest.hidden = false;
+  }
+
+  function showRecent() {
+    var recent = getRecent();
+    if (!recent.length) {
+      hideSuggest();
+      return;
+    }
+    renderSuggest(recent.map(function (r) {
+      return {
+        act: 'hotel',
+        icon: '🕘',
+        name: r.name,
+        sub: '最近見た宿',
+        hotel: { name: r.name, lat: r.lat, lon: r.lon, kind: r.kind }
+      };
+    }));
+  }
+
+  var runSuggest = debounce(function (query) {
+    var q = (query || '').trim();
+    if (q.length < 2) {
+      // 消しきったらフォーカス中は「最近」に戻す
+      if (document.activeElement === els.searchInput) showRecent();
+      else hideSuggest();
+      return;
+    }
+    lastSuggestQuery = q;
+
+    YadoGeo.suggestHotels(q)
+      .then(function (results) {
+        // 打ち続けて別の語になっていたら、古い応答は捨てる
+        if (q !== lastSuggestQuery || state.view !== 'select') return;
+
+        var rows = [];
+        var places = [];
+        results.forEach(function (r) {
+          if (r.kind === 'place') places.push(r);
+          else rows.push({
+            act: 'hotel',
+            icon: hotelEmoji(r),
+            name: r.name,
+            sub: r.displayName,
+            hotel: r
+          });
+        });
+
+        // 地名・バス停は宿ではないので候補には混ぜず、地図ジャンプ用に末尾へ1件だけ添える
+        if (places.length) {
+          rows.push({
+            act: 'jump',
+            icon: '📍',
+            name: 'このあたりを見る（' + places[0].name + '）',
+            sub: places[0].displayName,
+            hotel: places[0]
+          });
+        }
+
+        if (!rows.length) {
+          renderSuggest([{ act: 'none', icon: '🔍', name: '見つかりませんでした', sub: '別の名前で探してみてください' }]);
+          return;
+        }
+        renderSuggest(rows);
+      })
+      .catch(function () {
+        if (q !== lastSuggestQuery) return;
+        renderSuggest([{ act: 'none', icon: '⚠️', name: '検索できませんでした', sub: '少し待ってからお試しください' }]);
+      });
+  }, DEBOUNCE_SEARCH_MS);
+
+  // ---------------------------------------------------------------------------
+  // 宿を選ぶ → 状態B
+  // ---------------------------------------------------------------------------
+
+  function selectHotel(hotel) {
+    if (!hotel || !isFinite(hotel.lat) || !isFinite(hotel.lon)) return;
+
+    hideSuggest();
+    if (els.searchInput) els.searchInput.blur();
+
+    state.view = 'feed';
+    state.hotel = hotel;
+    state.cards = [];
+    state.far = [];
+    state.stage = 'loading';
+    pushRecent(hotel);
+    render();
+
+    var seq = ++requestSeq;
+
+    YadoEngine.suggest(hotel, {}, function (stage, partial) {
+      if (seq !== requestSeq || state.view !== 'feed') return;
+      state.stage = stage;
+      state.cards = (partial && partial.cards) || [];
+      state.far = (partial && partial.far) || [];
+      render();
+    }).then(function (result) {
+      if (seq !== requestSeq || state.view !== 'feed') return;
+      state.stage = 'done';
+      state.cards = (result && result.cards) || [];
+      state.far = (result && result.far) || [];
+      render();
+    }).catch(function () {
+      if (seq !== requestSeq || state.view !== 'feed') return;
+      state.stage = 'error';
       render();
     });
-
-    return btn;
   }
 
-  /** 距離の表示。planner の formatDistance があればそれに合わせる。 */
-  function formatDistance(distanceM) {
-    if (window.YadoPlanner && typeof window.YadoPlanner.formatDistance === "function") {
-      return window.YadoPlanner.formatDistance(distanceM);
+  function goBack() {
+    // 進行中の提案があっても、戻った先の画面には描かせない
+    requestSeq++;
+    state.view = 'select';
+    state.hotel = null;
+    state.cards = [];
+    state.far = [];
+    state.stage = null;
+    render();
+  }
+
+  // ---------------------------------------------------------------------------
+  // 状態B: 描画
+  // ---------------------------------------------------------------------------
+
+  function skeletonHtml() {
+    var one =
+      '<article class="card feedcard feedcard--skeleton" aria-hidden="true">' +
+        '<div class="feedcard__media skel"></div>' +
+        '<div class="feedcard__body">' +
+          '<div class="skel skel--line skel--w70"></div>' +
+          '<div class="skel skel--line skel--w40"></div>' +
+          '<div class="skel skel--line"></div>' +
+        '</div>' +
+      '</article>';
+    var out = '';
+    for (var i = 0; i < SKELETON_COUNT; i++) out += one;
+    return out;
+  }
+
+  function linkRowHtml(card) {
+    var links = card.links || {};
+    var rows = [];
+    var gmap = safeUrl(links.gmap);
+    if (gmap) rows.push({ url: gmap, label: 'Googleマップ' });
+    var official = safeUrl(links.official);
+    // official は無いことが多いので、そのときは行ごと省く
+    if (official) rows.push({ url: official, label: '公式' });
+    var ig = safeUrl(links.instagram);
+    if (ig) rows.push({ url: ig, label: 'Instagram' });
+    var tt = safeUrl(links.tiktok);
+    if (tt) rows.push({ url: tt, label: 'TikTok' });
+    var yt = safeUrl(links.youtube);
+    if (yt) rows.push({ url: yt, label: 'YouTube' });
+
+    if (!rows.length) return '';
+    return '<div class="feedcard__links">' + rows.map(function (r) {
+      return '<a class="feedcard__link" href="' + escapeHtml(r.url) + '" target="_blank" rel="noopener">' +
+        escapeHtml(r.label) + '</a>';
+    }).join('') + '</div>';
+  }
+
+  function cardHtml(card, index) {
+    var emoji = emojiFor(card.categoryLabel);
+    var media = card.imageUrl && safeUrl(card.imageUrl)
+      ? '<img class="feedcard__img" src="' + escapeHtml(card.imageUrl) + '" alt="" loading="lazy">'
+      : '<div class="feedcard__ph" data-cat="' + escapeHtml(card.categoryLabel || '') + '">' +
+          '<span aria-hidden="true">' + escapeHtml(emoji) + '</span></div>';
+
+    var summary = card.summary
+      ? '<p class="feedcard__summary">' + escapeHtml(card.summary) + '</p>'
+      : '';
+
+    return '<article class="card feedcard" data-index="' + index + '">' +
+      '<div class="feedcard__media">' + media +
+        '<span class="feedcard__no" aria-hidden="true">' + (index + 1) + '</span>' +
+      '</div>' +
+      '<div class="feedcard__body">' +
+        '<h2 class="feedcard__name">' + escapeHtml(card.name) + '</h2>' +
+        '<p class="feedcard__meta">' +
+          '<span class="feedcard__cat">' + escapeHtml(emoji) + ' ' + escapeHtml(card.categoryLabel || '') + '</span>' +
+          '<span class="feedcard__times">🚶徒歩' + escapeHtml(String(card.walkMin)) + '分 · 🚗車' +
+            escapeHtml(String(card.driveMin)) + '分</span>' +
+        '</p>' +
+        summary +
+        linkRowHtml(card) +
+      '</div>' +
+    '</article>';
+  }
+
+  function emptyHtml(hotel) {
+    var url = 'https://www.google.com/maps/search/?api=1&query=' +
+      encodeURIComponent(hotel.lat + ',' + hotel.lon);
+    return '<div class="card empty">' +
+      '<p class="empty__title">この周辺ではまだ提案を作れませんでした</p>' +
+      '<p class="empty__note">データが少ないエリアのようです。地図で直接探してみてください。</p>' +
+      '<a class="btn btn--secondary" href="' + escapeHtml(url) + '" target="_blank" rel="noopener">' +
+        'Googleマップで周辺を見る</a>' +
+    '</div>';
+  }
+
+  function farHtml(far) {
+    if (!far.length) return '';
+    var items = far.map(function (c) {
+      var gmap = safeUrl(c.links && c.links.gmap);
+      var name = escapeHtml(c.name) + ' <span class="far__time">🚗' + escapeHtml(String(c.driveMin)) + '分</span>';
+      return '<li class="far__item">' +
+        (gmap ? '<a href="' + escapeHtml(gmap) + '" target="_blank" rel="noopener">' + name + '</a>' : name) +
+      '</li>';
+    }).join('');
+    return '<details class="far">' +
+      '<summary class="far__summary">もっと遠く（車1時間以上）' + far.length + '件</summary>' +
+      '<ul class="far__list">' + items + '</ul>' +
+    '</details>';
+  }
+
+  function statusText(stage) {
+    if (stage === 'loading' || stage === 'osm') return '周辺を集めています…';
+    if (stage === 'wiki') return 'Wikipediaで補強しています…';
+    return '';
+  }
+
+  function renderFeed() {
+    var hotel = state.hotel;
+    if (!hotel) return;
+
+    els.feedTitle.textContent = hotel.name || '';
+
+    var status = statusText(state.stage);
+    els.feedStatus.hidden = !status;
+    els.feedStatus.textContent = status;
+
+    var loading = state.stage === 'loading' || state.stage === 'osm' || state.stage === 'wiki';
+
+    if (state.stage === 'error') {
+      els.feedList.innerHTML = '<div class="card empty">' +
+        '<p class="empty__title">提案を作れませんでした</p>' +
+        '<p class="empty__note">通信が不安定かもしれません。戻ってもう一度お試しください。</p>' +
+      '</div>';
+      els.feedFar.hidden = true;
+      return;
     }
-    return distanceM >= 1000 ? (distanceM / 1000).toFixed(1) + "km" : Math.round(distanceM) + "m";
+
+    var html = state.cards.map(cardHtml).join('');
+    // スケルトンは「まだ増える」ことを示すので、読み込み中は実カードの後ろに残す
+    if (loading) html += skeletonHtml();
+    if (!loading && !state.cards.length) html = emptyHtml(hotel);
+
+    els.feedList.innerHTML = html;
+
+    var far = farHtml(state.far);
+    els.feedFar.hidden = !far;
+    els.feedFar.innerHTML = far;
+
+    renderFeedMap();
   }
 
-  /** OSMのwebsiteタグは値が自由なので、http(s)以外は表示しない(javascript: 対策)。 */
-  function isSafeUrl(url) {
-    if (typeof url !== "string") return false;
-    return /^https?:\/\//i.test(url.trim());
+  function ensureFeedMap() {
+    if (feedMap) return feedMap;
+    feedMap = L.map(els.feedMap, {
+      zoomControl: false,
+      attributionControl: false,
+      // 小さい地図なので、指が取られないようスクロールズームは切る
+      scrollWheelZoom: false
+    }).setView([DEFAULT_VIEW.lat, DEFAULT_VIEW.lon], DEFAULT_VIEW.zoom);
+    L.tileLayer(TILE_URL, { maxZoom: 19 }).addTo(feedMap);
+    return feedMap;
   }
-})();
+
+  function renderFeedMap() {
+    var hotel = state.hotel;
+    if (!hotel) return;
+    ensureFeedMap();
+
+    feedMarkers.forEach(function (m) { feedMap.removeLayer(m); });
+    feedMarkers = [];
+
+    var hotelIcon = L.divIcon({
+      className: 'pin pin--hotel',
+      html: '<span>' + hotelEmoji(hotel) + '</span>',
+      iconSize: [30, 30],
+      iconAnchor: [15, 15]
+    });
+    var hm = L.marker([hotel.lat, hotel.lon], { icon: hotelIcon }).addTo(feedMap);
+    feedMarkers.push(hm);
+
+    var points = [[hotel.lat, hotel.lon]];
+    state.cards.forEach(function (c, i) {
+      var icon = L.divIcon({
+        className: 'pin pin--spot',
+        html: '<span>' + (i + 1) + '</span>',
+        iconSize: [24, 24],
+        iconAnchor: [12, 12]
+      });
+      var m = L.marker([c.lat, c.lon], { icon: icon, title: c.name }).addTo(feedMap);
+      feedMarkers.push(m);
+      points.push([c.lat, c.lon]);
+    });
+
+    if (points.length > 1) {
+      feedMap.fitBounds(L.latLngBounds(points), { padding: [24, 24], maxZoom: 14 });
+    } else {
+      feedMap.setView([hotel.lat, hotel.lon], 14);
+    }
+    // 非表示から表示に切り替えた直後はコンテナ寸法が0なので測り直す
+    setTimeout(function () { if (feedMap) feedMap.invalidateSize(); }, 0);
+  }
+
+  // ---------------------------------------------------------------------------
+  // render: 状態 → 画面
+  // ---------------------------------------------------------------------------
+
+  function render() {
+    var isFeed = state.view === 'feed';
+    els.viewSelect.hidden = isFeed;
+    els.viewFeed.hidden = !isFeed;
+
+    if (isFeed) {
+      renderFeed();
+    } else {
+      // 地図は使い回しなので、表示が戻ったタイミングで寸法を測り直す
+      if (map) setTimeout(function () { map.invalidateSize(); }, 0);
+      window.scrollTo(0, 0);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // 入口(URL)
+  // ---------------------------------------------------------------------------
+
+  /** `?hotel=<lat>,<lon>,<名前>` を読む。読めなければ null。 */
+  function hotelFromUrl(params) {
+    var raw = params.get('hotel');
+    if (!raw) return null;
+    var parts = raw.split(',');
+    if (parts.length < 2) return null;
+    var lat = parseFloat(parts[0]);
+    var lon = parseFloat(parts[1]);
+    if (!isFinite(lat) || !isFinite(lon)) return null;
+    var name = parts.slice(2).join(',').trim();
+    return { id: 'url/' + lat + ',' + lon, name: name || 'この宿', lat: lat, lon: lon };
+  }
+
+  function applyEntryPoint() {
+    var params = new URLSearchParams(global.location.search);
+
+    var urlHotel = hotelFromUrl(params);
+    if (urlHotel) {
+      // 状態Aを飛ばして即フィードへ
+      selectHotel(urlHotel);
+      return;
+    }
+
+    var q = (params.get('q') || '').trim();
+    if (q.length >= 2) {
+      els.searchInput.value = q;
+      YadoGeo.suggestHotels(q).then(function (results) {
+        if (!results.length || state.view !== 'select') return;
+        flyTo(results[0].lat, results[0].lon, DEFAULT_VIEW.zoom);
+      }).catch(function () { /* 失敗しても初期位置のままでよい */ });
+      return;
+    }
+
+    // ?q も ?hotel も無いときは、保存済み or 既定位置のまま宿を取りに行く
+    loadHotelsInView();
+  }
+
+  // ---------------------------------------------------------------------------
+  // 組み立て
+  // ---------------------------------------------------------------------------
+
+  function renderChips() {
+    els.chips.innerHTML = AREAS.map(function (a, i) {
+      return '<button type="button" class="chip" data-index="' + i + '">' + escapeHtml(a.label) + '</button>';
+    }).join('');
+  }
+
+  function bindEvents() {
+    // --- 検索欄 ---
+    els.searchInput.addEventListener('input', function () {
+      runSuggest(els.searchInput.value);
+    });
+    els.searchInput.addEventListener('focus', function () {
+      if (els.searchInput.value.trim().length < 2) showRecent();
+    });
+    els.searchInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        hideSuggest();
+        els.searchInput.blur();
+      }
+    });
+
+    // 候補の外をタップしたら閉じる(候補内のタップより後に走らないよう mousedown は使わない)
+    document.addEventListener('click', function (e) {
+      if (els.suggest.hidden) return;
+      if (els.suggest.contains(e.target) || e.target === els.searchInput) return;
+      hideSuggest();
+    });
+
+    els.suggest.addEventListener('click', function (e) {
+      var btn = e.target.closest('.suggest__item');
+      if (!btn) return;
+      var row = suggestItems[Number(btn.dataset.index)];
+      if (!row) return;
+
+      if (row.act === 'hotel') {
+        selectHotel(row.hotel);
+      } else if (row.act === 'jump') {
+        // 地名は宿ではないので、選ぶのではなく地図を寄せるだけ
+        hideSuggest();
+        flyTo(row.hotel.lat, row.hotel.lon, DEFAULT_VIEW.zoom);
+      }
+    });
+
+    // --- エリアチップ ---
+    els.chips.addEventListener('click', function (e) {
+      var btn = e.target.closest('.chip');
+      if (!btn) return;
+      var area = AREAS[Number(btn.dataset.index)];
+      if (!area) return;
+      hideSuggest();
+      flyTo(area.lat, area.lon, DEFAULT_VIEW.zoom);
+    });
+
+    // --- 状態B ---
+    els.backBtn.addEventListener('click', goBack);
+
+    els.feedList.addEventListener('click', function (e) {
+      // リンクのタップは素通しする(地図を動かさない)
+      if (e.target.closest('a')) return;
+      var article = e.target.closest('.feedcard');
+      if (!article || article.classList.contains('feedcard--skeleton')) return;
+      var card = state.cards[Number(article.dataset.index)];
+      if (!card || !feedMap) return;
+      feedMap.panTo([card.lat, card.lon]);
+      els.feedMap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  }
+
+  function init() {
+    els = {
+      viewSelect: document.getElementById('view-select'),
+      viewFeed: document.getElementById('view-feed'),
+      searchInput: document.getElementById('search-input'),
+      suggest: document.getElementById('suggest-list'),
+      chips: document.getElementById('area-chips'),
+      map: document.getElementById('map'),
+      mapNote: document.getElementById('map-note'),
+      backBtn: document.getElementById('back-btn'),
+      feedTitle: document.getElementById('feed-title'),
+      feedMap: document.getElementById('feed-map'),
+      feedStatus: document.getElementById('feed-status'),
+      feedList: document.getElementById('feed-list'),
+      feedFar: document.getElementById('feed-far')
+    };
+
+    renderChips();
+    bindEvents();
+    ensureMap();
+    render();
+    applyEntryPoint();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+  // デバッグ・検証用に状態を覗けるようにしておく
+  global.YadoApp = {
+    getState: function () { return state; },
+    selectHotel: selectHotel,
+    goBack: goBack,
+    getMap: function () { return map; }
+  };
+})(typeof window !== 'undefined' ? window : globalThis);

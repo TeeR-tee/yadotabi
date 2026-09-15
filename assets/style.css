@@ -1,267 +1,393 @@
-/* やどたび v0 - style.css
-   design-system(tokens.css / ui.css)に無い最小限の追加スタイルのみ定義する。
-   色は必ず var(--c-*)、余白は必ず var(--sp-*) トークンを使う。 */
+/* ==========================================================================
+   やどたび v3.0 — 画面固有のスタイル
+   共通の色・余白・角丸は tokens.css、部品(.card .btn .input)は ui.css を使う。
+   ここには「選ぶ面」と「見る面」の並びだけを書く。
+   ========================================================================== */
 
-.yado-main {
-  max-width: 640px;
-  padding-block: var(--sp-5);
-}
-
-.yado-lead {
-  margin-bottom: var(--sp-5);
-}
-
-.yado-input-card {
-  margin-bottom: var(--sp-5);
-}
-
-/* セグメント選択(泊数・移動手段) */
-.seg {
-  display: flex;
-  gap: var(--sp-2);
-  flex-wrap: wrap;
-}
-
-.seg__btn {
-  flex: 1 1 0;
-  min-height: 44px;
-  padding: var(--sp-2) var(--sp-3);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius, 8px);
-  background: var(--c-surface);
-  color: var(--c-text-sub);
+body {
+  margin: 0;
+  background: var(--c-bg);
+  color: var(--c-text);
+  font-family: var(--font-body);
   font-size: var(--fs-md);
-  cursor: pointer;
-  transition: background .15s, color .15s, border-color .15s;
+  /* 横スクロールは常に事故なので、根元で塞ぐ */
+  overflow-x: hidden;
 }
 
-.seg__btn:hover {
-  background: var(--c-surface-2);
+.view { display: block; }
+[hidden] { display: none !important; }
+
+/* --------------------------------------------------------------------------
+   状態A: 選ぶ
+   上に検索＋チップ、残り全部が地図。高さは dvh で、スマホのURLバー分を吸収する。
+   -------------------------------------------------------------------------- */
+
+.view--select {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
 }
 
-.seg__btn.is-active {
-  background: var(--c-primary);
-  border-color: var(--c-primary);
-  color: #fff;
-  font-weight: 600;
+.pickbar {
+  flex: 0 0 auto;
+  background: var(--c-surface);
+  border-bottom: 1px solid var(--c-border);
+  padding: calc(var(--sp-3) + env(safe-area-inset-top, 0px)) var(--sp-3) var(--sp-2);
+  z-index: 500; /* Leaflet のペイン(400)より前に出す */
 }
 
-#search-btn {
-  min-height: 48px;
+.pickbar__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
 }
 
-/* 条件の折りたたみ(開かなくても結果は出る) */
-.yado-conditions {
-  border-top: 1px solid var(--c-border);
-  padding-top: var(--sp-4);
+.pickbar__brand { font-size: 22px; line-height: 1; flex: 0 0 auto; }
+
+.pickbar__search {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
-.yado-conditions__summary {
-  font-size: var(--fs-sm);
-  color: var(--c-text-sub);
-  cursor: pointer;
-  list-style: none;
-  min-height: 24px;
+.pickbar__input { width: 100%; }
+
+/* 候補のドロップダウン */
+.suggest {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 60vh;
+  overflow-y: auto;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-lg);
+  z-index: 600;
 }
 
-.yado-conditions__summary::-webkit-details-marker {
-  display: none;
-}
-
-.yado-conditions__summary::after {
-  content: " ▾";
-}
-
-.yado-conditions[open] .yado-conditions__summary::after {
-  content: " ▴";
-}
-
-.yado-conditions__body {
-  margin-top: var(--sp-4);
-}
-
-/* 状態表示(スピナー・エラー) */
-.yado-status {
+.suggest__item {
   display: flex;
   align-items: center;
   gap: var(--sp-3);
-  padding: var(--sp-4) var(--sp-5);
-  margin-bottom: var(--sp-5);
-}
-
-.yado-spinner {
-  width: 20px;
-  height: 20px;
-  border: 3px solid var(--c-surface-2);
-  border-top-color: var(--c-primary);
-  border-radius: 50%;
-  animation: yado-spin 0.8s linear infinite;
-  flex-shrink: 0;
-}
-
-@keyframes yado-spin {
-  to { transform: rotate(360deg); }
-}
-
-/* 候補リスト */
-.candidate-btn {
   width: 100%;
-  min-height: 44px;
+  padding: var(--sp-3);
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--c-border);
   text-align: left;
-  padding: var(--sp-3) var(--sp-4);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius, 8px);
+  cursor: pointer;
+  font: inherit;
+  color: var(--c-text);
+}
+.suggest__item:last-child { border-bottom: none; }
+.suggest__item:hover, .suggest__item:focus-visible { background: var(--c-surface-2); }
+
+.suggest__icon { font-size: 18px; flex: 0 0 auto; }
+.suggest__text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.suggest__name {
+  font-weight: 600;
+  /* 長い宿名でも枠を広げない */
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.suggest__sub {
+  font-size: var(--fs-xs);
+  color: var(--c-text-sub);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* エリアチップ: 折り返さず横スクロール */
+.chips {
+  display: flex;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.chips::-webkit-scrollbar { display: none; }
+
+.chip {
+  flex: 0 0 auto;
+  padding: 6px 14px;
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-full);
   background: var(--c-surface);
   color: var(--c-text);
   font-size: var(--fs-sm);
+  font-weight: 600;
   cursor: pointer;
+  white-space: nowrap;
+}
+.chip:hover { background: var(--c-primary-soft); border-color: var(--c-primary); color: var(--c-primary); }
+
+.mapwrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0; /* flex の子が縮めるようにする(これが無いと地図がはみ出す) */
+}
+.mapwrap__map { width: 100%; height: 100%; }
+
+.mapnote {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--sp-4) + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  max-width: calc(100% - var(--sp-6));
+  padding: 8px 16px;
+  border-radius: var(--r-full);
+  background: rgb(20 20 30 / .78);
+  color: #fff;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  z-index: 450;
+  pointer-events: none;
 }
 
-.candidate-btn:hover {
-  background: var(--c-surface-2);
-  border-color: var(--c-primary);
-}
-
-/* 地図 */
-.yado-map {
-  width: 100%;
-  height: 40vh;
-  min-height: 260px;
-  border-radius: var(--radius, 8px);
-  border: 1px solid var(--c-border);
-  margin-bottom: var(--sp-5);
-  z-index: 0;
-}
-
-/* あなたの記録 */
-.yado-visit-summary {
-  color: var(--c-text-sub);
-  margin: calc(-1 * var(--sp-3)) 0 var(--sp-5);
-}
-
-/* 結果のセクション(定番・発見・時間枠・行けない) */
-.yado-section {
-  margin-bottom: var(--sp-6);
-}
-
-.yado-section__title {
-  font-size: var(--fs-xl);
-  font-weight: 700;
-  line-height: var(--lh-tight);
-  margin: 0 0 var(--sp-3);
-  /* ホテル名が長いのでスマホ幅では折り返す */
-  overflow-wrap: anywhere;
-}
-
-.yado-section__note {
-  color: var(--c-text-sub);
-  margin: 0 0 var(--sp-3);
-}
-
-#excluded-area .yado-section__title {
-  color: var(--c-warning);
-}
-
-/* プランのボックス */
-.yado-plan-boxes {
+/* 地図ピン(divIcon の中身) */
+.pin { background: none; border: none; }
+.pin span {
   display: flex;
-  flex-direction: column;
-  gap: var(--sp-4);
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--r-full);
+  background: var(--c-surface);
+  box-shadow: var(--shadow-md);
+  font-size: 16px;
+  line-height: 1;
 }
-
-.plan-box__title {
-  font-size: var(--fs-lg);
+.pin--spot span {
+  background: var(--c-primary);
+  color: var(--c-on-primary);
+  font-size: var(--fs-xs);
   font-weight: 700;
-  margin-bottom: var(--sp-3);
 }
 
-.plan-item {
-  margin-bottom: var(--sp-3);
-}
+/* --------------------------------------------------------------------------
+   状態B: 見る
+   -------------------------------------------------------------------------- */
 
-.plan-item__header {
+.view--feed { padding-bottom: calc(var(--sp-6) + env(safe-area-inset-bottom, 0px)); }
+
+.topbar {
+  position: sticky;
+  top: 0;
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  flex-wrap: wrap;
-}
-
-.plan-item__name {
-  font-weight: 700;
-  font-size: var(--fs-md);
-}
-
-.plan-item__meta {
-  font-size: var(--fs-sm);
-  color: var(--c-text-sub);
-  margin-top: var(--sp-1);
-}
-
-.plan-item__reason {
-  font-size: var(--fs-xs);
-  color: var(--c-text-sub);
-  margin-top: var(--sp-2);
-}
-
-/* 人気度(根拠)の行。ここがこのアプリの信頼の源泉なので少し目立たせる。 */
-.plan-item__fame {
-  font-size: var(--fs-xs);
-  color: var(--c-primary);
-  background: var(--c-primary-soft);
-  border-radius: var(--r-sm, 6px);
-  padding: var(--sp-1) var(--sp-2);
-  margin-top: var(--sp-2);
-  display: inline-block;
-}
-
-.plan-item__actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--sp-3);
-  margin-top: var(--sp-3);
-}
-
-.plan-item__link {
-  font-size: var(--fs-sm);
-}
-
-/* 「行った！」トグル。押すと塗りつぶしに変わる。 */
-.visit-btn {
-  margin-left: auto;
-  min-height: 32px;
-  border: 1px solid var(--c-border-strong);
+  padding: calc(var(--sp-2) + env(safe-area-inset-top, 0px)) var(--sp-3) var(--sp-2);
   background: var(--c-surface);
+  border-bottom: 1px solid var(--c-border);
+  z-index: 500;
+}
+
+.topbar__back {
+  flex: 0 0 auto;
+  width: 36px; height: 36px;
+  border: none;
+  border-radius: var(--r-full);
+  background: var(--c-surface-2);
+  color: var(--c-text);
+  font-size: var(--fs-lg);
+  line-height: 1;
+  cursor: pointer;
+}
+.topbar__back:hover { background: var(--c-border); }
+
+.topbar__title {
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: 700;
+  min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.feedmap { height: 180px; width: 100%; background: var(--c-surface-2); }
+
+.feedstatus {
+  margin: 0;
+  padding: var(--sp-3) var(--sp-4);
+  font-size: var(--fs-sm);
   color: var(--c-text-sub);
 }
 
-.visit-btn:hover:not(:disabled) {
+.feed {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+}
+
+.feedcard {
+  display: block;
+  overflow: hidden;
+  padding: 0;
+  cursor: pointer;
+}
+
+.feedcard__media {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
   background: var(--c-surface-2);
 }
+.feedcard__img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
-.visit-btn.is-active {
-  background: var(--c-success);
-  border-color: var(--c-success);
-  color: #fff;
-  font-weight: 600;
+.feedcard__ph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%; height: 100%;
+  font-size: 44px;
+  /* 写真が無いカードも「抜け」に見えないよう、淡い色面で埋める */
+  background: linear-gradient(135deg, var(--c-primary-soft), var(--c-surface-2));
 }
 
-/* バッジの意味色(○=success, △=warning, ×=danger) */
-.badge--ok { background: var(--c-success-soft); color: var(--c-success); }
-.badge--caution { background: var(--c-warning-soft); color: var(--c-warning); }
-.badge--ng { background: var(--c-danger-soft); color: var(--c-danger); }
+.feedcard__no {
+  position: absolute;
+  top: var(--sp-2); left: var(--sp-2);
+  min-width: 24px; height: 24px;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0 6px;
+  border-radius: var(--r-full);
+  background: var(--c-primary);
+  color: var(--c-on-primary);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
 
-@media (max-width: 400px) {
-  .seg__btn {
-    font-size: var(--fs-sm);
-  }
+.feedcard__body {
+  padding: var(--sp-3) var(--sp-4) var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
 
-  .yado-section__title {
-    font-size: var(--fs-lg);
-  }
+.feedcard__name {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  line-height: var(--lh-tight);
+}
 
-  /* 幅が足りないと右端の「行った！」が押しづらいので左詰めにして改行させる */
-  .visit-btn {
-    margin-left: 0;
+.feedcard__meta {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-3);
+  font-size: var(--fs-sm);
+  color: var(--c-text-sub);
+}
+.feedcard__times { font-weight: 600; }
+
+.feedcard__summary {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-body);
+  color: var(--c-text-sub);
+  /* 2行で切る。長い説明でカードの高さが暴れないように */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.feedcard__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-top: var(--sp-1);
+}
+.feedcard__link {
+  padding: 5px 10px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-full);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--c-text-sub);
+  text-decoration: none;
+}
+.feedcard__link:hover {
+  border-color: var(--c-primary);
+  color: var(--c-primary);
+  background: var(--c-primary-soft);
+  text-decoration: none;
+}
+
+/* スケルトン(読み込み中の仮カード) */
+.feedcard--skeleton { cursor: default; }
+
+.skel {
+  background: linear-gradient(90deg, var(--c-surface-2) 25%, var(--c-border) 37%, var(--c-surface-2) 63%);
+  background-size: 400% 100%;
+  animation: skel-shimmer 1.4s ease infinite;
+  border-radius: var(--r-sm);
+}
+.feedcard--skeleton .feedcard__media { aspect-ratio: 16 / 9; }
+.skel--line { height: 14px; margin-bottom: var(--sp-2); }
+.skel--w70 { width: 70%; height: 18px; }
+.skel--w40 { width: 40%; }
+
+@keyframes skel-shimmer {
+  0%   { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skel { animation: none; }
+}
+
+/* 提案が0件のとき */
+.empty {
+  padding: var(--sp-5);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  align-items: center;
+}
+.empty__title { margin: 0; font-weight: 700; }
+.empty__note { margin: 0; font-size: var(--fs-sm); color: var(--c-text-sub); }
+
+/* もっと遠く */
+.far {
+  margin: 0 var(--sp-3);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+}
+.far__summary {
+  padding: var(--sp-3) var(--sp-4);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--c-text-sub);
+}
+.far__list {
+  margin: 0;
+  padding: 0 var(--sp-4) var(--sp-3);
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.far__item { font-size: var(--fs-sm); }
+.far__item a { color: var(--c-text); }
+.far__time { color: var(--c-text-sub); font-size: var(--fs-xs); }
+
+/* --------------------------------------------------------------------------
+   広い画面: スマホ幅の体験をそのまま中央に置く
+   -------------------------------------------------------------------------- */
+@media (min-width: 720px) {
+  .view--feed {
+    max-width: 560px;
+    margin: 0 auto;
   }
+  .pickbar__row, .chips { max-width: 560px; margin-left: auto; margin-right: auto; }
+  .chips { margin-top: var(--sp-2); }
 }
