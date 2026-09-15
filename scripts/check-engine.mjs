@@ -614,5 +614,48 @@ console.log('\n(e) present(): more(31〜60件目)');
   eq(res2.more.length, 0, '候補30件以下のとき more は空配列');
 }
 
+// ---------------------------------------------------------------------------
+console.log('\n(r42) 要約(summary)は句点優先で切る');
+{
+  const E = loadEngine(geoMock());
+  function summaryOf(text) {
+    const item = { id: 'x', name: 'ダミー', lat: at(100), lon: HOTEL.lon, distanceM: 100, summary: text };
+    return E.present([item], HOTEL).cards[0].summary;
+  }
+
+  // 1. 上限以下 → そのまま(「…」なし)
+  const shortText = 'あ'.repeat(50) + '。';
+  eq(summaryOf(shortText), shortText, '上限以下はそのまま(…なし)');
+
+  // 2. 上限超で60%以降(72字目以降)に句点あり → その句点までで終わり、「…」を含まない
+  const sentA = 'あ'.repeat(90) + '。' + 'い'.repeat(40);
+  const resA = summaryOf(sentA);
+  eq(resA, 'あ'.repeat(90) + '。', '60%以降に句点があればそこで切る');
+  ok(!resA.endsWith('…'), '句点で切れた場合は…を含まない', resA);
+
+  // 3. 上限超で句点が60%より手前(72字未満)にしかない → 従来どおり120字+…
+  const sentB = 'あ'.repeat(30) + '。' + 'い'.repeat(150);
+  const resB = summaryOf(sentB);
+  eq(resB, sentB.slice(0, 120) + '…', '句点が60%より手前なら従来どおり120字+…');
+  eq(resB.length, 121, '長さは121');
+
+  // 4. 句点が1つも無い長文 → 従来どおり120字+…
+  const sentC = 'あ'.repeat(200);
+  const resC = summaryOf(sentC);
+  eq(resC, sentC.slice(0, 120) + '…', '句点が無ければ従来どおり120字+…');
+  eq(resC.length, 121, '長さは121');
+
+  // 5. 句点がちょうど境界(下限ぎりぎり/上限直前)にあるケースの off-by-one
+  // 72字目(0始まり71)がちょうど「。」→ idx=71, idx+1=72 = minLen(120*0.6=72) を満たす
+  const sentD = 'あ'.repeat(71) + '。' + 'い'.repeat(60);
+  const resD = summaryOf(sentD);
+  eq(resD, 'あ'.repeat(71) + '。', '句点がちょうど下限(72字目)なら句点優先(境界を含む)');
+
+  // maxChars直前(120字目)が「。」のケース → 従来どおりその位置で切って「…」なし
+  const sentE = 'あ'.repeat(119) + '。' + 'い'.repeat(30);
+  const resE = summaryOf(sentE);
+  eq(resE, 'あ'.repeat(119) + '。', '句点が上限直前(120字目)でも句点優先');
+}
+
 console.log('\n==== ' + pass + ' pass / ' + fail + ' fail ====');
 process.exit(fail ? 1 : 0);

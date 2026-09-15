@@ -1,106 +1,74 @@
-# NEXT — R37(主) + R11(従・採否判断つき)
+# NEXT — R42 カード要約の「…」を句点優先で切る
 
-作成: 2026-09-16 計画役。難易度 **sonnet**。所要目安 **35〜50分**(R37 約20分 + R11 約20分)。
+**選定理由**: R2-1 は朝の相談待ち、R14/R19/R40 は Overpass を叩く(fixture 再生成)必要があり無料APIのマナー上サイクル内に収めにくい。R42 は engine.js の1関数 + テストだけで完結し、3 fixture で目視比較でき、外部API 0回で回せるため。
 
-## なぜこの2つか(1行)
-R37 は「宿ピンを押しても無反応」という、番号ピン(R10で解決済)と対になる最後の取りこぼしで、
-既存の `panTo` パターンをそのまま流用できる最小変更であり、同サイクルに収まる R11 は
-撮影3枚で採否を決められる「調査兼実装」なので、ユーザー判断を必要とせずバックログを2件消化できるため。
+## 対象ファイル(絶対パス)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\engine.js` (実装)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-engine.mjs` (テスト追加・既存1件の修正)
 
----
+## 現状(実物を読んだ結果)
+- `assets/engine.js:36` `var SUMMARY_MAX_CHARS = 120;`
+- `assets/engine.js:289-296` 要約整形の本体:
+  ```js
+  /** 文字列を最大長で切って「…」を付ける。null/空文字は null。 */
+  function truncate(text, maxChars) {
+    if (typeof text !== 'string') return null;
+    var s = text.trim();
+    if (!s) return null;
+    if (s.length <= maxChars) return s;
+    return s.slice(0, maxChars) + '…';
+  }
+  ```
+- 呼び出しは1か所だけ: `assets/engine.js:820`
+  `summary: truncate(stripCoordPrefix(item.summary), SUMMARY_MAX_CHARS),`
+- 前段の `stripCoordPrefix()` は `assets/engine.js:281`。**触らない**(座標除去はそのまま先に効かせる)。
 
-## タスク1(必須): R37 状態Bの小地図で宿ピンをタップすると宿の位置へ panTo
+## 実装方針
+1. `truncate()` を「上限手前の最後の句点で切る」方式に変える。関数名は `truncate` のまま(呼び出し側 engine.js:820 は無変更)。
+2. ロジック:
+   - `s.length <= maxChars` なら従来どおりそのまま返す(「…」なし)。
+   - そうでなければ `head = s.slice(0, maxChars)` の中で**最後の「。」の位置** `idx = head.lastIndexOf('。')` を取る。
+   - `idx >= 0 && (idx + 1) >= Math.floor(maxChars * 0.6)`(=120字なら72字以上)なら `s.slice(0, idx + 1)` を返す。**この場合「…」は付けない**(文として完結しているため)。
+   - 条件を満たさない(句点が無い/前すぎる)ときは従来どおり `s.slice(0, maxChars) + '…'`。
+3. 閾値 `0.6` は `var SUMMARY_SENTENCE_MIN_RATIO = 0.6;` のような名前付き定数にして `SUMMARY_MAX_CHARS` の近く(engine.js:36 付近)に置き、コメントで「短すぎる要約を避けるための下限」と書く。
+4. `rank()` / `baseScore()` / 重み・閾値・カテゴリ多様性・除外ルール・`stripCoordPrefix` は**一切触らない**。`truncate` は表示整形専用で順位に影響しないことを確認してから進めること(engine.js:820 の present 段でしか呼ばれない)。
 
-### 対象ファイル(絶対パス)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js`
-- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-pinflash.mjs`
+## 完了条件(検証可能)
+- [ ] `node --check assets/engine.js` 通過。
+- [ ] `node scripts/check-all.mjs` が **14本全 PASS(exit 0)**。
+- [ ] `scripts/check-engine.mjs` の**既存アサーション** `scripts/check-engine.mjs:119`
+  `ok(saino.summary.length === 121 && saino.summary.endsWith('…'), ...)`
+  は新仕様で成立しなくなる可能性が高い。実際の値を確かめ、**期待値を新仕様に合わせて書き直す**(無効化・削除はしない)。
+- [ ] 新規テストを最低5ケース追加:
+  1. 上限以下 → そのまま(「…」なし)
+  2. 上限超で 60%以降に句点あり → その句点までで終わり、末尾が「。」で「…」を含まない
+  3. 上限超で句点が 60%より手前にしかない → 従来どおり 120字+「…」(長さ121)
+  4. 句点が1つも無い長文 → 従来どおり 120字+「…」
+  5. 句点がちょうど境界(maxChars 直前/直後)にあるケースの off-by-one
+- [ ] `node scripts/dump-rank.mjs kusatsu` / `hakone` / `dogo` の**並び順に差分が無い**こと(要約文面だけが変わる。順位が動いたら実装が rank に触れている証拠なので差し戻す)。
 
-### 現状(実物を読んだ結果)
-- `renderFeedMap()` は **app.js:992** から。宿マーカーの生成は **app.js:1001〜1008**:
-  - `hotelIcon` を `L.divIcon({ className:'pin pin--hotel', html:'<span role="img" aria-label="宿 …">…' })` で作り、
-  - `var hm = L.marker([hotel.lat, hotel.lon], { icon: hotelIcon, zIndexOffset: 2000 }).addTo(feedMap);`
-  - `feedMarkers.push(hm);` で終わっており、**click ハンドラが無い**(番号ピン側 1012〜1024 にも無いが、そちらは
-    カード側バッジ(app.js:1410〜1429)からの導線で解決済み)。
-- panTo の既存パターンは **app.js:1426**(番号バッジ)と **app.js:1463**(カード本体)で
-  `feedMap.panTo([card.lat, card.lon]);` + `els.feedMap.scrollIntoView({behavior:'smooth', block:'nearest'})`。
+## 検証手順(撮影+目視)
+1. ローカルサーバを立て、外部APIなしで以下を mobile で撮影(`node C:\workspace\tools\shot\shot.mjs <URL> --mobile`):
+   - `?fixture=kusatsu`(1位 光泉寺)
+   - `?fixture=hakone`(1位 早雲寺)
+   - `?fixture=dogo`(1位 伊佐爾波神社)
+2. 撮った3枚を **Read で開いて目視**し、次を確認して NIGHTLOG に書く:
+   - 1位カードの要約が**文の途中で切れていない**(末尾が「。」か、句点が無いケースだけ「…」)
+   - 要約が極端に短くなっていない(1行しか出ないカードが増えていないか)
+   - カード30枚・番号ピン1〜30 判読可・文字崩れ/重なり/はみ出しなし・コンソールエラー0件
+3. 余裕があれば before/after の1位要約文を NIGHTLOG に1行ずつ並べて比較を残す。
 
-### 実装方針
-1. app.js:1007 の `var hm = L.marker(...)` の直後、`feedMarkers.push(hm);`(1008行)の前後に1つだけ追加する:
-   ```
-   hm.on('click', function () { feedMap.panTo([hotel.lat, hotel.lon]); });
-   ```
-   - **ズームは変えない**(`panTo` のみ。`setView`/`flyTo` は使わない)。
-   - `els.feedMap.scrollIntoView` は**呼ばない**(地図自体をタップしている=既に見えているため。
-     カード側の導線とは事情が違う)。
-   - `hotel` はこの関数スコープの `var hotel = state.hotel;`(app.js:993)をそのまま使ってよい。
-2. 受動ログ(`passivePush`)は**足さない**。F3 の記録対象は「カードのタップ/リンク/スクロール到達」で、
-   地図の再センタリングはナビゲーション操作であり記録仕様外。docs/passive-log.md を書き換えないこと。
-3. `nudgeOverlaps` で宿ピンは `fixedPoints`(動かさない基準点)なので、宿ピンの表示位置=実座標であり
-   panTo 先とずれない。ここは触らない。
+## 変更禁止範囲
+- `rank()` / `baseScore()` / 重み・閾値・カテゴリ多様性の減点(engine.js)
+- `assets/geo.js` 全体
+- `fixtures/*.json`(再生成しない。Overpass / Wikipedia を**叩かない**)
+- `stripCoordPrefix()` と `COORD_PREFIX_RE`
 
-### 完了条件(検証可能)
-- `?fixture=kusatsu` で小地図の宿ピン(♨)をクリックすると、宿の緯度経度が地図の中心になる
-  (`feedMap.getCenter()` が hotel.lat/lon と誤差 0.0005 度以内)。
-- クリック前後で `feedMap.getZoom()` が**変化しない**。
-- 番号ピンをクリックしても何も起きない(従来どおり。ここに click を足さない)。
-- `node scripts/check-all.mjs` が 14本すべて PASS・exit 0。
+## 難易度・所要
+- 難易度: **sonnet**
+- 所要目安: 25〜40分(実装10分 / テスト10分 / check-all 約1分 / 撮影・目視10分 / コミット+push)
 
-### check-pinflash.mjs へのケース追加
-既存 `main()` の「連打対策」の後(scripts/check-pinflash.mjs:110 付近)に、同じ `ok(...)` の形で追記:
-- 事前に `const before = await page.evaluate(() => ({ c: window.__feedMapCenter ?? null }))` のような
-  グローバル追加は**しない**。代わりに Leaflet のコンテナ中心ピクセルではなく、
-  `.pin--hotel` を `page.locator('.pin--hotel').click()` し、
-  クリック前後の宿ピンの `getBoundingClientRect()` と `#feed-map` の矩形中心を比べて、
-  **クリック後に宿ピンが地図の中心付近(中心から 20px 以内)に来ている**ことを検証する
-  (Leaflet の内部APIに依存せず DOM だけで確認できる)。
-- ズーム不変の確認は `.leaflet-tile-container` の `transform` ではなく、
-  クリック前後で `document.querySelector('.leaflet-map-pane')` に付く
-  `data-*` ではなくタイルの `src` に含まれる **ズーム段(z)** が同じであることで判定する
-  (`img.leaflet-tile` の src を1枚拾って `/(\d+)\/\d+\/\d+\.png/` で取る)。
-- 追加ケースは3件程度(宿ピンが1個存在する / クリック後に中心に寄る / ズーム段が不変)。
-  既存ケースの文言・順序は変えない。
-
----
-
-## タスク2(任意・採否判断つき): R11 小地図の高さ
-
-### 対象ファイル(絶対パス)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\style.css`(**283行目** `.feedmap { height: 180px; width: 100%; ... }`)
-- 採用する場合のみ `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js`(高さ切替クラスの付与)
-
-### 検討する案
-- 密集時(`state.cards.length >= 25`)だけ `.feedmap` を **220px** にする。
-  実装するなら CSS 側に `.feedmap--tall { height: 220px; }` を足し、
-  `renderFeedMap()`(app.js:992)の冒頭で `els.feedMap.classList.toggle('feedmap--tall', state.cards.length >= 25)` の1行。
-  **`invalidateSize()` は既に setTimeout 内(app.js:1029)で呼ばれている**ので、
-  クラス付与はその setTimeout より**前**に行えば追加対応は不要。
-- `@media (min-width: 720px)`(style.css:525)配下で PC 幅の見え方が変わらないことも確認する。
-
-### 判断手順(これが本体)
-1. 現行 180px のまま `?fixture=kusatsu` / `?fixture=hakone` / `?fixture=dogo` を mobile で撮影(3枚)。
-2. 220px 版に変えて同じ3枚を撮影。
-3. 6枚を Read で目視し、**番号ピン 1〜30 の判読性**と**カード1枚目が画面内にどれだけ残るか**を比較する。
-4. 220px にして判読性がはっきり良くなるなら採用。
-   **良くならない/カード1枚目が押し出されて第一印象が悪くなるなら不採用**にしてよい。
-   その場合は style.css を元に戻し、**不採用の理由(比較した具体的な見え方)を NIGHTLOG に書く**。
-   不採用でも ROADMAP の R11 は `[x] 2026-09-16 R11 …(検討の結果、現行180pxを維持)` として消化する。
-
----
-
-## 変更禁止範囲(厳守)
-- `assets/engine.js`(rank の重み・閾値・カテゴリ多様性・除外ルールを含め一切)
-- `assets/geo.js`
-- `fixtures/*.json`(再生成しない。Overpass を叩かない)
-- `nudgeOverlaps()` の `MARGIN`(app.js:936)および `NUDGE`/`RINGS`/`DIRS`/`TOP_DIST`/`SUB_DIST`/`HOTEL_DIST`
-- 既存 check スクリプトの本体ロジック(check-pinflash.mjs への**ケース追加**のみ可)
-
-## 検証手順
-1. `node --check assets/app.js`
-2. `node scripts/check-all.mjs` が 14本 PASS・exit 0
-3. 撮影(すべて fixture=外部API 0回):
-   - `?fixture=kusatsu` mobile — 宿ピンのクリック前/後 2枚
-   - R11 の比較 6枚(採用しなくても撮る)
-   - `?fixture=hakone` mobile 1枚(デグレ確認)
-4. 画像を Read で目視し、文字崩れ・重なり・はみ出し・ピンの切れが無いことを確認
-5. `docs/ROADMAP.md` を `[x] 2026-09-16` に、`docs/NIGHTLOG.md` に3行(やったこと/見た目/次)
-6. コミット(1行の日本語)→ `git push`
+## 仕上げ
+- `docs/ROADMAP.md` の R42 を `[x] 2026-09-16` にする。
+- `docs/NIGHTLOG.md` に3行(やったこと / 見た目の確認結果 / 次)を追記。
+- コミット→`git push`(1行の日本語メッセージ)。

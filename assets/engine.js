@@ -34,6 +34,9 @@
 
   // 要約(Wikipedia extract)の表示上限。超えたら「…」で切る。
   var SUMMARY_MAX_CHARS = 120;
+  // 句点優先で切るときの下限比率。短すぎる要約(尻切れ感)を避けるため、
+  // 上限の何%以降に句点があればそこで文として完結させるかの閾値。
+  var SUMMARY_SENTENCE_MIN_RATIO = 0.6;
 
   // 同一視の判定: これ以内で名前の一方が他方を含めば同じ場所とみなす
   var DEDUPE_NEAR_M = 150;
@@ -286,12 +289,22 @@
     return stripped ? stripped : text;
   }
 
-  /** 文字列を最大長で切って「…」を付ける。null/空文字は null。 */
+  /**
+   * 文字列を最大長で切る。上限手前に句点「。」があればそこで文として完結させ
+   * (「…」は付けない)、無ければ従来どおり maxChars で切って「…」を付ける。
+   * null/空文字は null。
+   */
   function truncate(text, maxChars) {
     if (typeof text !== 'string') return null;
     var s = text.trim();
     if (!s) return null;
     if (s.length <= maxChars) return s;
+    var head = s.slice(0, maxChars);
+    var idx = head.lastIndexOf('。');
+    var minLen = Math.floor(maxChars * SUMMARY_SENTENCE_MIN_RATIO);
+    if (idx >= 0 && (idx + 1) >= minLen) {
+      return s.slice(0, idx + 1);
+    }
     return s.slice(0, maxChars) + '…';
   }
 
