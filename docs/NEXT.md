@@ -1,77 +1,84 @@
-# NEXT: R27 Leaflet の CDN を unpkg から cdnjs へ
+# NEXT: R24 `?hotel=` の名前なし見出し + R21 README 英語1段落
 
-**選定理由**: 地図が出ないと本体が成立しない単一障害点を、SRI を正しく付け直すだけで可用性の高い CDN(Cloudflare)に移せる。index.html の2行のみで撮影検証も短く、夜間ループ向き(R24 は更に小さいが、地図の可用性のほうが実害が大きいので先)。
+判断理由: 残る未完了(R11/R14/R19/R21/R24/R25/R26)のうち、R24 は変更箇所が `hotelFromUrl` の既定名1箇所に閉じていて実物を確認済み・埋め込み設置(名前省略)にも効く最小確実タスクであり、同サイクルでコード変更ゼロの R21 を抱き合わせられるため。
 
-## 対象ファイル(絶対パス)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\index.html` … **これだけ**を編集する(25〜26行目の `<link>`、69〜70行目の `<script>`)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md` … R27 を `[x] 2026-09-16` に
-- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\NIGHTLOG.md` … 3行追記
+---
 
-## 現状(計画役が実物を確認済み)
-index.html 25-26行目:
+## タスク1: R24 名前が無い/空の `?hotel=` で見出しを「この宿の周辺」にする
+
+### 対象ファイル(絶対パス)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js`
+- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-hotelparam.mjs`(新規)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md`(完了印)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\NIGHTLOG.md`(3行)
+
+### 実装方針(実物を読んで確認済み)
+`assets/app.js` の `hotelFromUrl(params)`(**1053〜1063行**)が `?hotel=` のパース箇所。現状:
+
 ```
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+1061:    var name = parts.slice(2).join(',').trim();
+1062:    return { id: 'url/' + lat + ',' + lon, name: name || 'この宿', lat: lat, lon: lon };
 ```
-index.html 69-70行目:
-```
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-  integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-```
-`unpkg` の参照はこの2箇所のみ(リポジトリ全文 grep 済み。`demo/*.html` は Leaflet を読み込んでいない)。
 
-## 実装方針
-### 1. URL と integrity の差し替え
-cdnjs 公式 API(`https://api.cdnjs.com/libraries/leaflet/1.9.4?fields=sri`)から計画役が取得済みの値。**unpkg の sha256 をそのまま流用してはいけない**(cdnjs 配信ファイルはバイト列が異なるためハッシュが合わず、ブラウザが読み込みをブロックして地図が真っ白になる)。必ず下の sha512 に置き換えること。
+- 既に `parts.slice(2).join(',').trim()` で**空白トリム済み**、かつ `name || ...` で空文字・undefined(`parts.length===2` のとき `slice(2)` は `[]` → `''`)を弾いているので、**`'この宿'` を `'この宿の周辺'` に変えるのが変更の本体**。ロジックは触らない(R24 は文言のみの変更というバックログの定義通り)。
+- 全角空白のみの名前(`?hotel=36.6,138.5,　`)は `String.prototype.trim()` が U+3000 も落とすので現状のままで空扱いになる。念のためテストで確認する。
+- 見出しの描画は `renderFeed()`(**767〜770行**)の
+  `els.feedTitle.textContent = hotel.name || '';`
+  で、`textContent` 代入のため **escapeHtml は不要・かつ既存のエスケープ安全性はそのまま維持される**。ここは変更しない(変えると名前ありの経路に影響する)。
+- `applyEntryPoint()`(**1105行〜**)は `hotelFromUrl(params)` の戻り値をそのまま `selectHotel()` に渡す(fixture 併用時は 1149行で `hotelFromUrl(params) || {fixture既定}` の形)。したがって **fixture+hotel 併用でも同じ既定名が効く**。ここも変更不要。
+- 既定名の文字列は他所にハードコードされていないかを `grep -n "この宿" assets/ index.html demo/` で確認し、あれば一緒に直す(現状 app.js の1箇所のみの見込み)。
 
-`<link>`(25-26行目)を:
-```
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css"
-    integrity="sha512-Zcn6bjR/8RZbLEpLIeOwNtzREBAJnUKESxces60Mpoj+2okopSAcSUIUOseddDm0cxnGQzxIR7vJgsLZbdLE3w==" crossorigin="" referrerpolicy="no-referrer">
-```
-`<script>`(69-70行目)を:
-```
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"
-  integrity="sha512-BwHfrr4c9kmRkLw6iXFdzcdWV/PGkVgiIyIWLLlTSXzWQzxuSg4DiQUCpauz/EWjgk5TYQqX/kvn9pG1NpYfqg==" crossorigin="" referrerpolicy="no-referrer"></script>
-```
-- バージョンは 1.9.4 のまま上げない。`crossorigin=""` は SRI に必須なので残す。`referrerpolicy="no-referrer"` は cdnjs の推奨なので付ける(任意、付けなくても可)。
-- **ハッシュは1文字でも写し間違えると地図が消える**。コピー後に `grep -c "sha512-Zcn6\|sha512-BwHf" index.html` が 2 になることを確認する。
+### 完了条件(検証可能)
+1. `?hotel=36.6226,138.5960` → 見出しが **「この宿の周辺」**(空欄でも `undefined` でもない)
+2. `?hotel=36.6226,138.5960,` (末尾カンマ・名前空) → 同じく「この宿の周辺」
+3. `?fixture=kusatsu&embed=1&hotel=36.6226,138.5960` → 埋め込みでも見出しが「この宿の周辺」(検索欄・チップ・戻るボタンが出ないことも従来どおり)
+4. 名前ありの通常経路は従来どおり: `?hotel=36.6226,138.5960,ちょうしゅくの宿` → 「ちょうしゅくの宿」
+5. `?fixture=kusatsu`(hotel 無し)は従来どおり「草津温泉(固定データ)」でデグレなし
+6. 新規 `node scripts/check-hotelparam.mjs` が上記1〜5を機械検査して全 PASS・exitCode 0
+7. 既存テストが全緑: `node scripts/check-engine.mjs` / `check-more.mjs` / `check-a11y.mjs` / `check-passive.mjs` / `check-geo.mjs` / `check-r5.mjs` / `check-pinflash.mjs` / `check-imgfail.mjs` / `node docs/check.mjs` / `node --check assets/app.js`
 
-### 2. マーカー画像の追従確認(重要)
-Leaflet の既定マーカー画像は CSS からの相対パス(`images/marker-icon.png`)で解決されるため、CSS の置き場が unpkg の `/dist/` から cdnjs の `/1.9.4/` に変わっても `https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png` に着地する(計画役が `curl -sI` で 200 を確認済み)。ただし本アプリのピンは `divIcon`(HTML)で自前実装なので、既定画像は実際には使っていない可能性が高い。**撮影でピンが従来どおり出ることを目で確認すれば足りる**。CSS の上書きや画像の自前ホストは不要(やらないこと)。
+### 検証手順(撮影+目視)
+- `scripts/check-hotelparam.mjs` は既存 `scripts/check-a11y.mjs` / `check-more.mjs` の作り(Playwright + ローカルサーバ)を踏襲し、`#feed-title` の `textContent` を上記5パターンで読んで判定、コンソールエラー0件も見る。外部APIを叩かないよう fixture 併用パターン以外も `?hotel=` 単独では状態Bに入るだけなので Overpass を待たない実装にする(必要なら `simulate=empty` は使わず、タイトル確定を待つだけにする)。
+- 撮影: `node C:\workspace\tools\shot\shot.mjs <URL> --mobile` で
+  (a) `?fixture=kusatsu&hotel=36.6226,138.5960`(名前なし)
+  (b) `?fixture=kusatsu&embed=1&hotel=36.6226,138.5960`
+  (c) `?fixture=kusatsu`(デグレ確認)
+  の3枚。`screenshots/` に保存して **必ず Read で開いて目視**し、見出しの文字崩れ・はみ出し・2行落ち(「この宿の周辺」は6文字なので topbar で折り返さないはず)が無いことを確認する。
+- 目視で崩れが出たら同サイクルで直す。直せなければ ROADMAP 先頭に起票。
 
-### 3. check.mjs は変更しない
-`docs/check.mjs` の 114〜139行目は「ホスト名が本番と違うものは外部ドメインとみなし fetch せず件数だけ報告する」実装。cdnjs も同じく外部扱いになるだけで、判定ロジックの変更は不要。**check.mjs は編集禁止**。ただし「外部リンク N件(検査対象外)」の件数が変更前後で同じ(=2件のまま)であることを実行結果で確認する。
+### 変更禁止範囲
+- `assets/engine.js` / `assets/geo.js` / `fixtures/*.json` は一切触らない(`git diff --stat` で無変更を確認)。
+- rank の重み・閾値・カテゴリ多様性は当然無変更。
+- `renderFeed()` の見出し描画行(770行)と `escapeHtml` の扱いも変えない。
 
-## 完了条件(すべて検証可能)
-1. `curl -sI https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css` と `.../leaflet.js` が **200**(計画役確認済み、作業役も再実行してログに残す)。
-2. `node docs/check.mjs` が **全項目 [OK] / exit code 0**、外部リンク件数が変更前と同数。
-3. `?fixture=kusatsu` の mobile 撮影で **地図タイル(OSM の地形)が描画され、番号ピン 1〜30 と宿ピン♨が見える**。SRI 不一致なら地図枠が真っ白かグレーになるので一目で分かる。
-4. `?fixture=hakone` の mobile 撮影でもデグレなし(カード30枚・ピン判読可)。
-5. ブラウザコンソールに `Failed to find a valid digest` / `Subresource Integrity` を含むエラーが **0件**。
-6. `git diff --stat` が **index.html 1ファイル(+ROADMAP/NIGHTLOG)のみ**。
+### 難易度・所要目安
+- sonnet / 25〜40分(テスト新規作成と撮影込み)
 
-## 検証手順
-```
-node --check assets/app.js
-curl -sI https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css | head -1
-curl -sI https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js  | head -1
-node docs/check.mjs
-node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=kusatsu" --mobile
-node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=hakone"  --mobile
-node scripts/check-engine.mjs
-node scripts/check-a11y.mjs
-```
-撮影した画像は **必ず Read で開いて目視**する(地図が白くないか、ピンが出ているか)。コンソールエラーは shot の出力か check-a11y の結果で確認する。
-push 後に `curl -s https://teer-tee.github.io/yadotabi/ | grep -c cdnjs` が 2 になることも確認する。
+---
 
-## 変更禁止範囲
-- `assets/engine.js` / `assets/geo.js` / `assets/app.js` / `fixtures/*.json` … **一切触らない**(rank の重み・閾値・カテゴリ多様性も当然不可)。
-- `docs/check.mjs` および `scripts/*.mjs` … 触らない。
-- Leaflet のバージョンアップ、ローカルへの自前ホスト、別 CDN の併記(フォールバック)は **やらない**(今回の範囲外。必要なら ROADMAP に起票)。
-- `git stash` / `reset --hard` / `checkout` によるファイル復元は禁止。
-- 外部 API(Overpass/Wikipedia)を叩く撮影は不要。全て fixture で完結させる。
+## タスク2(同サイクルの小修正): R21 README に英語1段落
 
-## 難易度・所要目安
-- 難易度: **sonnet**(差し替え2箇所+撮影確認)
-- 所要目安: **10〜15分**
+### 対象ファイル(絶対パス)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\README.md`
+
+### 実装方針
+既存の日本語 README の冒頭(タイトル直後)か末尾に、英語の短い段落を1つ追加するだけ。3文構成:
+1. **What this is** — 宿の座標だけを入口に、周辺の見どころをユーザー入力ゼロで提案する静的なモバイルWebアプリ。
+2. **How to try** — `https://teer-tee.github.io/yadotabi/` を開く、または `?fixture=kusatsu` で外部APIなしのデモを見る。
+3. **No API keys needed** — OpenStreetMap / Overpass / Wikipedia の公開APIのみ、コスト0円。
+
+### 完了条件
+- README.md に英語段落が入っている。日本語の既存記述は削らない。
+- コード変更ゼロ(`git diff --stat` で README.md 以外に差分が無い)。
+- `node docs/check.mjs` が引き続き全 OK。
+
+### 変更禁止範囲
+- README.md 以外のファイル。
+
+### 難易度・所要目安
+- sonnet / 5〜10分
+
+---
+
+## 仕上げ(作業役へ)
+実装が終わったら**まず先にコミット**(1行の日本語メッセージ)して push。報告は簡潔に(長文の報告書を書かない)。ROADMAP の R24・R21 を `[x] 2026-09-16` にし、NIGHTLOG に3行(やったこと / 見た目の確認結果 / 次)を追記すること。

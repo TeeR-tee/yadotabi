@@ -1,5 +1,7 @@
 # やどたび (v3)
 
+**What this is**: Yadotabi is a static, mobile-first web app that suggests nearby sights around a hotel from just its coordinates — no user input required. **How to try**: open `https://teer-tee.github.io/yadotabi/`, or add `?fixture=kusatsu` to see a demo with no external API calls. **No API keys needed**: it only uses free public APIs (OpenStreetMap / Overpass / Wikipedia), at zero cost.
+
 宿を選ぶだけ。ボタンも設定もなし。地図の宿ピンをタップするか、検索欄に名前を打って候補をタップするだけで、その宿の周辺のおすすめスポットが写真つきカードでどんどん流れてくるスマホファーストの静的Webアプリです。泊数や移動手段を選ばせたり、「行った!」を押させたりする操作は一切ありません。
 
 ## 起動方法

@@ -193,3 +193,9 @@
 - 見た目の確認結果: `?fixture=kusatsu`/`?demo=zoomout`mobileともに地図タイル・ピンが正常描画、コンソールエラー0件。
 - テスト結果: `node docs/check.mjs`(外部リンク2件のまま変化なし・全項目OK)、`node scripts/check-a11y.mjs`(全OK)、`node scripts/check-more.mjs`(6 pass/0 fail)すべて緑。
 - 次: ROADMAP残りはR11/R14/R19/R21/R23〜R26。朝の相談は前回分(wiki件数50vs34の食い違い)が引き続き未決。
+
+### 2026-09-16 R24+R21 `?hotel=`名前なし見出し「この宿の周辺」化 + README英語1段落
+- やったこと: `app.js`の`hotelFromUrl`で既定名を`'この宿'`→`'この宿の周辺'`に変更(ロジック無変更、文言のみ)。新設`scripts/check-hotelparam.mjs`で名前なし/末尾カンマ/embed併用/名前あり/fixtureのみデグレなしの5パターンを機械検査。README.md冒頭にWhat this is/How to try/No API keys neededの英語1段落を追加(日本語部分は無変更)。
+- テスト結果: `node --check assets/app.js`通過、`check-hotelparam.mjs`10 pass/0 fail、`check-more.mjs`6 pass/0 fail、`check-a11y.mjs`全OK、`check-passive.mjs`全OK。engine.js/geo.js/fixturesは無変更。
+- 目視結果: `?fixture=kusatsu&hotel=36.6226,138.5960`mobileで見出し「この宿の周辺」が1行で折り返しなく表示、`?fixture=kusatsu`(hotelなし)mobileは従来通り「草津温泉(固定データ)」でデグレなし。
+- 次: ROADMAP残りはR11/R14/R19/R23/R25/R26。朝の相談は前回分(wiki件数50vs34の食い違い)が引き続き未決。

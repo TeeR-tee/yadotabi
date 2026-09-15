@@ -1059,7 +1059,7 @@
     var lon = parseFloat(parts[1]);
     if (!isFinite(lat) || !isFinite(lon)) return null;
     var name = parts.slice(2).join(',').trim();
-    return { id: 'url/' + lat + ',' + lon, name: name || 'この宿', lat: lat, lon: lon };
+    return { id: 'url/' + lat + ',' + lon, name: name || 'この宿の周辺', lat: lat, lon: lon };
   }
 
   /**
