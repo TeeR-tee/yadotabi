@@ -1,57 +1,63 @@
-# NEXT: F2 営業用デモページ `demo/hotel-page.html`
+# NEXT: R2 視覚QA第1回(未撮影画面の網羅撮影と崩れ修正)
 
-判断理由: F1(埋め込みモード)が完了し iframe で正しく収まることを確認済みなので、その成果を「宿ページにこう載ります」と見せる営業資料に変えるのが最も自然かつ低リスク(既存コードを1行も触らない新規1ファイル)。
+**難易度: opus / 所要目安: 40〜60分 / 1サイクル1タスク**
 
-## 目的
-じゃらん・Agoda 等の予約サイト運営者に「あなたの宿ページの下にこう置けます」と見せるための1枚デモ。
-架空の予約サイト「やどたび予約(サンプル)」風の宿詳細ページを自前CSSで作り、ページ下部に埋め込みモードを iframe で置く。
+## なぜこれか(判断理由)
+ユーザーが「文字崩れ・アイコンずれ・配置ずれを何度もループで見てほしい」と明言しており、これまで撮れているのは状態B(通常/混雑)と埋め込み・デモだけ。未撮影の画面(0件・検索候補・最近・もっと遠く展開・ズーム不足)に崩れが眠っている可能性が最も高く、費用対効果が最大。
 
-## 対象ファイル
-- 新規: `C:\workspace\claude\旅行先用サイト\yadotabi\demo\hotel-page.html` (このファイルのみ)
-- 参考(読むだけ・編集禁止): `demo\embed-check.html`, `index.html`
+## 対象ファイル(絶対パス)
+- C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js (撮影用パラメータの追加のみ)
+- C:\workspace\claude\旅行先用サイト\yadotabi\assets\style.css (見つかった崩れの修正)
+- C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md / docs\NIGHTLOG.md (記録)
 
-## 変更禁止範囲(厳守)
-- `assets/` 配下(style.css / app.js / geo.js / engine.js / tokens.css / ui.css)は一切触らない。
-- `index.html`, `fixtures/`, `docs/check.mjs`, `demo/embed-check.html` も触らない。
-- 外部CDN・外部画像・フォント・JSライブラリを読み込まない(コスト0円+オフラインで撮影できること)。CSSは `<style>` に直書き、JSは原則不要。
-- 実在の予約サイト(じゃらん・楽天トラベル・Agoda・Booking.com 等)のロゴ・正式名称・配色・レイアウトを模倣しない。ダミーであることが一目で分かるようにする。
+## 実装方針(app.js の実物に基づく具体箇所)
 
-## 実装方針
-1. 単一HTML。`<head>` に `<meta name="viewport" content="width=device-width,initial-scale=1">`、`<title>やどたび予約(サンプル) - 架空の宿ページ</title>`。
-2. ページ最上部に注意書きバー(例: 「これは営業説明用のサンプルページです。宿名・写真・料金はすべて架空です。」)を薄い黄色系の帯で常時表示。これが「模倣ではない」ことの担保。
-3. 予約サイト風ヘッダー: 左に文字ロゴ「やどたび予約(サンプル)」、右にダミーのメニュー文字(検索 / マイページ)。クリックしても何も起きなくてよい(`href="#"` か `<span>`)。
-4. 宿ページ本体(すべてダミー):
-   - 宿名「草津 湯けむり荘(架空)」、★4.2・口コミ128件などの評価行。
-   - 写真枠: 外部画像を使わず、CSS グラデーション + 中央に「写真(ダミー)」の文字を置いた `aspect-ratio` のボックスを3枚横並び(mobileでは1枚+横スクロールでも可)。`<img>` は使わない。
-   - 料金表: 「素泊まり 12,800円〜 / 1泊2食 18,600円〜」程度の表を2〜3行。すべて架空の旨を小さく添える。
-   - 「空室を見る」風のボタン(押しても何も起きないダミー)。
-5. **本題の埋め込みセクション**: 宿情報の直下に見出し「このお宿のまわり(やどたび)」+ 一言説明を置き、その下に iframe。
-   - `src="../index.html?fixture=kusatsu&embed=1"`(この順・この2パラメータ。`embed=1` は `fixture` か `hotel` との併用が必須)
-   - `title="やどたび - このお宿のまわり"`, `loading="lazy"`, `border:0`
-   - サイズは CSS で `width:100%; height:640px;`(mobile)/ デスクトップでは `height:720px` 程度。`max-width` は宿ページのコンテナ幅(約 720px)に従わせる。iframe を角丸+薄い枠線で囲み、埋め込みらしく見せる。
-   - iframe の外側に縦スクロールを二重に出さない(embed-check.html と同じく iframe 自身に高さを固定し、中身は iframe 内でスクロール)。
-6. 営業向けの短い補足(3行程度): 「1行のiframeタグで設置」「宿の位置から自動生成、手入力ゼロ」「APIキー不要・無料」など。実際の設置タグ例を `<pre>` で1行見せると営業資料として強い(HTMLエスケープに注意)。
-7. レスポンシブ: 375px 幅で横スクロールが出ないこと。コンテナは `max-width:720px; margin:0 auto; padding:0 16px`。
+撮影ツール `shot.mjs` は URL しか渡せない。そこで **撮影専用の URL パラメータを2つ追加**する。どちらも `applyEntryPoint()`(app.js 791行〜、`simulate=overpass504` を読んでいる箇所のすぐ下)で読み、既存 `state`/`simulate` の作法に合わせる。
+
+### (1) `?simulate=empty` — 提案0件の画面
+- 現状 `emptyHtml(hotel)` (app.js 515行付近)は実装済みだが、fixture では必ず30件出るため**一度も描画されたことがない**。
+- 実装: モジュール内に `var simulateEmpty = false;` を置き、`applyEntryPoint` で `params.get('simulate') === 'empty'` のとき true。`selectHotel` の `.then`/onProgress 内(app.js 413〜426)で `if (simulateEmpty) { result.cards = []; result.far = []; }` 相当に潰す。**geo.js は触らない**(データ層でなく表示層で潰すのが安全)。
+- 撮影URL: `?fixture=kusatsu&simulate=empty`
+- 見る観点: 「この周辺ではまだ提案を作れませんでした」の2行が折り返して切れていないか、Googleマップボタンが横はみ出ししていないか、**小地図が空(ピン0)になったときの高さと余白**が不自然でないか。
+
+### (2) `?demo=suggest` / `?demo=recent` — 検索候補ドロップダウンを開いた状態
+- 候補は `renderSuggest(rows)` (app.js 305行)が `els.suggest.hidden = false` にして出す。`showRecent()` (324行)は localStorage の履歴が空だと `hideSuggest()` して何も出ない。撮影では入力もクリックもできないので**ダミー行を直接 renderSuggest に渡す**。
+- 実装: `applyEntryPoint` の最後(`applyNormalEntryPoint(params)` 呼び出しの後、状態Aのまま)で
+  - `demo=suggest` → 宿4件+地名1件くらいのダミー行配列(`act/icon/name/sub/hotel` の既存キー構成、長い宿名と長い `displayName` を1件ずつ混ぜて折り返し限界を試す)を `renderSuggest()` に渡す。
+  - `demo=recent` → `icon:'🕘' / sub:'最近見た宿'` の3件を `renderSuggest()` に渡す(`showRecent` と同じ形)。
+- 注意: `hideSuggest` は blur / 外側クリック / `runSuggest` で走る。撮影時は操作しないので消えないはずだが、消えるなら `setTimeout(..., 300)` で描画を遅らせてよい。**入力欄の値も `els.searchInput.value` にダミー語を入れて**実際の見た目に寄せる。
+
+### (3) 「もっと遠く」展開 — `?demo=far`
+- `farHtml` (app.js 528行)は `<details class="far">` なので閉じている。`demo=far` のとき render 後に `document.querySelector('.far')?.setAttribute('open','')` で開くだけ。fixture の far 件数が0なら ROADMAP に記録して撮影スキップでよい(先に `far.length` を確認すること)。
+- 見る観点: `.far__item` のリンク名+🚗分バッジが同一行で折り返して重ならないか。
+
+### (4) 状態Aのズーム不足バナー
+- パラメータ追加は不要。`setMapNote('ズームすると宿が出ます')` (app.js 243/262行)は**初期ズームが小さいとき**に出る。`?z=` 等が無いので、`applyEntryPoint` に `?demo=zoomout` を足して `ensureMap()` 後に `map.setZoom(8)` する方式が確実(localStorage 汚染を避けるため撮影用にのみ)。
+- 見る観点: `.mapnote` (style.css 133行)が mobile で地図や検索欄に重なっていないか、3行折り返しでも全文読めるか。
 
 ## 完了条件
-- `demo/hotel-page.html` が存在し、ブラウザで開くと予約サイト風の宿ページ+その下に やどたび のフィードが iframe で表示される。
-- 実在サービスのロゴ・名称・固有デザインが一切含まれない。サンプル注意書きが最上部にある。
-- 外部リクエストが Leaflet(index.html 側)以外に増えていない(このページ自身は外部リソース0)。
-- mobile 幅で横スクロールが発生しない。iframe 内が切れて読めないなどの崩れがない。
-- `assets/` と `index.html` の差分が0(`git status` で確認)。
+1. `?simulate=empty` / `?demo=suggest` / `?demo=recent` / `?demo=far` / `?demo=zoomout` が動き、いずれも**通常動作にデグレを起こさない**(パラメータ無しの `?fixture=kusatsu` と素の状態Aが従来どおり)。
+2. 下記10枚を撮影し、すべて Read で目視した。
+3. 見つかった崩れを同サイクルで修正(直せないものだけ ROADMAP 先頭に起票)。
+4. `node --check assets/app.js` 通過、`node docs/check.mjs` 全OK。
+5. ROADMAP の R2 を `[x] 2026-09-16` に、NIGHTLOG に3行追記、コミット→push。
 
-## 検証手順
-1. `start-server.bat` などで `http://127.0.0.1:3000` を起動。
-2. 撮影(2枚):
-   - `node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/demo/hotel-page.html" --mobile --name f2-hotel-page`
-   - `node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/demo/hotel-page.html" --name f2-hotel-page-desktop`
-3. 撮った画像を **Read で開いて目視**。確認点: 注意書き帯が読める / 宿名・料金表の文字が崩れていない / ダミー写真枠が潰れていない / iframe 内にやどたびのタイトル・小地図・カードが出ている / iframe が親の枠からはみ出していない / 横スクロールが出ていない。
-4. 崩れがあれば同サイクルで修正して撮り直す。
-5. 既存デグレ確認: `http://127.0.0.1:3000/demo/embed-check.html` を1枚撮って従来どおりか確認(任意だが推奨)。
-6. `node docs/check.mjs` を実行(全項目OK・終了コード0)。
-7. `docs/ROADMAP.md` の F2 を `[x] 2026-09-16` にし、`docs/NIGHTLOG.md` に3行(やったこと/見た目の確認結果/次)を追記。
-8. コミット(1行日本語)→ `git push`。**実装が終わったらまず先にコミットし、報告は簡潔に(長文の報告書を書かない)**。
+## 検証手順(撮影URL一覧)
+ローカル `http://127.0.0.1:3000/` に対し `node C:\workspace\tools\shot\shot.mjs <URL> --mobile` と PC幅(デフォルト)の2本ずつ:
 
-## 難易度・所要目安
-- 難易度: 低(新規HTML1枚・既存コード変更なし)。**builder-sonnet で十分**。
-- 所要目安: 15〜25分(実装10分 + 撮影・目視・コミット10分)。
+| # | URL | 幅 |
+|---|---|---|
+| 1-2 | `/?fixture=kusatsu&simulate=empty` | mobile / desktop |
+| 3-4 | `/?demo=suggest` | mobile / desktop |
+| 5-6 | `/?demo=recent` | mobile / desktop |
+| 7-8 | `/?fixture=kusatsu&demo=far` | mobile / desktop |
+| 9-10 | `/?demo=zoomout` | mobile / desktop |
+| 参考 | `/?fixture=kusatsu`(デグレ確認) | mobile |
+
+Read で見る観点(毎枚): 文字の途中切れ・右端はみ出し・要素の重なり・アイコンと文字のベースラインずれ・不自然な空白・横スクロール発生。
+
+## 変更禁止範囲
+- assets/geo.js、assets/engine.js、fixtures/*.json、index.html、demo/ 配下は触らない。
+- 提案ロジック(rank/収集件数)を変えない。今回は**見た目の確認と修正だけ**。
+- ユーザー入力を増やす変更をしない(ユーザー入力ゼロの原則)。
+- git stash / reset --hard / checkout でファイルを戻さない。

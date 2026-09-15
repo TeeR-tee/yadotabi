@@ -103,6 +103,15 @@
   var suggestItems = [];
   var lastSuggestQuery = '';
 
+  /**
+   * 撮影・目視QA専用のフラグ。URLパラメータが無ければ全て false のままで、
+   * 通常動作には一切影響しない(データ層ではなく表示層だけを差し替える)。
+   */
+  var demoEmpty = false;      // ?simulate=empty  … 提案0件の画面を再現
+  var demoFar = false;        // ?demo=far        … 「もっと遠く」を開いた状態
+  var demoStateA = false;     // ?demo=suggest|recent|zoomout … 状態Aの撮影中
+  var demoNoSaveView = false; // ?demo=zoomout    … 撮影用の地図位置を localStorage に残さない
+
   // ---------------------------------------------------------------------------
   // 小物
   // ---------------------------------------------------------------------------
@@ -194,7 +203,7 @@
   // ---------------------------------------------------------------------------
 
   function saveMapView() {
-    if (!map) return;
+    if (!map || demoNoSaveView) return;
     var c = map.getCenter();
     lsSet(LS_MAPVIEW, { lat: c.lat, lon: c.lng, zoom: map.getZoom() });
   }
@@ -237,6 +246,12 @@
 
   function loadHotelsInView() {
     if (!map) return;
+    // 状態Aの撮影中は宿ピンを取りに行かない(外部APIを叩かずに素の画面を撮るため)
+    if (demoStateA) {
+      hotelLayer.clearLayers();
+      if (map.getZoom() < MIN_HOTEL_ZOOM) setMapNote('ズームすると宿が出ます');
+      return;
+    }
 
     if (map.getZoom() < MIN_HOTEL_ZOOM) {
       hotelLayer.clearLayers();
@@ -393,6 +408,47 @@
   // 宿を選ぶ → 状態B
   // ---------------------------------------------------------------------------
 
+  /**
+   * 撮影用の差し替え(表示層だけ)。フラグが立っていなければ何もしない。
+   * `simulate=empty` は提案を空にして emptyHtml を、`demo=far` は
+   * 固定データでは必ず0件になる far にダミーを入れて farHtml を目視できるようにする。
+   */
+  function applyDemoOverrides(hotel) {
+    if (demoEmpty) {
+      state.cards = [];
+      state.far = [];
+      return;
+    }
+    if (demoFar && !state.far.length && state.stage === 'done') {
+      state.far = demoFarCards(hotel);
+    }
+  }
+
+  /** `demo=far` 用のダミー。長い名前と3桁の分数を混ぜて折り返し限界を見る。 */
+  function demoFarCards(hotel) {
+    var base = hotel || { lat: DEFAULT_VIEW.lat, lon: DEFAULT_VIEW.lon };
+    var names = [
+      '軽井沢プリンスショッピングプラザ',
+      '国営アルプスあづみの公園（堀金・穂高地区）',
+      '志賀高原横手山ドライブイン展望台',
+      '善光寺',
+      '上田城跡公園'
+    ];
+    return names.map(function (name, i) {
+      var lat = base.lat + 0.3 + i * 0.05;
+      var lon = base.lon + 0.3 + i * 0.05;
+      return {
+        name: name,
+        lat: lat,
+        lon: lon,
+        categoryLabel: '観光名所',
+        walkMin: 999,
+        driveMin: 62 + i * 23,
+        links: { gmap: 'https://www.google.com/maps/search/?api=1&query=' + lat + ',' + lon }
+      };
+    });
+  }
+
   function selectHotel(hotel) {
     if (!hotel || !isFinite(hotel.lat) || !isFinite(hotel.lon)) return;
 
@@ -415,6 +471,7 @@
       state.stage = stage;
       state.cards = (partial && partial.cards) || [];
       state.far = (partial && partial.far) || [];
+      applyDemoOverrides(hotel);
       if (meta && meta.osmFailed) state.osmFailed = true;
       render();
     }).then(function (result) {
@@ -422,6 +479,7 @@
       state.stage = 'done';
       state.cards = (result && result.cards) || [];
       state.far = (result && result.far) || [];
+      applyDemoOverrides(hotel);
       if (result && result.osmFailed) state.osmFailed = true;
       render();
     }).catch(function () {
@@ -584,6 +642,11 @@
     var far = farHtml(state.far);
     els.feedFar.hidden = !far;
     els.feedFar.innerHTML = far;
+    // 撮影用: 閉じている <details> を開いて中身を目視できるようにする
+    if (demoFar) {
+      var details = els.feedFar.querySelector('.far');
+      if (details) details.setAttribute('open', '');
+    }
 
     renderFeedMap();
   }
@@ -797,6 +860,13 @@
       YadoGeo.setSimulateBusy(true);
     }
 
+    // ここから下は撮影・目視QA専用の入口。パラメータが無ければ全て素通りする。
+    if (params.get('simulate') === 'empty') demoEmpty = true;
+    var demo = params.get('demo') || '';
+    if (demo === 'far') demoFar = true;
+    if (demo === 'zoomout') demoNoSaveView = true;
+    if (demo === 'suggest' || demo === 'recent' || demo === 'zoomout') demoStateA = true;
+
     var fixtureName = fixtureNameFromUrl(params);
 
     // 埋め込みは「宿が決まっている」ことが前提。どちらも無ければ通常動作(状態A)に落とす。
@@ -836,6 +906,45 @@
     }
 
     applyNormalEntryPoint(params);
+    applyDemoStateA(demo);
+  }
+
+  /**
+   * 状態Aの「操作しないと見られない画面」を撮影するための差し替え。
+   * 入力もクリックもできない撮影ツール向けなので、描画関数を直接呼ぶ。
+   * localStorage は汚さない(demo=recent も保存された履歴を読まない)。
+   */
+  function applyDemoStateA(demo) {
+    if (demo === 'suggest') {
+      els.searchInput.value = '草津';
+      renderSuggest([
+        { act: 'hotel', icon: '♨', name: '草津温泉 湯畑の宿 佳乃や',
+          sub: '日本、〒377-1711 群馬県吾妻郡草津町草津123-4' },
+        { act: 'hotel', icon: '♨', name: 'ホテルヴィレッジ 草津温泉 ベルツの森リゾートアネックス館',
+          sub: '日本、〒377-1711 群馬県吾妻郡草津町大字草津618番地 西の河原通り沿い' },
+        { act: 'hotel', icon: '🏨', name: '草津ナウリゾートホテル', sub: '群馬県吾妻郡草津町草津' },
+        { act: 'hotel', icon: '♨', name: '旅館 たむら', sub: '群馬県吾妻郡草津町' },
+        { act: 'jump', icon: '📍', name: 'このあたりを見る（草津温泉）',
+          sub: '日本、群馬県吾妻郡草津町（温泉地）' }
+      ]);
+      return;
+    }
+    if (demo === 'recent') {
+      els.searchInput.value = '';
+      renderSuggest([
+        { act: 'hotel', icon: '🕘', name: '草津温泉 湯畑の宿 佳乃や', sub: '最近見た宿' },
+        { act: 'hotel', icon: '🕘', name: 'ホテルヴィレッジ 草津温泉 ベルツの森リゾートアネックス館', sub: '最近見た宿' },
+        { act: 'hotel', icon: '🕘', name: '別府温泉 杉乃井ホテル', sub: '最近見た宿' }
+      ]);
+      return;
+    }
+    if (demo === 'zoomout') {
+      // ズーム不足バナーは「引きすぎた地図」でしか出ないので、撮影時だけ引いて再取得する。
+      // 保存済みの地図位置(localStorage)は書き換えない。
+      ensureMap();
+      map.setZoom(8, { animate: false });
+      loadHotelsInView();
+    }
   }
 
   function applyNormalEntryPoint(params) {

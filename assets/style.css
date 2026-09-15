@@ -85,7 +85,19 @@ body {
 .suggest__item:last-child { border-bottom: none; }
 .suggest__item:hover, .suggest__item:focus-visible { background: var(--c-surface-2); }
 
-.suggest__icon { font-size: 18px; flex: 0 0 auto; }
+/*
+ * 絵文字の見た目幅は字によってバラバラ(♨ は文字扱いで細く、🏨 は絵文字で太い)。
+ * 幅を固定して中央に置かないと、行ごとに名前の左端がずれて列が波打つ。
+ * font-family で絵文字フォントを先に当て、♨ も他と同じ絵文字として描かせる。
+ */
+.suggest__icon {
+  flex: 0 0 auto;
+  width: 24px;
+  text-align: center;
+  font-size: 18px;
+  line-height: 1.4;
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+}
 .suggest__text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .suggest__name {
   font-weight: 600;
@@ -133,7 +145,8 @@ body {
 .mapnote {
   position: absolute;
   left: 50%;
-  bottom: calc(var(--sp-4) + env(safe-area-inset-bottom, 0px));
+  /* Leaflet の帰属表示(右下・高さ約20px)に重ならないよう、その分だけ上に逃がす */
+  bottom: calc(var(--sp-4) + 20px + env(safe-area-inset-bottom, 0px));
   transform: translateX(-50%);
   max-width: calc(100% - var(--sp-6));
   padding: 8px 16px;
@@ -306,7 +319,8 @@ body {
   font-size: var(--fs-sm);
   color: var(--c-text-sub);
 }
-.feedcard__times { font-weight: 600; }
+/* 「徒歩10分 · 車2分」は1つの塊。途中で改行させない */
+.feedcard__times { font-weight: 600; white-space: nowrap; }
 
 .feedcard__summary {
   margin: 0;
@@ -374,8 +388,20 @@ body {
   gap: var(--sp-3);
   align-items: center;
 }
-.empty__title { margin: 0; font-weight: 700; }
-.empty__note { margin: 0; font-size: var(--fs-sm); color: var(--c-text-sub); }
+.empty__title {
+  margin: 0;
+  font-weight: 700;
+  /* 「〜ませんでした」が単独行に落ちないよう、狭い画面では少し詰めて1〜2行に収める */
+  line-height: var(--lh-tight);
+  text-wrap: balance;
+}
+.empty__note {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--c-text-sub);
+  line-height: var(--lh-body);
+  text-wrap: pretty;
+}
 
 /* もっと遠く */
 .far {
@@ -399,9 +425,14 @@ body {
   flex-direction: column;
   gap: var(--sp-2);
 }
-.far__item { font-size: var(--fs-sm); }
+.far__item { font-size: var(--fs-sm); line-height: var(--lh-body); }
 .far__item a { color: var(--c-text); }
-.far__time { color: var(--c-text-sub); font-size: var(--fs-xs); }
+/* 「🚗85分」は1つの塊。折り返しで「85」と「分」が泣き別れないよう内部で切らせない */
+.far__time {
+  color: var(--c-text-sub);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
 
 /* --------------------------------------------------------------------------
    広い画面: スマホ幅の体験をそのまま中央に置く
