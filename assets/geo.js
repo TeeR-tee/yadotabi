@@ -82,6 +82,15 @@
   var simulateBusy = false;
   function setSimulateBusy(v) { simulateBusy = !!v; }
 
+  // `?slow=osm800,wiki1500` 用。撮影・目視QAで段階描画(OSM先出し→Wikipedia後乗せ)を
+  // 意図的に見えやすくするための遅延(ms)。通常時は 0 で await すら通らない。
+  var slowDelays = { osm: 0, wiki: 0 };
+  function setSlowDelays(d) {
+    var osm = d && isFinite(d.osm) && d.osm > 0 ? d.osm : 0;
+    var wiki = d && isFinite(d.wiki) && d.wiki > 0 ? d.wiki : 0;
+    slowDelays = { osm: osm, wiki: wiki };
+  }
+
   // Overpass が混雑(429/504)していたときに待つ時間(ms)。再試行は1回だけ。
   var OVERPASS_RETRY_WAIT_MS = 3000;
 
@@ -677,6 +686,8 @@
       if (cached) return cached;
     }
 
+    if (slowDelays.osm > 0) await delay(slowDelays.osm);
+
     var data = null;
     // 混雑シミュレーション中は fixture の生データより先に失敗させる。
     // そうしないと「Overpassだけ落ちて Wikipedia は生きている」状態を再現できない。
@@ -915,6 +926,8 @@
         pages[pid] = Object.assign({}, prev, page);
       });
     }
+
+    if (slowDelays.wiki > 0) await delay(slowDelays.wiki);
 
     if (fixtureData) {
       // 固定データモードは半径ループも continue も回さず、保存済みの生レスポンスを1回流すだけ
@@ -1239,6 +1252,8 @@
     isFixture: function () { return !!fixtureData; },
     // 混雑シミュレーション(?simulate=overpass504)の差し込み口
     setSimulateBusy: setSimulateBusy,
+    // 撮影・目視QA専用: 段階描画確認用の遅延注入(?slow=osm800,wiki1500)
+    setSlowDelays: setSlowDelays,
     // プラン生成側や画面側でも使えるように距離計算とラベル表を公開しておく
     haversineM: haversineM,
     CATEGORY_LABELS: CATEGORY_LABELS

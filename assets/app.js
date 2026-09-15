@@ -1065,6 +1065,25 @@
     return raw;
   }
 
+  /**
+   * `?slow=osm800,wiki1500` を読む。撮影・目視QA専用で、段階描画(OSM先出し→Wikipedia後乗せ)
+   * をわざと見えやすくするための遅延指定。不正な片は黙って無視し、通常動作にフォールバックする。
+   */
+  function slowDelaysFromUrl(params) {
+    var raw = (params.get('slow') || '').trim();
+    if (!raw) return null;
+    var result = { osm: 0, wiki: 0 };
+    var found = false;
+    raw.split(',').forEach(function (piece) {
+      var m = /^(osm|wiki)(\d{1,5})$/.exec(piece.trim());
+      if (!m) return;
+      var ms = Math.min(parseInt(m[2], 10), 10000);
+      result[m[1]] = ms;
+      found = true;
+    });
+    return found ? result : null;
+  }
+
   /** `?embed=1` を読む。宿の指定(hotel / fixture)と併用したときだけ意味を持つ。 */
   function isEmbedFromUrl(params) {
     return params.get('embed') === '1';
@@ -1086,6 +1105,8 @@
     }
 
     // ここから下は撮影・目視QA専用の入口。パラメータが無ければ全て素通りする。
+    var slow = slowDelaysFromUrl(params);
+    if (slow && typeof YadoGeo.setSlowDelays === 'function') YadoGeo.setSlowDelays(slow);
     if (params.get('perf') === '1') perfOn = true;
     if (params.get('simulate') === 'empty') demoEmpty = true;
     var demo = params.get('demo') || '';

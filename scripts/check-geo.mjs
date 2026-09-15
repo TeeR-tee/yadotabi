@@ -225,6 +225,44 @@ async function main() {
     eq(calls.map(radiusOf), [3000, 5000], '5000 以下のリング + 5000 自身だけを回る');
   }
 
+  // --- ケース7: ?slow= の遅延注入(R15) ---------------------------------------
+  {
+    const { geo, calls } = loadGeo(() => ({ json: pagesResponse(1, 7) }));
+    console.log('[7a] setSlowDelays 指定時は遅延がかかり、fixture 経路でも外部 fetch 0回');
+    geo.setFixture({ wiki: pagesResponse(1, 7) });
+    geo.setSlowDelays({ wiki: 120 });
+    const t0 = Date.now();
+    const articles = await geo.fetchWikiNearby(LAT, LON, 10000);
+    const elapsed = Date.now() - t0;
+    ok(elapsed >= 100, 'wiki:120 指定で100ms以上かかる', elapsed);
+    eq(calls.length, 0, '遅延中も外部 fetch は0回(fixture 優先)');
+    eq(articles.length, 7, '件数は従来どおり(7件)');
+  }
+  {
+    const { geo, calls } = loadGeo(() => { throw new Error('fixture 中に fetch が呼ばれた'); });
+    console.log('[7b] setSlowDelays を呼ばなければ完全に不変(パラメータ無し)');
+    geo.setFixture({ wiki: pagesResponse(1, 7) });
+    const t0 = Date.now();
+    const articles = await geo.fetchWikiNearby(LAT, LON, 10000);
+    const elapsed = Date.now() - t0;
+    ok(elapsed < 50, '遅延を指定しなければ50ms未満で返る', elapsed);
+    eq(calls.length, 0, '外部 fetch は0回');
+    eq(articles.length, 7, '件数はケース5と同じ(7件)');
+    eq(articles[0].id, 'wp/1', '先頭要素もケース5と同じ');
+  }
+  {
+    const { geo, calls } = loadGeo(() => { throw new Error('fixture 中に fetch が呼ばれた'); });
+    console.log('[7c] setSlowDelays({osm:0,wiki:0}) も不変(0は待たない)');
+    geo.setFixture({ wiki: pagesResponse(1, 7) });
+    geo.setSlowDelays({ osm: 0, wiki: 0 });
+    const t0 = Date.now();
+    const articles = await geo.fetchWikiNearby(LAT, LON, 10000);
+    const elapsed = Date.now() - t0;
+    ok(elapsed < 50, '0指定でも50ms未満で返る', elapsed);
+    eq(calls.length, 0, '外部 fetch は0回');
+    eq(articles.length, 7, '件数はケース5と同じ(7件)');
+  }
+
   console.log('\n' + pass + ' pass, ' + fail + ' fail');
   process.exit(fail === 0 ? 0 : 1);
 }

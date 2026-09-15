@@ -1,81 +1,82 @@
-# NEXT: R10 番号バッジをタップすると小地図の該当ピンが光る
+# NEXT — R15 撮影用の遅延パラメータ `?slow=osm800,wiki1500`
 
-**選定理由**: 残る未完了(R11/R14/R15/R19/R21)のうち、R10 だけがユーザーに見える体験改善で、CSSアニメのみ・ライブラリ追加なし・engine/geo に触れずに完結し、Playwright で機械検証できるため。
+**選定理由**: R5 で直した段階描画(OSM先出し)は現在 A/B のとき手で遅延を入れないと確認できず、退行しても気づけない。URLパラメータ化すれば毎サイクルの撮影2枚だけで段階描画の生死を目視でき、fixture と併用できて外部API 0回・コスト0円・ユーザー判断不要で、入力ゼロ原則にも触れない。(R11 は「検討」段階で判断が要る、R14/R19 は fixture/rank に踏み込む、R21 は文書のみで効果が薄い)
 
-- 難易度: sonnet
-- 所要目安: 40〜60分
-- 変更禁止: `assets/engine.js` / `assets/geo.js` / `fixtures/*.json` / `scripts/make-fixture.mjs`
+- **難易度**: sonnet
+- **所要目安**: 30〜45分
+
+---
 
 ## 対象ファイル(絶対パス)
 
-- C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js
-- C:\workspace\claude\旅行先用サイト\yadotabi\assets\style.css
-- C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-pinflash.mjs (新規)
-- C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md / docs\NIGHTLOG.md (記録のみ)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\geo.js` (1246行) — 遅延の注入口
+- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js` (1375行) — `?slow=` の読み取り
+- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-geo.mjs` (232行) — テスト追加
 
-## 現状(実物を読んで確認済み)
+## 実装方針(実物の関数名・行番号つき)
 
-- `app.js:691` `feedCardHtml()` — カードは `<article class="card feedcard" data-index="N">`。番号バッジは `app.js:693` の
-  `'<span class="feedcard__no" aria-hidden="true">' + (index + 1) + '</span>'`(`.feedcard__media` 内、現在はただの span でタップ不可)。
-- `app.js:940` `renderFeedMap()` — `spotMarkers` に `state.cards` と同じ順で marker を push(`app.js:958-970`)。
-  関数ローカル変数なので、外から番号→marker を引けない。
-- `app.js:1242` `els.feedList` のクリック委譲 — `a` は素通し(`return`)、それ以外は `.feedcard` を拾って
-  `passivePush('tap')` → `feedMap.panTo(...)` → `els.feedMap.scrollIntoView(...)`(`app.js:1263-1277`)。
-- `style.css:173-196` — `.pin`(divIcon ルート、背景なし)/ `.pin span`(丸・影)/ `.pin--spot span`(青地・白2px枠)/
-  `.pin--top span`(さらに外周リング+`transform: scale(1.12)`)。
-- `style.css:522` に全体の `prefers-reduced-motion: reduce` があり、`*` に `animation-duration:.01ms !important` を当てている
-  (=クラスは付くがアニメは走らない、という完了条件はこの既存ルールで自然に満たせる)。
+### 1. geo.js に遅延の保持と注入を足す
 
-## 実装方針
+既に `delay(ms)` が **327行** に定義済み(`function delay(ms) { return new Promise(...) }`)なので、新たなユーティリティは作らない。
 
-1. **marker を番号で引けるようにする**: `renderFeedMap()`(app.js:940)の `spotMarkers` を、モジュールスコープの
-   `feedSpotMarkers` 配列にも保持する(`feedMarkers` の隣で宣言し、`renderFeedMap` 冒頭で `feedSpotMarkers = []` にリセット)。
-2. **バッジをタップ可能にする**: `app.js:693` の span を
-   `<button type="button" class="feedcard__no" data-no="N" aria-label="N番のピンを地図で光らせる">N</button>` に変える。
-   `aria-hidden` は外す(タップ可能要素に aria-hidden は不可)。`.feedcard__no` の既存 CSS は流用しつつ、
-   `border:0; padding:0; font: inherit; cursor:pointer;` をボタン用に足して**見た目は現状と同一**に保つ。
-3. **クリック委譲に分岐を1本足す**: `app.js:1242` のハンドラ冒頭(`var a = e.target.closest('a')` の**前**)で
-   `var badge = e.target.closest('.feedcard__no')` を見て、あればそこで `flashPin(Number(badge.dataset.no) - 1)` を呼び、
-   カード本体の `panTo` + `scrollIntoView` も従来どおり実行して **`return`**(既存のカードタップと共存。
-   `passivePush('tap')` は従来どおり記録する)。
-4. **`flashPin(i)` 新設**(renderFeedMap の下あたり): `feedSpotMarkers[i]` の `getElement()` を取り、
-   - 既に光っている要素があれば先にクラスを外す(連打対策。`flashTimer` を1本だけ持つ)
-   - `el.classList.add('pin--flash')` → `setTimeout(..., 1200)` で `remove`
-   - `feedMap.panTo` 済みでピンが画面外なら意味がないので、`flashPin` は panTo の**後**に呼ぶ
-   - `getElement()` が無い(未描画)場合は何もしないで return
-5. **CSS**(style.css の `.pin--top span` の直後): `.pin--flash span { animation: pin-flash 1s ease-out; }` と
-   `@keyframes pin-flash`(白いリングが広がる `box-shadow` + 軽い `transform: scale()` の1秒)。
-   `z-index` は上げず、既存の `box-shadow` 指定を打ち消さないよう keyframes 側で `.pin--spot span` と同じ基準影を含めて書く。
-   **reduced-motion 用の追記は不要**(style.css:522 の `*` ルールが効く)。ただし念のため
-   `@media (prefers-reduced-motion: reduce) { .pin--flash span { animation: none; } }` を書いても良い(クラス付与自体は残すこと)。
+**83行** の `function setSimulateBusy(v) { simulateBusy = !!v; }` の直後、`OVERPASS_RETRY_WAIT_MS`(86行)の手前に、`simulateBusy` と同じ形のモジュール変数を追加する:
+
+```
+var slowDelays = { osm: 0, wiki: 0 };
+function setSlowDelays(d) { ... }   // 数値でない/負の値は 0 に丸める
+```
+
+注入は2箇所だけ。**どちらも fixture 分岐の内側・外側の両方を通る位置に置く**(fixture と併用できることが R15 の条件):
+
+- `fetchSpots`(**665行**〜): **680行** の `var data = null;` の直前に `if (slowDelays.osm > 0) await delay(slowDelays.osm);` を1行入れる。キャッシュ参照(675〜679行)より後に置くこと。前に置くとキャッシュヒット時まで遅くなる。
+- `fetchWikiNearby`(**873行**〜): **919行** の `if (fixtureData) {` の直前に `if (slowDelays.wiki > 0) await delay(slowDelays.wiki);` を1行入れる。ここなら fixture 経路(919〜922行)も実API経路(else 側の同心円ループ)も等しく遅延する。
+
+公開APIは **1241行** の `setSimulateBusy: setSimulateBusy,` の隣に `setSlowDelays: setSlowDelays,` を1行足す。
+
+### 2. app.js に `?slow=` の読み取りを足す
+
+**1080行** から始まる `applyEntryPoint()` の中。`?simulate=overpass504` の分岐(**1084〜1086行**)と同じ書き方で、「撮影・目視QA専用の入口」コメント(1087行)より下、`if (params.get('perf') === '1') perfOn = true;`(**1088行**)の近くに置く。
+
+`fixtureNameFromUrl`(**1062行**)に倣って小さなパーサ関数 `slowDelaysFromUrl(params)` を新設する:
+
+- 値の形式は `osm800,wiki1500`。`,` で分割し、各片を `/^(osm|wiki)(\d{1,5})$/` で検証する。
+- 一致しない片は**黙って無視**する(不正値でも通常動作にフォールバックする既存方針と揃える)。
+- 両方0なら `YadoGeo.setSlowDelays` を**呼ばない**。`osm` だけ・`wiki` だけの指定も有効。
+- 上限は 10000ms 程度でクランプ(タイプミスで撮影が止まらないように)。
+
+呼び出しは `if (slow && typeof YadoGeo.setSlowDelays === 'function') YadoGeo.setSlowDelays(slow);`。
+
+### 3. check-geo.mjs にケース追加
+
+**206〜218行** の「ケース5: fixture モード不変」の作りをそのまま踏襲する(`loadGeo()` + fetch モック + `geo.setFixture(...)`)。末尾の集計(**229行** の `console.log('\n' + pass + ...)`)の手前に新ケースを足す:
+
+- `setSlowDelays({wiki: 120})` した fixture モードで `fetchWikiNearby` の所要が 100ms 以上かかり、かつ **外部 fetch は 0回**のままであること。
+- `setSlowDelays` を呼ばない(または `{osm:0,wiki:0}`)ときは所要が 50ms 未満で、既存ケース5と同じ件数・同じ先頭要素が返ること(**パラメータ無しなら完全に不変**の証明)。
+
+## 変更禁止範囲
+
+- `assets/engine.js` — 1行も触らない(rank / baseScore / カテゴリ多様性 / isSamePlace)
+- `fixtures/*.json` — 再生成も編集もしない
+- ランキングの重み・閾値、`present()` の件数
+- `?slow=` が無いときの挙動(遅延0で `await` すら通らないこと)
 
 ## 完了条件(検証可能)
 
-1. `node scripts/check-pinflash.mjs` が全 pass(新規・Playwright、`check-more.mjs` の作りを踏襲):
-   - `?fixture=kusatsu` を開き、3番カードの `.feedcard__no` を click → 200ms 後に
-     3番ピンの要素に `pin--flash` クラスが付いている(他のピンには付いていない)
-   - 1400ms 後に `pin--flash` が**外れている**
-   - 別のバッジを連打しても `pin--flash` が付いた要素は常に1個以下
-   - `reducedMotion: 'reduce'` のコンテキストで同じ click → **クラスは付くが** `getComputedStyle(...).animationName` が
-     `none` か duration が 0.01ms 相当(=アニメしない)
-   - コンソールエラー0件
-2. `node scripts/check-a11y.mjs` 全 OK(`.feedcard__no` をボタン化したので**タップ領域44px**の対象になる可能性がある。
-   44px 未満なら `.feedcard__link` と同じ `::after` で当たり判定だけ広げる方式を採る。既存の判定セレクタ一覧に
-   `.feedcard__no` を追加して検査対象にすること)
-3. 既存テストにデグレなし: `node scripts/check-engine.mjs`(111件)/ `check-more.mjs` / `check-passive.mjs` /
-   `check-geo.mjs` / `node docs/check.mjs` / `node --check assets/app.js`
-4. `node scripts/dump-rank.mjs kusatsu` の出力が変わらない(engine 無変更の証明)
+1. `?fixture=kusatsu`(slow 無し)のカードが**30枚**・番号ピン1〜30・並び順とも従来どおり(デグレなし)。
+2. `?fixture=kusatsu&slow=osm300,wiki3000` を `--wait 1500` で撮ると、**OSM由来のカード(写真なし)だけ**が出ている。
+3. 同URLを `--wait 5000` で撮ると、**Wikipedia由来の写真・要約が入った**通常の画面になっている。
+4. `node scripts/check-geo.mjs` が既存34件+追加ケースすべて pass。
+5. `node scripts/check-engine.mjs`(111件)・`check-r5.mjs`(15件)・`check-a11y.mjs`・`check-more.mjs`・`check-passive.mjs`・`check-pinflash.mjs`・`node docs/check.mjs` すべて従来どおり pass。
+6. `node --check assets/geo.js` / `assets/app.js` 通過、コンソールエラー0件。
+7. `node scripts/dump-rank.mjs kusatsu` が**差分ゼロ**(engine/fixture 無傷の証明)。
 
-## 検証手順(撮影+目視)
+## 検証手順(撮影2枚+目視)
 
-- `?fixture=kusatsu` mobile: バッジの見た目が現状と同じ(青丸・番号・位置)ことを目視。カード30枚・番号ピン1〜30判読可。
-- Playwright で 3番バッジを click → **200ms 後**に mobile スクリーンショットを撮り、Read で開いて
-  **「3番ピンだけが光っている(リングが見える)」ことを人間の目で判別できる**か確認する。判別できなければリングを太く/明るくする。
-- `?fixture=hakone` mobile と `?fixture=kusatsu&embed=1` mobile でデグレなし。
-- `?fixture=kusatsu&demo=passive` で、バッジタップ時も `tap` レコードが従来どおり1件出ることを確認。
+```
+node C:\workspace\tools\shot\shot.mjs "<BASE>/?fixture=kusatsu&slow=osm300,wiki3000" --mobile --wait 1500
+node C:\workspace\tools\shot\shot.mjs "<BASE>/?fixture=kusatsu&slow=osm300,wiki3000" --mobile --wait 5000
+```
 
-## 注意
+2枚とも **Read で開いて目視**し、NIGHTLOG に「1枚目は写真なしカードのみ/2枚目は写真入り」と**差が出たことを明記**する。差が出なければ段階描画が壊れているか遅延が効いていないので、同サイクルで原因を特定する(報告だけで終わらせない)。
 
-- 「もっと見る」で展開した31番以降のカードにもバッジは出るが、小地図のピンは30件しかない。
-  `flashPin(i)` は `feedSpotMarkers[i]` が無ければ黙って何もしないこと(エラーを出さない)。
-- ユーザー入力ゼロの原則: タップ1回で光るだけなので違反しない。
+加えてデグレ確認として `?fixture=kusatsu`(slow 無し)mobile を1枚撮り、カード30枚・崩れなしを目視する。外部API呼び出しは**全工程で0回**(fixture のみ)。
