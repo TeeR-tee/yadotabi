@@ -262,3 +262,8 @@
 - テスト結果: 新設`check-recent.mjs`11 pass/0 fail、`check-all.mjs`12本全PASS、`node --check assets/app.js`OK、`dump-rank.mjs kusatsu`はengine/geo/fixtures無変更のため差分なしを確認。
 - 目視結果: `?demo=recentmix`/`?demo=recent`/`?fixture=kusatsu`mobileを確認、見出し・最近行・候補行の見分けがつき文字崩れ/重なり/はみ出しなし。行数が増えチップとの隙間はやや狭いがR2-1(候補とチップの重なり)は朝の相談待ちのため今回は手を付けず。
 - 次: ROADMAP残りはR11/R14/R19/R23/R28/R30/R31/R33/R34。朝の相談は前回分(wiki件数50vs34の食い違い)が引き続き未決。
+
+### 2026-09-16 R31 小地図にOSM attributionが欠落していた不具合の是正
+- やったこと: 事前調査の通り、状態Bの小地図(`ensureFeedMap()`)は`attributionControl: false`かつtileLayerに`attribution`未指定で、**帰属表示がDOMに存在しない状態が本番に出ていた**(OSM利用規約違反)。`app.js:904`の`attributionControl: false`を削除し、tileLayerに`attribution: TILE_ATTR`を渡すよう状態Aと同じ書き方に統一。CSSだけでは右下のピンと重なったため(`check-attrib.mjs`で検出)、`feedMap.attributionControl.setPosition('topright')`を1行追加して回避(`nudgeOverlaps`のMARGINは無変更)。
+- テストと目視: 新設`scripts/check-attrib.mjs`(4URL×8項目=32 pass/0 fail)、`check-all.mjs`13本全PASS。`?fixture=kusatsu`/`hakone`/`dogo`/`kusatsu&embed=1`のmobile4枚をRead目視し、右上に帰属表示が判読可・番号ピン1〜30と重ならず・カード30枚崩れなしを確認。
+- コミットとpush: 完了後にコミット・push・`docs/check.mjs`実行予定(このログ追記と同一コミットにまとめる)。

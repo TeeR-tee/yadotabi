@@ -901,11 +901,12 @@
     if (feedMap) return feedMap;
     feedMap = L.map(els.feedMap, {
       zoomControl: false,
-      attributionControl: false,
       // 小さい地図なので、指が取られないようスクロールズームは切る
       scrollWheelZoom: false
     }).setView([DEFAULT_VIEW.lat, DEFAULT_VIEW.lon], DEFAULT_VIEW.zoom);
-    L.tileLayer(TILE_URL, { maxZoom: 19 }).addTo(feedMap);
+    L.tileLayer(TILE_URL, { maxZoom: 19, attribution: TILE_ATTR }).addTo(feedMap);
+    // 右下は番号ピンが密集しやすいため、帰属表示は右上へ逃がして重なりを避ける
+    feedMap.attributionControl.setPosition('topright');
     return feedMap;
   }
 

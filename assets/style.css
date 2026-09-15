@@ -271,6 +271,14 @@ body {
 }
 
 .feedmap { height: 180px; width: 100%; background: var(--c-surface-2); }
+/* OSM利用規約上の必須表示。非表示化はしない。ピンとの重なりを避けるため最小面積に抑える */
+.feedmap .leaflet-control-attribution {
+  font-size: 10px;
+  line-height: 1.2;
+  padding: 1px 4px;
+  background: rgba(255, 255, 255, 0.85);
+  margin: 0 2px 2px 0;
+}
 
 .feedstatus {
   margin: 0;
