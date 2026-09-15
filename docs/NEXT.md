@@ -1,63 +1,78 @@
-# NEXT（次の1タスク）
+# NEXT — R8 混雑モードで番号ピンが完全に隠れる問題(R7の再発)を潰す
 
-## タスクID: R4 — Overpass 混雑(429/504)時の自動リトライと「Wikipediaだけで提案」
+**選定理由(1行)**: r4-busy mobile を目視したところ、Wikipedia単独の混雑モードでは候補が温泉街中心に集中し番号1〜9が宿ピン(♨)や互いの裏に完全に隠れていた。R7で解決したはずの「フィード1番が地図のどこか分からない」の再発なので、R3(公開確認)やR2(通しQA)より先にここを直す。
 
-**繰り上げ理由**: 前サイクル(R7)の通常モード撮影で実際に Overpass 504 の混雑トーストが出て、状態Aが宿ピン無しのまま止まった。R2/R3 より先に「画面が空にならない」を直すのが実利が大きい。
+- **タスクID**: R8
+- **難易度**: opus(座標計算とレイアウトの調整、目視ループが要る)
+- **所要目安**: 25〜40分(実装15分 + 撮影・目視・微調整)
 
 ## 目的
-Overpass が混雑(429/504)しても、(1) 3秒後に1回だけ自動で再試行し、(2) それでも駄目なら Wikipedia だけで提案を出し切り、(3) 「宿情報だけ混雑中」と正直に1行伝える。ユーザーが何もせず待つだけで結果が出る状態にする。
+状態Bの小地図で、上位の番号ピン(少なくとも1〜5番)が **どんな密集度でも必ず判読できる** ようにする。混雑モード(`&simulate=overpass504`)は候補がWikipedia単独で温泉街に密集する最悪ケースなので、これを合格ラインとする。
 
-## 対象ファイル（絶対パス）
-- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\geo.js`
-- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\engine.js`
-- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js`
-- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\style.css`（注意書きの見た目のみ。必要なら）
+## 対象ファイル(絶対パス)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js` (主)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\style.css` (従・ピンの見た目のみ)
 
-## 実装方針（実物を読んだ上での具体指示）
+## 現状のコードと不具合の原因(実物を読んだ結果)
 
-### 1) geo.js — fetchSpots に1回だけリトライ（行607〜697 の `fetchSpots`）
-- 現状: 行629〜653 で `fetchWithTimeout(OVERPASS_URL, ...)` → 行641 `if (res.status === 429 || res.status === 504) throw new Error('地図サーバーが混雑しています。…')`。リトライ無し。
-- 変更: この POST〜JSON化のブロックを内部ヘルパ `async function requestOverpass(query)` に切り出し、`fetchSpots` からは次のように呼ぶ。
-  1. 1回目を実行。429/504 なら **`await delay(3000)`（行311 の既存 `delay` を使う。新規実装しない）** して2回目を1回だけ実行。
-  2. 2回目も 429/504 なら、**`err.overpassBusy = true` を立てた Error** を throw する（メッセージは既存文言を流用）。呼び出し側がこのフラグで「混雑」と判別できるようにするのが肝。
-  3. タイムアウト(`fetchWithTimeout` が投げる Error)は**リトライしない**（60秒待った後にさらに待たせない）。429/504 のみ対象。
-- 同じく行712〜 の `fetchHotelsInBbox`（行756 に同じ 429/504 の throw がある）にも同じヘルパを使い、`overpassBusy` を立てる。**ただし bbox 側はリトライ不要**（地図移動のたびに呼ばれるため、無料APIのマナー上リトライは増やさない。フラグ付与だけ）。
-- 併せて **テスト用フック**: ファイル冒頭の fixture 節（行48〜70 付近）に `var simulateBusy = false; function setSimulateBusy(v){ simulateBusy = !!v; }` を追加し、`requestOverpass` の先頭で `simulateBusy` が真なら実際に fetch せず 429 相当として扱う（1回目・2回目とも失敗させる）。`global.YadoGeo` のエクスポートに `setSimulateBusy` を足す。app.js 側で `?simulate=overpass504` を読んで呼ぶ（下記4）。
+`app.js` L608-636 `nudgeOverlaps(markerPoints, fixedPoints)`:
+```
+L609  var MIN_DIST = 28;
+L610  var NUDGE = 16;
+L617-630  if (isTooClose(best)) { 8方向 x 3リング(16/32/48px)を探索 }
+L631  if (best !== mp.point) { setLatLng }
+L634  placed.push(best);
+```
+原因は3つ。優先度順に:
 
-### 2) engine.js — collect が「OSMだけ落ちた」ことを伝えられるようにする（行353〜430 の `collect`）
-- 確認済みの事実: 行372 `Promise.allSettled` になっており、行377 の「両方 rejected のときだけ throw」も既に正しい。**つまり OSM が落ちても Wikipedia だけで結果は返っている。ここは壊さない。**
-- 不足しているのは「落ちたことの伝達」。行388 の `if (osmResult.status === 'fulfilled' ...)` の前後で、`osmResult.status === 'rejected'` のときに `var osmFailed = true;` を持ち、返す配列に `Object.defineProperty(merged, 'osmFailed', {value:true, enumerable:false})` で印を付けるか、**より素直に `onStage('wiki', merged, {osmFailed:true})` の第3引数で渡す**。既存の `onStage(stage, items)` の呼び出し（行401 と行428）とシグネチャ互換を壊さないよう、第3引数追加で対応すること。
-- 行592〜 の `suggest` も同様に、`onProgress(stage, result, meta)` の第3引数で `{osmFailed:true}` を透過させ、最後の `onProgress('done', result, meta)`（行609付近）と `return` する結果にも `result.osmFailed = true` を載せる（`present` が返すオブジェクトにプロパティを足すだけ）。
+1. **【最重要】空き枠が見つからないと元の位置のまま置いてしまう**(L617-634)。3リング×8方向=24候補が全部埋まると `best` は `mp.point` のまま。しかもそれを `placed` に push するので、以降のピンから見て「そこは埋まっている」ことにもならず、密集地では複数ピンが同一座標に積み上がって完全に隠れる。→ **最後まで空きが無かった場合のフォールバック**(最も遠い候補を採る／リング数を増やす)が必要。
+2. **探索半径が足りない**。最大48pxしか動かせない。混雑モードは20個以上が半径50px圏内に入るので原理的に足りない。
+3. **宿ピンとの距離が近すぎる**。宿ピン(`iconSize: [30,30]`, L649)と番号ピン(`iconSize: [24,24]`, L661)の半径合計は27px。`MIN_DIST = 28` ではピンの縁が接するだけで、`.pin--top` の `transform: scale(1.12)`(style.css L178)を考えると実質重なる。
 
-### 3) app.js — 正直な1行を出す（行402〜419 の `YadoEngine.suggest(...)` 呼び出し、行528〜566 の `statusText` / `renderFeed`）
-- `state`（行90 付近）に `osmFailed: false` を追加。
-- 行403 のコールバックと行408 の `.then` で `result.osmFailed` / meta を受け、`state.osmFailed = true` を立てて `render()`。
-- 行534 `renderFeed` 内、行540〜542 の `els.feedStatus`（`index.html:45` の `<p class="feedstatus" id="feed-status">`）を流用する。読み込み完了後（`stage === 'done'`）に `state.osmFailed` なら、隠さずに **「周辺の宿情報だけ混雑中。Wikipediaの情報で提案しています。」** を表示する。`statusText(stage)` を `statusText(stage, osmFailed)` に拡張し、`done && osmFailed` でこの文言を返すのが一番小さい変更。
-- 行546 の `stage === 'error'` 分岐（両方失敗時）はそのまま残す。
-- 状態Aの混雑トースト（`index.html:32` の `#map-note`）も、`fetchHotelsInBbox` が `overpassBusy` で落ちたときは文言を **「宿ピンの取得が混雑中です。検索やエリアチップから選べます。」** に変え、「1分待て」だけで終わらせない。
+## 実装方針(この順で)
 
-### 4) app.js — `?simulate=overpass504`（行706〜730 付近の URL パラメータ処理）
-- 行713 の `new URLSearchParams(global.location.search)` を使い、`params.get('simulate') === 'overpass504'` なら `YadoGeo.setSimulateBusy(true)` を呼ぶ。fixture と併用可能にする（`?fixture=kusatsu&simulate=overpass504` で「Overpassだけ死んでWikipediaは生きている」状態を再現）。
-- ただし fixture モードは `fetchSpots` が Overpass を叩かない（行622）。**simulate が真のときは fixture の overpass 分岐より先に失敗させる**こと。そうしないと再現にならない。Wikipedia 側（`fetchWikiNearby`）は fixture のまま成功させる。
+### 方針A: nudgeOverlaps を「必ず分離する」ように作り替える(L608-636)
+1. `MIN_DIST` を **34** に引き上げる(24pxピン同士で10pxの隙間、宿ピン30pxとも縁が離れる)。宿ピンだけは別枠で `HOTEL_DIST = 36` を使い、`fixedPoints` との判定に使う定数を分ける(`isTooClose` を `placed` の要素に `minDist` を持たせる形にするのが素直: `placed.push({ p: best, d: 34 })`)。
+2. リング数を **3 → 6**、`NUDGE` は 16 のまま(最大96pxまで退避できる)。方向は8方向のままでよいが、リングごとに `angle` を `(Math.PI/8) * ring` だけ回転させると格子状の詰まりが解けて成功率が上がる。
+3. **フォールバック**: 全候補が埋まっていた場合、`best` を「`placed` 内の最近傍までの距離が最大になる候補」にする。探索ループ内で `dist = min(placed への距離)` を記録し続け、成功しなかったら最大 `dist` の候補を採用する。**元の位置のまま返してはいけない**。
+4. 地図コンテナの外へ飛び出さないようクランプする。`feedMap.getSize()` で得た幅高から、layerPoint をピクセル境界(12px マージン)に収める。`feedMap.getPixelOrigin()` / `containerPointToLayerPoint` の変換に注意 — 簡単なのは `feedMap.latLngToContainerPoint` / `containerPointToLatLng` で **containerPoint 基準に統一する**こと。L680-683 の `latLngToLayerPoint` も合わせて `latLngToContainerPoint` に変えると境界判定が素直になる(L632 の `layerPointToLatLng` も `containerPointToLatLng` へ)。
+5. 処理順は現状どおり「宿ピンを固定 → 番号の若い順」でよい(L681 の `spotMarkers` は既に順番どおり)。
 
-## 完了条件（検証可能）
-1. `node --check assets/geo.js && node --check assets/engine.js && node --check assets/app.js` が通る。
-2. `?fixture=kusatsu` （simulate なし）で従来どおりカード30枚・ピン1〜5判読可能。feedStatus に混雑文言が出ない（デグレなし）。
-3. `?fixture=kusatsu&simulate=overpass504` で、**カードが0枚にならず** Wikipedia 由来のカードが表示され、feedStatus に「周辺の宿情報だけ混雑中。Wikipediaの情報で提案しています。」が1行出る。「提案を作れませんでした」の空カードは出ない。
-4. 3秒リトライが1回だけ起きる（2回目も失敗して初めて諦める）。撮影時の体感かコンソールログで確認。**無限リトライしていないこと**が必須。
-5. 状態Aのトーストが「宿ピンの取得が混雑中です。…」に変わっている。
+### 方針B: 下位ピンを退かせて上位を目立たせる(style.css L168-179 と app.js L658-664)
+- 6番以降(`i >= 5`)に `pin--sub` クラスを付け、CSS で `iconSize` 相当を小さく見せる(`transform: scale(0.72)`、`font-size` を `var(--fs-2xs)` 相当に、`opacity: .9`)。数字は消さない(消すと「何番か分からない」問題が別の形で出る)。
+- `nudgeOverlaps` では下位ピンの `minDist` を小さく(例: 24)して、上位ピンの居場所を優先的に確保する。
 
-## 検証手順
-- ローカルサーバを起動し、`node C:\workspace\tools\shot\shot.mjs <URL> --mobile` と PC幅で撮る。
-- 撮る4枚: (a) `?fixture=kusatsu` mobile（デグレ確認）、(b) `?fixture=kusatsu&simulate=overpass504` mobile、(c) 同 desktop、(d) `?simulate=overpass504` の状態A mobile（トースト文言）。
-- **本物APIを叩く撮影は0回**でよい（simulate と fixture で全部再現できる）。AUTOPILOT ルール4を守る。
-- Read で目視する観点: 混雑の1行が**カードや小地図と重なっていないか**、長文なので**2行に折り返しても切れていないか**（`.mapnote` の nowrap は R1 で直済みだが `.feedstatus` は未確認、要チェック）、カードが空でないか、ピン番号とカード番号が一致しているか。
+方針A だけで合格するなら B は入れなくてよい。**まず A を入れて撮影 → 1〜5番が読めなければ B を足す**、の順で進めること。
 
 ## 変更禁止範囲
-- `fixtures/kusatsu.json`、`scripts/make-fixture.mjs`（固定データの中身は触らない）。
-- R7 で入れた `nudgeOverlaps()` / `pin--top` / `zIndexOffset`（app.js の `renderFeedMap`）。
-- rank / present のスコアリングロジック（engine.js 行440〜585 付近）。今回は取得の堅牢化だけ。
-- ユーザー入力を増やす変更（「再試行ボタン」等は追加しない。自動で1回だけが方針）。
+- `assets/geo.js` / `assets/engine.js` は触らない(データ取得とランキングは今回の対象外)。
+- `state.cards` の緯度経度は絶対に書き換えない。ずらすのは **marker の見た目位置のみ**(L606 のコメントの原則を守る)。`fitBounds` に渡す `points`(L655/L667)も元の座標のまま。
+- カードの HTML 構造・文言・`?fixture` / `?simulate` の挙動は変えない。
+- 外部ライブラリ(クラスタリングプラグイン等)の追加は禁止。Leaflet 標準APIのみ。
+- `fitBounds` の `maxZoom: 14`(L671)は最後の手段。上げると地図が寄りすぎて「宿の周り全体」が見えなくなるので、A/B で解決できなかった場合のみ 15 まで、かつ混雑モードに限らず全モードで撮って崩れが無いか確認すること。
 
-## 難易度 / 所要目安
-中。3ファイル横断だが各変更は小さい。目安 25〜40分（撮影4枚と目視を含む）。
+## 完了条件(検証可能)
+1. `?fixture=kusatsu&simulate=overpass504` の mobile 撮影で、**1〜5番の数字がすべて読める**(他のピンや宿ピンに数字が欠けて隠れていない)。
+2. 同上で、6番以降も **完全に消えているピンが無い**(縁が重なるのは可)。
+3. 宿ピン(♨)が番号ピンの下に潜っていない。
+4. どのピンも小地図の枠外にはみ出していない・上下端で切れていない。
+5. `?fixture=kusatsu`(通常の固定モード)でデグレが無い。カード30枚、ピン1〜5判読可、以前の r4-fixture 撮影と比べて悪化していない。
+6. `node --check assets/app.js` が通る。
+
+## 検証手順
+撮影コマンド(ローカルサーバ `start-server.bat` → 127.0.0.1:3000):
+```
+node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=kusatsu&simulate=overpass504" --mobile   # 最重要
+node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=kusatsu&simulate=overpass504"           # desktop
+node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=kusatsu" --mobile                       # デグレ確認
+```
+撮った PNG を **必ず Read で開いて目視**する。見る観点:
+- 小地図の中央(♨の周囲)に注目し、番号 1・2・3・4・5 の数字が1つも欠けずに読めるか。
+- 数字が半分だけ見えている(=別のピンが上に乗っている)ものは **不合格**。R7 と同じ失敗。
+- ピンが地図の上端・下端・左右端で切れていないか。
+- 告知の帯(「周辺の宿情報だけ混雑中。…」)とカードに崩れ・重なりが無いか。
+- 通常モードの方は、カード見出し・カテゴリ行・リンクチップの折り返しが以前と同じか。
+
+合格したら `docs/ROADMAP.md` の R8 行を `[x] 2026-09-16` に、`docs/NIGHTLOG.md` に3行(やったこと/見た目の確認結果/次)追記し、コミット→push。
+
+**まず実装が終わったらコミットすること。報告は簡潔に(長文の報告書を書かない)。**

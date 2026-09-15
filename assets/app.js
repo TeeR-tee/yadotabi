@@ -599,39 +599,75 @@
     return feedMap;
   }
 
+  // ピン同士に確保する最小距離(px)。ピンの見た目の直径から決めている
+  var TOP_DIST = 34;    // 1〜5番(24px + scale1.12 + 白フチ)
+  var SUB_DIST = 26;    // 6番以降(scale0.72 に縮めるので少し詰めてよい)
+  var HOTEL_DIST = 36;  // 宿ピン(30px)。番号ピンに潜られないよう広めに取る
+
   /**
    * 画面上で近すぎる上位ピンを、表示位置だけ円状にずらして分離する。
-   * `fixed` は動かさない基準点(宿ピン)の layerPoint 配列。
-   * `points` は [marker, layerPoint] の配列で、呼び出し側で先頭から重要度順に並べる。
+   * `fixedPoints` は動かさない基準点(宿ピン)の containerPoint 配列。
+   * `markerPoints` は { marker, point, minDist } の配列で、呼び出し側で先頭から重要度順に並べる。
    * 緯度経度(state.cards / fitBounds 用の points)は書き換えず、marker の見た目位置だけ setLatLng する。
+   * 空きが見つからない密集地でも、必ず「最も空いている候補」へ逃がす(同一座標に積まない)。
    */
   function nudgeOverlaps(markerPoints, fixedPoints) {
-    var MIN_DIST = 28;
     var NUDGE = 16;
-    var placed = fixedPoints.slice();
+    var RINGS = 6;          // 最大 96px まで退避できる
+    var DIRS = 8;
+    var MARGIN = 20;        // 地図コンテナの縁からこれだけ内側に収める(ピン半径+余白)
+    var size = feedMap.getSize();
+    var placed = fixedPoints.map(function (p) { return { p: p, d: HOTEL_DIST }; });
+
+    // コンテナからはみ出さないよう座標を丸める
+    var clamp = function (p) {
+      var x = Math.min(Math.max(p.x, MARGIN), Math.max(MARGIN, size.x - MARGIN));
+      var y = Math.min(Math.max(p.y, MARGIN), Math.max(MARGIN, size.y - MARGIN));
+      return (x === p.x && y === p.y) ? p : L.point(x, y);
+    };
+    // 既に置いたピンとの「余裕」。正なら十分離れている
+    var clearance = function (p, myDist) {
+      var min = Infinity;
+      placed.forEach(function (q) {
+        var need = Math.max(myDist, q.d);
+        var slack = p.distanceTo(q.p) - need;
+        if (slack < min) min = slack;
+      });
+      return min;
+    };
+
     markerPoints.forEach(function (mp) {
-      var best = mp.point;
-      var isTooClose = function (p) {
-        return placed.some(function (q) { return p.distanceTo(q) < MIN_DIST; });
-      };
-      if (isTooClose(best)) {
-        // 8方向 x 3リング(半径を広げながら)試して、最初に空いた場所を採用する
+      var myDist = mp.minDist;
+      var origin = clamp(mp.point);
+      var best = origin;
+      var bestClear = clearance(origin, myDist);
+      if (bestClear < 0) {
+        // 8方向 x 6リング。リングごとに角度をずらして格子状の詰まりを解く
         outer:
-        for (var ring = 1; ring <= 3; ring++) {
-          for (var dir = 0; dir < 8; dir++) {
-            var angle = dir * (Math.PI / 4);
-            var candidate = mp.point.add([Math.cos(angle) * NUDGE * ring, Math.sin(angle) * NUDGE * ring]);
-            if (!isTooClose(candidate)) {
+        for (var ring = 1; ring <= RINGS; ring++) {
+          for (var dir = 0; dir < DIRS; dir++) {
+            var angle = dir * (Math.PI * 2 / DIRS) + (Math.PI / DIRS) * ring;
+            var candidate = clamp(mp.point.add(
+              L.point(Math.cos(angle) * NUDGE * ring, Math.sin(angle) * NUDGE * ring)
+            ));
+            var clear = clearance(candidate, myDist);
+            if (clear >= 0) {
               best = candidate;
+              bestClear = clear;
               break outer;
+            }
+            // 空きが無かった場合に備えて、いちばんマシな候補を覚えておく
+            if (clear > bestClear) {
+              best = candidate;
+              bestClear = clear;
             }
           }
         }
       }
       if (best !== mp.point) {
-        mp.marker.setLatLng(feedMap.layerPointToLatLng(best));
+        mp.marker.setLatLng(feedMap.containerPointToLatLng(best));
       }
-      placed.push(best);
+      placed.push({ p: best, d: myDist });
     });
   }
 
@@ -667,19 +703,26 @@
       points.push([c.lat, c.lon]);
     });
 
-    if (points.length > 1) {
-      feedMap.fitBounds(L.latLngBounds(points), { padding: [24, 24], maxZoom: 14 });
-    } else {
-      feedMap.setView([hotel.lat, hotel.lon], 14);
-    }
-    // 非表示から表示に切り替えた直後はコンテナ寸法が0なので測り直す
+    // 非表示から表示に切り替えた直後はコンテナ寸法が0なので、測り直してから枠合わせする
     setTimeout(function () {
       if (!feedMap) return;
       feedMap.invalidateSize();
-      // ズーム・中心が確定してからでないと layerPoint が正しく取れない
-      var fixedPoints = [feedMap.latLngToLayerPoint(hm.getLatLng())];
-      var markerPoints = spotMarkers.map(function (m) {
-        return { marker: m, point: feedMap.latLngToLayerPoint(m.getLatLng()) };
+      // animate: false にしないと、ずらした直後にアニメ完了で元の投影に戻されて重なりが復活する
+      if (points.length > 1) {
+        feedMap.fitBounds(L.latLngBounds(points), { padding: [24, 24], maxZoom: 14, animate: false });
+      } else {
+        feedMap.setView([hotel.lat, hotel.lon], 14, { animate: false });
+      }
+      // ズーム・中心が確定してからでないと containerPoint が正しく取れない
+      var fixedPoints = [feedMap.latLngToContainerPoint(L.latLng(hotel.lat, hotel.lon))];
+      // marker は setLatLng で動かすので、元の緯度経度(state.cards)を基準に計算する
+      var markerPoints = spotMarkers.map(function (m, i) {
+        var c = state.cards[i];
+        return {
+          marker: m,
+          point: feedMap.latLngToContainerPoint(L.latLng(c.lat, c.lon)),
+          minDist: i < 5 ? TOP_DIST : SUB_DIST
+        };
       });
       nudgeOverlaps(markerPoints, fixedPoints);
     }, 0);
