@@ -993,6 +993,7 @@
     var hotel = state.hotel;
     if (!hotel) return;
     ensureFeedMap();
+    els.feedMap.classList.toggle('feedmap--tall', state.cards.length >= 25);
 
     feedMarkers.forEach(function (m) { feedMap.removeLayer(m); });
     feedMarkers = [];
@@ -1005,6 +1006,7 @@
       iconAnchor: [15, 15]
     });
     var hm = L.marker([hotel.lat, hotel.lon], { icon: hotelIcon, zIndexOffset: 2000 }).addTo(feedMap);
+    hm.on('click', function () { feedMap.panTo([hotel.lat, hotel.lon]); });
     feedMarkers.push(hm);
 
     var points = [[hotel.lat, hotel.lon]];

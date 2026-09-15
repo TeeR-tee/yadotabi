@@ -154,6 +154,54 @@ async function main() {
     ok(rmErrors.length === 0, 'reduced-motionコンテキストでコンソールエラー0件', rmErrors);
 
     await rmContext.close();
+
+    // --- R37: 宿ピンをクリックすると宿位置へpanTo ---
+    const hotelContext = await browser.newContext({ viewport: { width: 375, height: 812 } });
+    const hotelPage = await hotelContext.newPage();
+    const hotelErrors = [];
+    hotelPage.on('console', (msg) => { if (msg.type() === 'error') hotelErrors.push(msg.text()); });
+    hotelPage.on('pageerror', (err) => hotelErrors.push(String(err)));
+
+    await hotelPage.goto(`${BASE}/?fixture=kusatsu`, { waitUntil: 'load' });
+    await waitFor(2000);
+
+    const hotelPin = hotelPage.locator('.pin--hotel');
+    ok(await hotelPin.count() === 1, 'R37: 宿ピンが1個存在する', await hotelPin.count());
+
+    const zoomOf = (src) => {
+      const m = /\/(\d+)\/\d+\/\d+\.png/.exec(src || '');
+      return m ? m[1] : null;
+    };
+    const beforeTileSrc = await hotelPage.evaluate(() => {
+      const img = document.querySelector('img.leaflet-tile');
+      return img ? img.src : null;
+    });
+
+    await hotelPin.click();
+    await waitFor(400);
+
+    const centerInfo = await hotelPage.evaluate(() => {
+      const mapEl = document.getElementById('feed-map');
+      const pin = document.querySelector('.pin--hotel');
+      const mapRect = mapEl.getBoundingClientRect();
+      const pinRect = pin.getBoundingClientRect();
+      const mapCx = mapRect.left + mapRect.width / 2;
+      const mapCy = mapRect.top + mapRect.height / 2;
+      const pinCx = pinRect.left + pinRect.width / 2;
+      const pinCy = pinRect.top + pinRect.height / 2;
+      return { dx: Math.abs(mapCx - pinCx), dy: Math.abs(mapCy - pinCy) };
+    });
+    ok(centerInfo.dx <= 20 && centerInfo.dy <= 20, 'R37: クリック後に宿ピンが地図の中心付近(20px以内)に来る', centerInfo);
+
+    const afterTileSrc = await hotelPage.evaluate(() => {
+      const img = document.querySelector('img.leaflet-tile');
+      return img ? img.src : null;
+    });
+    ok(zoomOf(beforeTileSrc) !== null && zoomOf(beforeTileSrc) === zoomOf(afterTileSrc), 'R37: クリック前後でズーム段が不変', { before: beforeTileSrc, after: afterTileSrc });
+
+    ok(hotelErrors.length === 0, 'R37: コンソールエラー0件', hotelErrors);
+
+    await hotelContext.close();
   } finally {
     await browser.close();
     if (serverProc) serverProc.kill();
