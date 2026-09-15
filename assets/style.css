@@ -140,6 +140,13 @@ body {
 }
 .chip:hover { background: var(--c-primary-soft); border-color: var(--c-primary); color: var(--c-primary); }
 
+.chip--current {
+  border-color: var(--c-primary);
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
+  font-weight: 600;
+}
+
 .mapwrap {
   position: relative;
   flex: 1 1 auto;

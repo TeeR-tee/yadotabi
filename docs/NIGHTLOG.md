@@ -211,4 +211,10 @@
 - やったこと: `scripts/make-readme-shots.mjs`を新規作成しPlaywright(375x780/jpeg品質75)で`docs/shots/state-a.jpg`(?q=草津温泉・宿ピン実写)`state-b.jpg`(?fixture=kusatsu)`embed.jpg`(demo/hotel-page.htmlの埋め込み見出しへスクロール)の3枚を撮影。全て1回の試行で宿ピンが写り成功(51KB/62KB/56KB、全て150KB以下)。README.mdの英語段落直下にHTML tableで3枚を横並び追加(既存本文は無変更)。
 - 見た目の確認結果: 3枚をReadで目視、文字崩れ・はみ出し・真っ白地図なし。state-aには♨の宿ピンが多数(67件)写っている。
 - テスト結果: `node docs/check.mjs`全項目OK・exit0、`node scripts/check-a11y.mjs`全件OK、`git diff --stat -- assets fixtures index.html`は空(コード無変更)。
-- 次: ROADMAP残りはR11/R14/R19/R23/R28〜R34。朝の相談は前回分(wiki件数50vs34の食い違い)が引き続き未決。
+- 次: ROADMAP残りはR11/R14/R19/R23/R28/R30〜R34。朝の相談は前回分(wiki件数50vs34の食い違い)が引き続き未決。
+
+### 2026-09-16 R29 `?q=`/エリアチップ選択時にチップを強調
+- やったこと: `app.js`に`currentAreaIndex`(ラベル前方一致判定)と`setCurrentChip`(強調クラス切替+`scrollIntoView`)を新設し、チップclick・`?q=`・検索候補の地名ジャンプの3経路から呼ぶよう配線。`style.css`に`.chip--current`を追加(min-height/padding不変)。新設`scripts/check-chipcurrent.mjs`はNominatimをfulfillでモックし外部APIを叩かずに検証。
+- テスト結果: `check-chipcurrent.mjs`10 pass/0 fail、`check-a11y.mjs`全OK、`check-more.mjs`6 pass/0 fail、`check-passive.mjs`全OK、`check-hotelparam.mjs`10 pass/0 fail、`check-engine.mjs`111 pass、`docs/check.mjs`exit0、`git diff --stat -- engine.js/geo.js/fixtures`空。
+- 目視結果: `?q=草津温泉`(実API1回)mobileで草津チップが紫枠で強調され横スクロールして画面内、他チップと高さ揃い。`?fixture=kusatsu`/`?demo=zoomout`mobileはデグレなし。
+- 次: ROADMAP残りはR11/R14/R19/R23/R28/R30〜R34。朝の相談は前回分(wiki件数50vs34の食い違い)が引き続き未決。

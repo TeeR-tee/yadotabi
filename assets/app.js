@@ -1220,6 +1220,7 @@
     var q = (params.get('q') || '').trim();
     if (q.length >= 2) {
       els.searchInput.value = q;
+      setCurrentChip(currentAreaIndex(q));
       YadoGeo.suggestHotels(q).then(function (results) {
         if (!results.length || state.view !== 'select') return;
         flyTo(results[0].lat, results[0].lon, DEFAULT_VIEW.zoom);
@@ -1239,6 +1240,39 @@
     els.chips.innerHTML = AREAS.map(function (a, i) {
       return '<button type="button" class="chip" data-index="' + i + '">' + escapeHtml(a.label) + '</button>';
     }).join('');
+  }
+
+  /**
+   * 文字列が AREAS のどのチップに該当するかを判定する。
+   * チップのラベルで前方一致(「草津温泉」→「草津」)する最初の index を返す。該当なしは -1。
+   */
+  function currentAreaIndex(text) {
+    var t = (text || '').trim();
+    if (!t) return -1;
+    for (var i = 0; i < AREAS.length; i++) {
+      if (t.indexOf(AREAS[i].label) === 0) return i;
+    }
+    return -1;
+  }
+
+  /**
+   * エリアチップの強調表示を更新する。該当が無ければ全て無強調にする。
+   * 該当チップは画面内(横スクロール範囲内)に来るようスクロールする。
+   */
+  function setCurrentChip(index) {
+    if (!els.chips) return;
+    var buttons = els.chips.querySelectorAll('.chip');
+    for (var i = 0; i < buttons.length; i++) {
+      var btn = buttons[i];
+      if (i === index) {
+        btn.classList.add('chip--current');
+        btn.setAttribute('aria-current', 'true');
+        btn.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'auto' });
+      } else {
+        btn.classList.remove('chip--current');
+        btn.removeAttribute('aria-current');
+      }
+    }
   }
 
   function bindEvents() {
@@ -1274,6 +1308,7 @@
       } else if (row.act === 'jump') {
         // 地名は宿ではないので、選ぶのではなく地図を寄せるだけ
         hideSuggest();
+        setCurrentChip(currentAreaIndex(row.hotel.name));
         flyTo(row.hotel.lat, row.hotel.lon, DEFAULT_VIEW.zoom);
       }
     });
@@ -1285,6 +1320,7 @@
       var area = AREAS[Number(btn.dataset.index)];
       if (!area) return;
       hideSuggest();
+      setCurrentChip(Number(btn.dataset.index));
       flyTo(area.lat, area.lon, DEFAULT_VIEW.zoom);
     });
 
