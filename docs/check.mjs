@@ -19,6 +19,7 @@ const TARGETS = [
   'assets/ui.css',
   'fixtures/kusatsu.json',
   'fixtures/hakone.json',
+  'fixtures/dogo.json',
 ];
 
 const JS_FILES = new Set(['assets/app.js', 'assets/geo.js', 'assets/engine.js']);
@@ -55,7 +56,7 @@ async function checkTarget(path) {
     report(`${path} に <title>やどたび が含まれる`, hasTitle);
   }
 
-  if (path === 'fixtures/kusatsu.json' || path === 'fixtures/hakone.json') {
+  if (path.startsWith('fixtures/')) {
     try {
       const json = JSON.parse(body);
       const hasLat = typeof json?.meta?.lat !== 'undefined';

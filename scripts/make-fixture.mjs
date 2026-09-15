@@ -17,7 +17,8 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // エリアごとの座標テーブル。assets/app.js の fixtureNameFromUrl と同じ正規表現で名前を検証する。
 const AREAS = {
   kusatsu: { lat: 36.6226, lon: 138.5960, label: '草津温泉' },
-  hakone: { lat: 35.2324, lon: 139.1069, label: '箱根湯本', osmRadiusM: 30000 }
+  hakone: { lat: 35.2324, lon: 139.1069, label: '箱根湯本', osmRadiusM: 30000 },
+  dogo: { lat: 33.8520, lon: 132.7860, label: '道後温泉' }
 };
 
 const AREA = (process.argv[2] || 'kusatsu').trim();
