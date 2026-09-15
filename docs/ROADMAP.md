@@ -37,7 +37,7 @@
 - [x] 2026-09-16 R20 Wikipedia geosearch の50件上限を半径分割で回避: 現状 1回の geosearch が 50件上限で箱根は 3.7km で頭打ち(R17で判明)。中心+周囲数点に分けて呼び、重複を id で除いて結合する。本番のみ効く(fixture は既存データのまま)。外部API呼び出し回数が増えるので、無料APIのマナーに沿って呼び出し上限を決めてから実装する
 - [x] 2026-09-16 R23 カード画像の読み込み失敗時のフォールバック: Wikipedia のサムネイルURLが 404/タイムアウトのとき `<img>` が壊れアイコンや白枠のまま残る。`onerror` で画像枠を畳んで、画像なしカードと同じカテゴリ絵文字プレースホルダに差し替える。撮影は存在しないURLを1枚だけ差し込む `?demo=imgfail` 等で外部APIなしに再現する
 - [x] 2026-09-16 R24 `?hotel=` で名前(`name`)が無いときの見出し: 現在は一律「この宿」。座標しか無い入口でも「このあたり」等、地図から入った文脈に合う語にするか検討し、`?hotel=` の name 有無2パターンを撮影で比較する。文言のみの変更でロジックは触らない
-- [ ] R25 `docs/check.mjs` を GitHub Actions で毎日1回実行(無料枠内): `.github/workflows/check.yml` を新設し `schedule` + `workflow_dispatch` で `node docs/check.mjs` を走らせる。本番URLへの GET のみで外部APIは叩かない。失敗時に Actions が赤くなることがゴール(通知設定はユーザー判断なので触らない)
+- [x] 2026-09-16 R25 `docs/check.mjs` を GitHub Actions で毎日1回実行(無料枠内): `.github/workflows/check.yml` を新設し `schedule` + `workflow_dispatch` で `node docs/check.mjs` を走らせる。本番URLへの GET のみで外部APIは叩かない。失敗時に Actions が赤くなることがゴール(通知設定はユーザー判断なので触らない)
 - [ ] R26 README にスクリーンショットを追加: 既存の `screenshots/` から状態B(mobile)と埋め込みモードの2枚を `docs/` へ複製し README に貼る。新規撮影は fixture で1回まで。コード変更なし
 - [x] 2026-09-16 R27 Leaflet の CDN を unpkg から cdnjs に変更(可用性): index.html の `<script>`/`<link>` を cdnjs の同一バージョン・同一 SRI に差し替える。バージョンは上げない。`node docs/check.mjs` と `?fixture=kusatsu` の撮影で地図が従来どおり描けることを確認する
 - [x] 2026-09-16 R21 README に英語1段落を追加(What this is / How to try / No API keys needed の3文程度)。海外から本番URLを見た人向け。コード変更なし
