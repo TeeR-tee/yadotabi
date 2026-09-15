@@ -76,6 +76,24 @@
   ];
 
   /**
+   * Wikipedia 単独候補のカテゴリ推定表。
+   *
+   * Wikipedia 記事には OSM のようなタグが無いため、そのままだと全部 'other' になり、
+   * カテゴリ多様性の判定にも表示ラベルにも使えない。そこで extract / title の語から
+   * ざっくり推定する。上から順に評価し、最初に当たったものを採る。
+   * 推定できなければ 'other' のまま(無理に当てない)。
+   */
+  var WIKI_CATEGORY_HINTS = [
+    { category: 'waterfall', label: '滝', words: ['滝'] },
+    { category: 'hot_spring', label: '温泉', words: ['温泉'] },
+    { category: 'castle', label: '城・城跡', words: ['城跡', '城址', '城'] },
+    { category: 'place_of_worship', label: '神社・寺院', words: ['神社', '寺院', '大社', '神宮', '寺'] },
+    { category: 'museum', label: '美術館・博物館', words: ['美術館', '博物館', '資料館', '記念館'] },
+    { category: 'nature', label: '自然・景勝', words: ['湖', '渓谷', '峠', '高原', '湿原', '鍾乳洞', '洞窟'] },
+    { category: 'park', label: '公園', words: ['公園', '庭園'] }
+  ];
+
+  /**
    * 季節ヒント。context.now の月に合う語をカテゴリ/名前に含むものを少し加点する。
    * 「少し」なので順位をひっくり返すほどの重みは持たせない。
    */
@@ -233,19 +251,45 @@
     };
   }
 
+  /**
+   * Wikipedia 記事のカテゴリを title / extract の語から推定する。
+   * タイトルを先に見るのは、extract には周辺地名など無関係な語が混ざりやすいため。
+   * 当たらなければ {category:'other', label:'スポット'}。
+   */
+  function guessWikiCategory(title, extract) {
+    var t = typeof title === 'string' ? title : '';
+    var e = typeof extract === 'string' ? extract : '';
+    var i, j, hint;
+    for (i = 0; i < WIKI_CATEGORY_HINTS.length; i++) {
+      hint = WIKI_CATEGORY_HINTS[i];
+      for (j = 0; j < hint.words.length; j++) {
+        if (t.indexOf(hint.words[j]) !== -1) return hint;
+      }
+    }
+    for (i = 0; i < WIKI_CATEGORY_HINTS.length; i++) {
+      hint = WIKI_CATEGORY_HINTS[i];
+      for (j = 0; j < hint.words.length; j++) {
+        if (e.indexOf(hint.words[j]) !== -1) return hint;
+      }
+    }
+    return { category: 'other', label: 'スポット' };
+  }
+
   /** Wikipedia 周辺記事を内部の候補形式にそろえる。 */
   function fromWikiArticle(article, hotel) {
     var title = typeof article.title === 'string' ? article.title.trim() : '';
     var distanceM = isFinite(article.distanceM)
       ? article.distanceM
       : distanceBetween(hotel.lat, hotel.lon, article.lat, article.lon);
+    // OSM のようなタグが無いので、語からカテゴリを推定する(外しても 'other' に戻るだけ)
+    var guessed = guessWikiCategory(title, article.extract);
     return {
       id: article.id != null ? String(article.id) : 'wp/' + title,
       name: title,
       lat: article.lat,
       lon: article.lon,
-      category: 'other',
-      categoryLabel: 'スポット',
+      category: guessed.category,
+      categoryLabel: guessed.label,
       distanceM: distanceM,
       // Wikipedia 記事の url は「公式サイト」ではないので official には使わない
       website: null,
@@ -452,6 +496,10 @@
     var categoryCount = Object.create(null);
     scored.forEach(function (entry) {
       var cat = entry.item.category || 'other';
+      // 'other' は「カテゴリが分からなかった」だけで、中身が似ているとは限らない。
+      // (Wikipedia 単独候補は推定が外れると全部ここに落ちる)
+      // 同一カテゴリとして数えると、それらが不当に沈むので減点対象から外す。
+      if (cat === 'other') return;
       var seen = categoryCount[cat] || 0;
       categoryCount[cat] = seen + 1;
       if (seen >= CATEGORY_FREE_SLOTS) {
