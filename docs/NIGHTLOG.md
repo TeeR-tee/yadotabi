@@ -71,3 +71,4 @@
 - やったこと: index.html の head に og:title/description/type/url/image(+width/height/alt)/site_name と twitter:card(summary_large_image) + canonical を追加。og:image は `?fixture=kusatsu` を1200x630のビューポートで撮影しJPEG品質78で書き出した `docs/og.jpg`(約75KB、絶対URL)。
 - 見た目の確認結果: `?fixture=kusatsu` の mobile 撮影でヘッダー「草津温泉(固定データ)」・地図ピン30件・カード表示に変化なし、コンソールエラー0件(head追記のみで見た目は不変)。
 - 次: push後の本番curl確認をこのあと追記。R2-1(検索候補とチップの重なり)は朝の相談で保留中。
+- 本番確認: push後、`curl https://teer-tee.github.io/yadotabi/ | grep og:` で og:type/site_name/title/description/url/image/image:width/height/altの9行がヒット。`curl -w "%{http_code} %{size_download}"` で og.jpg は `200 76741`(75KB、200KB以下)。`node docs/check.mjs` は全項目 [OK]、exit code 0。
