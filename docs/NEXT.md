@@ -1,76 +1,75 @@
-# NEXT — R3+R6 本番URL(GitHub Pages サブパス)の入口動作確認と死活チェックスクリプト
+# NEXT: F1 埋め込みモード `?embed=1`
 
-**選定理由(1行)**: R8 までで見た目の作り込みは一段落し最新2枚(r8-busy-final / r8-normal-final mobile)にも崩れは無かったので、次は「ローカルで綺麗でも本番 `/yadotabi/` サブパスで壊れていないか」という公開物の健全性を確かめる番。R3(入口の実地確認)と R6(死活チェックスクリプト)は同じ「本番URLを叩く」作業なので1タスクにまとめる。
-
-- **タスクID**: R3+R6
-- **難易度**: sonnet(手順が明確。新規スクリプト1本と、必要なら相対パス修正のみ)
-- **所要目安**: 25〜35分(撮影・目視15分 + check.mjs 実装10分)
+**選定理由**: R1/R7/R8/R4/R3+R6 と5サイクル連続で品質・基盤系だったので、計画書08 v3.1 の本丸である「予約サイトに売れる部品」F1 に進む。F2(営業デモ)・F3(受動ログ)は F1 が土台なので順序上も先。
 
 ## 目的
-1. 本番 https://teer-tee.github.io/yadotabi/ で `?fixture=` / `?hotel=` / `?q=` の各入口がサブパス配信でも壊れずに動くことを、撮影した画像の目視で確認する(R3)。
-2. 以後のサイクルの最後に1コマンドで公開物の生死を確認できる `docs/check.mjs` を作る(R6)。
+やどたびを iframe で他サイト(宿の予約ページ)に埋め込める部品にする。`?embed=1` のとき、検索・エリアチップ・状態Aの地図・戻るボタンを消し、**小地図+提案フィードだけ**を出す。埋め込み側は `?embed=1&hotel=<lat>,<lon>,<名前>`(撮影時は `?embed=1&fixture=kusatsu`)を指定する。
+
+## 前提・仕様
+- `?embed=1` は **`?hotel=` または `?fixture=` と併用が前提**。どちらも無いときは通常動作にフォールバックする(状態Aが出る。真っ白にしない)。
+- 高さは親側の iframe が決める。アプリ側で `100vh` を使わない(埋め込み時に二重スクロールになるため)。
+- 外部リンクは今のまま `target="_blank" rel="noopener"`(assets/app.js `linkRowHtml` 480-483行)。iframe 内で親を乗っ取らないため、ここは**変えない**。
+- 戻る先が無いので戻るボタンは隠す。`goBack` のコードは消さない(非埋め込みでは必要)。
 
 ## 対象ファイル(絶対パス)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\check.mjs` (**新規**・主)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js` (**問題が出たときだけ**修正)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\index.html` (同上)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md` / `docs\NIGHTLOG.md` (記録)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js` (946行)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\style.css` (416行)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\index.html` (58行) — 変更は不要な見込み。必要なら最小限
+- 新規 `C:\workspace\claude\旅行先用サイト\yadotabi\demo\embed-check.html`(ローカル確認用の最小ページ。営業デモ F2 とは別物)
 
-## 背景(実物のコードを読んだ上での注意点)
-- `index.html` の CSS/JS 参照は `assets/...` の**相対パス**、`app.js:788` の fixture 読み込みも `fetch('fixtures/' + name + '.json')` と相対パスなので、理屈の上ではサブパスでも動くはず。**「動くはず」を実際の画像で確かめるのがこのタスク**。壊れていたら `<base>` ではなく相対パスのまま直す(絶対パス `/assets/` に変えてはいけない。ローカル配信が壊れる)。
-- `app.js:815 applyNormalEntryPoint()` の `?q=` 経路は `YadoGeo.suggestHotels(q)`(Nominatim)を呼ぶ**外部API**。AUTOPILOT 規約4により、外部APIを叩く撮影は**このサイクルで最大2回**まで。内訳は「`?hotel=` 1回」「`?q=` 1回」に使い切る想定で、それ以外の撮影は必ず `?fixture=kusatsu` を付けること。
-- `?hotel=` 経路(`app.js:753 hotelFromUrl`)は `<lat>,<lon>,<名前>` 形式。日本語の宿名を URL に入れるので、撮影時は必ず URL エンコードする(例: 草津の適当な座標 + 名前)。
+## 実装方針(実物の行番号つき)
 
-## 実装方針
-### (1) R3: 本番URLの入口確認(撮影 → 目視)
-`node C:\workspace\tools\shot\shot.mjs <URL> --mobile --label <名前>` を**プロジェクトディレクトリをカレントにして**実行する(画像が `screenshots/` に落ちる)。撮る順に:
+### 1. app.js: 埋め込み判定
+- 状態オブジェクト `state`(85-92行)に `embed: false` を追加する。
+- `fixtureNameFromUrl`(770-774行)の隣に `isEmbedFromUrl(params)` を新設。`params.get('embed') === '1'` で true。
+- `applyEntryPoint()`(776行)の先頭、`simulate` 判定(781-783行)の直後で判定する:
+  ```
+  var params = ... (777行 既存)
+  var embed = isEmbedFromUrl(params);
+  var hasTarget = !!hotelFromUrl(params) || !!fixtureNameFromUrl(params);
+  if (embed && hasTarget) { state.embed = true; document.body.classList.add('is-embed'); }
+  ```
+  `hasTarget` が false なら `state.embed` は立てない(= 通常動作)。fixture の fetch が失敗して `applyNormalEntryPoint` に落ちる経路(805-808行)では、`state.embed` を false に戻し `is-embed` クラスも外すこと。**空白画面を出さないのが最優先**。
 
-1. `https://teer-tee.github.io/yadotabi/` — 素の本番(状態A)。**外部API1回目相当だが宿ピン取得なので許容**。ラベル `r3-prod-top`。
-2. `https://teer-tee.github.io/yadotabi/?fixture=kusatsu` — 外部APIなし。ラベル `r3-prod-fixture`。mobile と desktop の両方。
-3. `https://teer-tee.github.io/yadotabi/?fixture=kusatsu&hotel=36.6226,138.5960,%E3%81%A1%E3%82%87%E3%81%86%E3%81%97%E3%82%85%E3%81%8F%E3%81%AE%E5%AE%BF` — fixture と併用すれば `?hotel=` の読み取り経路だけを外部APIなしで検証できる(`app.js:797` が hotel を優先する分岐)。ラベル `r3-prod-hotel`。
-4. `https://teer-tee.github.io/yadotabi/?q=%E8%8D%89%E6%B4%A5%E6%B8%A9%E6%B3%89` — ここだけ Nominatim を使う(外部API2回目)。ラベル `r3-prod-q`。混雑して失敗したら**リトライせず**、その旨を NIGHTLOG に書いて次へ進む(規約4)。
+### 2. app.js: render での隠し
+- `render()`(735-747行)で、`state.embed` が true のときは `els.viewSelect.hidden` を常に true にする(状態Aは絶対に出さない)。
+- 戻るボタンは DOM を消さず `els.backBtn.hidden = state.embed;` で隠す(`[hidden]` は style.css 18行で `display:none !important`)。
+- 状態Aの地図生成 `ensureMap()`(init 928行)は、埋め込み時は呼ばない方が軽い。`init()`(909行)で `state.embed` はまだ決まっていない順序なので、**`applyEntryPoint` より前に embed 判定だけを行う小さな関数を init の先頭で呼ぶ**か、`ensureMap()` の呼び出しを `applyEntryPoint()` の後ろへ動かす。どちらか実装しやすい方でよいが、通常モードで地図が出なくなるデグレを起こさないこと。
 
-各画像を **Read で開いて目視**する。観点:
-- CSS が当たっているか(素のHTMLに戻っていないか。ボタンが角丸か、背景が白灰か)。
-- 404 由来の空白・壊れたレイアウトが無いか。
-- 2〜3 はカードが並び小地図の番号ピンが判読できるか(R8 の成果が本番にも出ているか)。
-- 3 はヘッダーのタイトルが `ちょうしゅくの宿`(URLで渡した名前)になっているか = `?hotel=` が効いている証拠。
-- 4 は検索欄に「草津温泉」が入り、地図がその辺りへ飛んでいるか。
+### 3. style.css: 余白調整(最小限)
+- `.view--feed`(185行)は `padding-bottom` のみなので基本そのまま使える。
+- `@media (min-width: 720px)` の `.view--feed { max-width: 560px; margin: 0 auto; }`(410-413行)は、埋め込み枠が狭いときに中央寄せで余白が出る。埋め込み時は幅いっぱいにしたいので `body.is-embed .view--feed { max-width: none; }` を同メディアクエリ内に追加する。
+- `body.is-embed { overflow-x: hidden; }` は既に body(7-15行)で効いているので追加不要。
+- `.topbar`(187-197行)は `position: sticky; top: 0` のまま残す(タイトルは埋め込みでも見せてよい)。`env(safe-area-inset-top)` は iframe 内では 0 になるので害はない。
+- 新規CSSは **末尾に「埋め込みモード」節をまとめて追記**し、既存セレクタの値は書き換えない。
 
-### (2) R6: `docs/check.mjs`
-Node 標準の `fetch` のみで書く(依存追加禁止)。処理:
-- 定数 `BASE = 'https://teer-tee.github.io/yadotabi/'`。
-- `index.html`・`assets/app.js`・`assets/geo.js`・`assets/engine.js`・`assets/style.css`・`assets/tokens.css`・`assets/ui.css`・`fixtures/kusatsu.json` を順に GET。
-- 判定: 全て HTTP 200 / index.html の本文に `<title>やどたび` が含まれる / `kusatsu.json` が JSON としてパースでき `meta.lat` を持つ / 各 JS が空でない(1000バイト以上)。
-- 結果を1行1項目で `OK` / `NG` を色なしで出力し、1件でも NG なら `process.exitCode = 1`。
-- 冒頭にコメントで使い方 `node docs/check.mjs` を書く。
+### 4. demo/embed-check.html(新規・確認用)
+- 素のHTML1枚。`<iframe src="../index.html?embed=1&fixture=kusatsu" style="width:100%;max-width:420px;height:720px;border:1px solid #ddd">` を1つ置くだけ。見出しに「埋め込み確認用(ローカル)」とだけ書く。凝らない。
 
-## 完了条件(検証可能)
-- [ ] 上記4種の本番URLについて撮影画像が `screenshots/` にあり、Read で目視して崩れ・空白・CSS抜けが無いことを NIGHTLOG に記述した(`?q=` が混雑で撮れなかった場合はその理由を明記すれば可)。
-- [ ] `?hotel=` で渡した宿名がヘッダーに出ることを画像で確認した(サブパスで入口が生きている証拠)。
-- [ ] 崩れが見つかった場合は同サイクルで相対パスのまま修正し、再撮影して直ったことを画像で確認した。
-- [ ] `docs/check.mjs` が存在し、`node docs/check.mjs` が全項目 OK・終了コード0で完了する。
-- [ ] `node --check docs/check.mjs` 通過。
-- [ ] ROADMAP の R3 と R6 が `[x] 2026-09-16` になっている。
-- [ ] NIGHTLOG に3行(やったこと/見た目の確認結果/次)を追記した。
-- [ ] コミット(1行日本語)して `git push` 済み。`git status -sb` が clean。
+## 完了条件
+1. `?fixture=kusatsu&embed=1` で、検索欄・エリアチップ・状態Aの地図・戻るボタンが**一切見えない**。小地図と提案カードは通常どおり出る。
+2. `?embed=1` 単独(hotel も fixture も無し)で通常の状態Aが出る(フォールバック)。
+3. `?fixture=kusatsu`(embed 無し)が従来どおり動く(戻るボタンも出る)。**デグレゼロ**。
+4. `demo/embed-check.html` を開くと iframe の中でフィードが動き、iframe 内で縦スクロールできる(親ページが二重スクロールにならない)。
+5. `node --check assets/app.js` が通り、ブラウザのコンソールにエラーが出ない。
+6. `node docs/check.mjs` が終了コード0。
 
 ## 検証手順
-```
-cd C:\workspace\claude\旅行先用サイト\yadotabi
-node C:\workspace\tools\shot\shot.mjs "https://teer-tee.github.io/yadotabi/" --mobile --label r3-prod-top
-node C:\workspace\tools\shot\shot.mjs "https://teer-tee.github.io/yadotabi/?fixture=kusatsu" --mobile --label r3-prod-fixture
-node C:\workspace\tools\shot\shot.mjs "https://teer-tee.github.io/yadotabi/?fixture=kusatsu" --label r3-prod-fixture-desktop
-node C:\workspace\tools\shot\shot.mjs "https://teer-tee.github.io/yadotabi/?fixture=kusatsu&hotel=36.6226,138.5960,%E3%81%A1%E3%82%87%E3%81%86%E3%81%97%E3%82%85%E3%81%8F%E3%81%AE%E5%AE%BF" --mobile --label r3-prod-hotel
-node C:\workspace\tools\shot\shot.mjs "https://teer-tee.github.io/yadotabi/?q=%E8%8D%89%E6%B4%A5%E6%B8%A9%E6%B3%89" --mobile --label r3-prod-q
-node docs/check.mjs
-```
-- 撮影幅: `--mobile` は 375x812、無指定は PC 幅。fixture の1枚だけ desktop も撮る。
-- **画像は必ず Read で開いて目視**する。推測で「大丈夫そう」と書かない。
+1. ローカルサーバを立てる(`start-server.bat` / 127.0.0.1:3000)。
+2. 撮影(`node C:\workspace\tools\shot\shot.mjs <URL> --mobile` と PC幅):
+   - `?fixture=kusatsu&embed=1` … mobile / desktop
+   - `demo/embed-check.html` … mobile / desktop(iframe に収まっているか)
+   - `?fixture=kusatsu` … mobile 1枚(デグレ確認)
+3. 撮った画像を**必ず Read で開いて目視**する。見る点: 検索欄やチップの残骸が無いか / 戻るボタンが消えているか / 小地図の番号ピンが判読できるか / カードのリンクチップが折り返しで切れていないか / iframe の縁でカードが横にはみ出していないか。
+4. 崩れがあれば同サイクルで直す。直せなければ ROADMAP の先頭に起票する。
+5. push 後に本番 `https://teer-tee.github.io/yadotabi/?fixture=kusatsu&embed=1` を mobile で1枚撮って確認。
 
 ## 変更禁止範囲
-- `assets/*.js` のロジック変更(入口が壊れていた場合の**パス修正のみ**可。ロジック・レイアウト・ピン計算には触らない)。
-- `assets/style.css` / `assets/ui.css` / `assets/tokens.css`(R8 の成果を壊さない)。
-- `fixtures/kusatsu.json`。
-- 有料API・APIキーの導入、Nominatim/Overpass への3回以上のアクセス。
-- `git stash` / `reset --hard` / `checkout` によるファイル復元。
+- `assets/geo.js` / `assets/engine.js` は触らない(データ取得のロジックは今回無関係)。
+- `linkRowHtml` の `target="_blank" rel="noopener"` を変えない。
+- `nudgeOverlaps`(614行)/ `renderFeedMap`(674行)のピン配置ロジックを触らない(R7/R8 で直したばかり)。
+- `fixtures/kusatsu.json`、`docs/check.mjs`、既存スクリーンショットは変更しない。
+- git stash / reset --hard / checkout でのファイル復元は禁止。
+
+## 難易度・所要目安
+難易度: 中の下(URLパラメータ1つ + 表示の出し分け + 小さなCSS)。所要目安: 25〜40分。

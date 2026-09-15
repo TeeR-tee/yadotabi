@@ -88,7 +88,8 @@
     cards: [],
     far: [],
     stage: null,      // null | "loading" | "osm" | "wiki" | "done" | "error"
-    osmFailed: false  // Overpass が混雑して Wikipedia だけで提案したか
+    osmFailed: false, // Overpass が混雑して Wikipedia だけで提案したか
+    embed: false      // ?embed=1 で他サイトの iframe に埋め込まれているか
   };
 
   /** 提案リクエストの世代番号。戻る→別の宿、の取り違えを防ぐ。 */
@@ -734,8 +735,11 @@
 
   function render() {
     var isFeed = state.view === 'feed';
-    els.viewSelect.hidden = isFeed;
+    // 埋め込みでは状態A(検索・チップ・地図)を絶対に出さない
+    els.viewSelect.hidden = isFeed || state.embed;
     els.viewFeed.hidden = !isFeed;
+    // 戻る先が無いので隠すだけ。DOM も goBack も残す(非埋め込みでは必要)
+    els.backBtn.hidden = state.embed;
 
     if (isFeed) {
       renderFeed();
@@ -773,6 +777,17 @@
     return raw;
   }
 
+  /** `?embed=1` を読む。宿の指定(hotel / fixture)と併用したときだけ意味を持つ。 */
+  function isEmbedFromUrl(params) {
+    return params.get('embed') === '1';
+  }
+
+  /** 埋め込みの入り切り。クラスは CSS 側の出し分けに使う。 */
+  function setEmbed(on) {
+    state.embed = !!on;
+    document.body.classList.toggle('is-embed', !!on);
+  }
+
   function applyEntryPoint() {
     var params = new URLSearchParams(global.location.search);
 
@@ -783,6 +798,11 @@
     }
 
     var fixtureName = fixtureNameFromUrl(params);
+
+    // 埋め込みは「宿が決まっている」ことが前提。どちらも無ければ通常動作(状態A)に落とす。
+    var hasTarget = !!hotelFromUrl(params) || !!fixtureName;
+    if (isEmbedFromUrl(params) && hasTarget) setEmbed(true);
+
     if (fixtureName) {
       // GitHub Pages のサブパス(/yadotabi/)でも動くよう相対パスで読む
       fetch('fixtures/' + fixtureName + '.json')
@@ -804,6 +824,12 @@
         })
         .catch(function () {
           // 読めなければ黙って通常動作へ。画面は絶対に空白にしない。
+          // ?hotel= も無いなら状態Aに戻るので、埋め込みの隠しも解除する。
+          if (state.embed && !hotelFromUrl(params)) {
+            setEmbed(false);
+            ensureMap(); // 埋め込み前提で作っていなかったので、ここで立ち上げる
+            render();
+          }
           applyNormalEntryPoint(params);
         });
       return;
@@ -925,7 +951,14 @@
 
     renderChips();
     bindEvents();
-    ensureMap();
+    // 埋め込みかどうかは地図を作る前に決める(状態Aの地図を無駄に立ち上げないため)。
+    // 実際の入口処理は applyEntryPoint() に任せる。
+    var initialParams = new URLSearchParams(global.location.search);
+    if (isEmbedFromUrl(initialParams) &&
+        (hotelFromUrl(initialParams) || fixtureNameFromUrl(initialParams))) {
+      setEmbed(true);
+    }
+    if (!state.embed) ensureMap();
     render();
     applyEntryPoint();
   }

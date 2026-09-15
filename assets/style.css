@@ -413,4 +413,15 @@ body {
   }
   .pickbar__row, .chips { max-width: 560px; margin-left: auto; margin-right: auto; }
   .chips { margin-top: var(--sp-2); }
+  /* 埋め込み枠は親が決めた幅を使い切る。ただし広い枠で写真が巨大化しないよう上限は残す */
+  body.is-embed .view--feed { max-width: 720px; }
 }
+
+/* --------------------------------------------------------------------------
+   埋め込みモード(?embed=1)
+   宿の予約ページなどに iframe で載せる形。小地図と提案フィードだけを見せる。
+   高さは親の iframe が決めるので、ここで 100vh 系は使わない(二重スクロール防止)。
+   -------------------------------------------------------------------------- */
+
+/* 枠が狭いので下の余白は詰める(safe-area は iframe 内では 0) */
+body.is-embed .view--feed { padding-bottom: var(--sp-4); }
