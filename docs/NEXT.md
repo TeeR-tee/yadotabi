@@ -1,93 +1,71 @@
-# NEXT — 次の1タスク
+# NEXT: R12 OGPメタタグ(SNS/LINE共有カード対応)
 
-## タスク: F4 エリアチップ拡充(全国の主要温泉地20件+横スクロールの見え方) + 同サイクル小修正 R2-2(0件カードの文言短縮)
+判断理由: 現状 index.html にも demo/hotel-page.html にも og:/twitter: タグが1つも無く、本番URLをLINEやXに貼っても白いリンクのままで「何のサイトか」が伝わらない。数行の追加で公開物の価値に直結し、視覚崩れのリスクもゼロなので最優先。
 
-判断理由: R2-1 は朝の相談待ち、F3/S1 は文書・設計の重さがあるため、コードが小さく視覚確認しやすく「草津以外のユーザー」に直接効く F4 を選び、1行で終わる R2-2 を同サイクルに同梱する。
-
-難易度: **sonnet** / 所要目安: 20〜30分(実装10分+撮影と目視15分)
-
----
+難易度: sonnet / 所要目安: 15〜25分
 
 ## 対象ファイル(絶対パス)
-
-- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js` — 23行目付近の `AREAS` 定数テーブル、630行目付近の `emptyHtml()`
-- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\style.css` — 113〜137行目付近の `.chips` / `.chip` 節
-- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md` / `docs\NIGHTLOG.md` — 完了記録
-
-上記以外は触らない。
+- `C:\workspace\claude\旅行先用サイト\yadotabi\index.html` (head のみ)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\og.png` (新規・コミットする画像)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md` (R12 を `[x] 2026-09-16` に)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\NIGHTLOG.md` (3行追記)
 
 ## 実装方針
 
-### 1) AREAS を8件 → 20件に(app.js)
+### 1. og:image 用の画像を用意する
+- 素材は既存スクリーンショット `screenshots\2026-09-15T19-37-30_127.0.0.1_3000_fixture_kusatsu_simulate__f4-empty_mobile.png` (320KB) ではなく、**内容が伝わる `screenshots\2026-09-15T19-37-38_127.0.0.1_3000_fixture_kusatsu_f4-normal_mobile.png`(カードが並んでいる画面)** を使う。
+- ただし縦長モバイル画面のままだと OGP カードで上下が切られる。**上部から横幅いっぱい・縦は幅の約0.52倍(=OGP推奨 1.91:1 に近い横長)を切り出す**か、横長キャンバス(1200x630)の中央にスクショを縮小配置する。
+- 外部サービス・有料ツールは禁止。Node 標準だけでは画像加工できないので、**`node C:\workspace\tools\shot\shot.mjs` で新規に撮り直すのが最も簡単**。推奨: `?fixture=kusatsu&embed=1` をデスクトップ幅で撮ると地図+カードが横長に収まる。shot.mjs にビューポート指定オプションがあればそれで 1200x630 相当を狙う。無ければ既存のデスクトップ撮影を流用してよい。
+- 保存先は `docs\og.png`。**200KB以下**にすること(超える場合は撮影解像度を下げる/PNG最適化。ImageMagick 等が無ければ撮影時の幅を小さくして調整)。
+- 画像が用意できないと判断したら、**og:image だけ省略して title/description/url/type だけで完了してよい**(このタスクの本体はテキストメタ)。その場合その旨を NIGHTLOG に書く。
 
-現状は草津・伊香保・箱根・熱海・別府・由布院・城崎・道後の8件。既存8件はラベルも座標もそのまま残し、以下12件を追記して20件にする(並びは「関東近郊 → 中部 → 関西 → 中国四国 → 九州 → 北海道・東北」のように地理順で読めるようにしてよい)。
+### 2. index.html の `<head>` にメタタグを追加
+既存の `<title>やどたび - 宿を選ぶだけ</title>` の直後に、以下を追加する(値は例、日本語はそのまま可):
 
-座標は **API を叩かず** OSM/Wikipedia 由来の一般的な値を直書きする(既存8件と同じ方針)。小数4桁。参考値:
+- `<meta name="description" content="...">` — 「宿を選ぶだけで、まわりの見どころが並びます。入力は不要。」程度の1文(全角60字以内)
+- `<meta property="og:type" content="website">`
+- `<meta property="og:site_name" content="やどたび">`
+- `<meta property="og:title" content="やどたび - 宿を選ぶだけ">`
+- `<meta property="og:description" content="(description と同文)">`
+- `<meta property="og:url" content="https://teer-tee.github.io/yadotabi/">`
+- `<meta property="og:image" content="https://teer-tee.github.io/yadotabi/docs/og.png">`
+  - **絶対URLにすること**(相対パスだと LINE/X のクローラが解決できない場合がある)
+- `<meta property="og:image:width" content="1200">` / `height` — 実寸に合わせる
+- `<meta property="og:image:alt" content="やどたびの画面。宿のまわりの見どころがカードで並ぶ">`
+- `<meta name="twitter:card" content="summary_large_image">`
+- `<meta name="twitter:title" content="...">` / `twitter:description` / `twitter:image`(og と同値)
+- ついでに `<link rel="canonical" href="https://teer-tee.github.io/yadotabi/">` も入れてよい
 
-| ラベル | lat | lon |
-|---|---|---|
-| 有馬 | 34.7981 | 135.2478 |
-| 下呂 | 35.8058 | 137.2436 |
-| 鬼怒川 | 36.8144 | 139.7086 |
-| 日光 | 36.7539 | 139.5989 |
-| 軽井沢 | 36.3486 | 138.6360 |
-| 伊豆(修善寺) | 34.9702 | 138.9264 |
-| 白浜 | 33.6853 | 135.3403 |
-| 登別 | 42.4917 | 141.1500 |
-| 定山渓 | 42.9683 | 141.1653 |
-| 銀山 | 38.5750 | 140.5344 |
-| 黒川 | 32.9853 | 131.1461 |
-| 指宿 | 31.2286 | 130.6331 |
+注意: og:url / og:image は本番の GitHub Pages サブパス `/yadotabi/` を含む絶対URL。ローカル(127.0.0.1:3000)では画像が解決できないが正常。
 
-- ラベルは短く(チップ幅が伸びるため)。「伊豆」はどこを指すか曖昧なので `label: '修善寺'` にするか `'伊豆(修善寺)'` にするかは、チップ内で改行せず読めるほうを撮影で選ぶこと。
-- ズームは既存のチップ処理(`els.chips` の click ハンドラ、1086行目付近)をそのまま使う。**新しい分岐を足さない**。
-- 件数が増えても `AREAS.map()` の描画は無変更で動くはず。動かない場合のみ最小限で直す。
-
-### 2) 横スクロールの見え方(style.css)
-
-`.chips` は既に `overflow-x: auto` + `scrollbar-width: none` + `::-webkit-scrollbar { display:none }` が入っているので**スクロール自体は実装済み**。今回足すのは「右側に続きがある」と分かるフェードだけ。
-
-- `.chips` を包む要素を追加せず、CSS だけで済ませる。`mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent)` を `.chips` に当てる(`-webkit-mask-image` も併記)。対応していないブラウザではフェードが出ないだけで機能は落ちない。
-- 常時フェードだと左端にスクロールしても右が薄いままだが、JS でスクロール位置を監視する仕組みは**今回入れない**(入力ゼロ原則・複雑度を上げない)。
-- 20件でチップ行がPCでも溢れる場合、`.chips { max-width: 560px }`(445行目付近のデスクトップ指定)配下でも横スクロールになることを撮影で確認する。
-
-### 3) R2-2 0件カードの文言短縮(app.js `emptyHtml`)
-
-現状: `データが少ないエリアのようです。地図で直接探してみてください。` が mobile で「てみてください。」だけ3行目に落ちる。
-
-- 2文に切って短くする。例: `この辺りはデータが少なめです。地図で直接探せます。` など、**2行以内に収まる長さ**にする。
-- CSS は既に `text-wrap: pretty` が入っているので、CSS ではなく**文言で解決**する。
-- 撮影して3行目が消えたことを必ず目視確認する。1回で収まらなければ更に短くして撮り直す。
+### 3. demo/hotel-page.html は今回いじらない
+営業デモは共有対象ではないので対象外。head への追記は index.html のみ。
 
 ## 完了条件
-
-1. `AREAS` が20件になり、`node --check assets/app.js` が通る。
-2. 状態A(`?demo=zoomout`)の mobile 撮影で、チップ行が横スクロールし、**文字が切れている・改行しているチップが1つも無い**。右端にフェードが見えて「続きがある」と分かる。
-3. 同 desktop 撮影で、チップ行がレイアウトを壊していない(検索欄や地図に被らない)。
-4. `?fixture=kusatsu&simulate=empty` の mobile 撮影で、0件カードの説明文が**2行以内**に収まっている。
-5. チップを1つタップして地図が移動することを、少なくとも1件(新規追加分のどれか)で確認する。
-6. `?fixture=kusatsu` / `?fixture=hakone` の mobile でデグレなし(カード30枚・番号ピン判読可)。
-7. `node docs/check.mjs` が全項目OK・終了コード0。
+1. push 後、以下がすべて1行以上ヒットする(反映に数分かかるので失敗したら1〜2分待って再実行):
+   ```
+   curl -s https://teer-tee.github.io/yadotabi/ | grep og:
+   ```
+   → `og:type` `og:title` `og:description` `og:url` (+ og:image を入れたなら og:image)が出ること
+2. `curl -s -o /dev/null -w "%{http_code} %{size_download}\n" https://teer-tee.github.io/yadotabi/docs/og.png` が `200` で、サイズが **204800 以下**であること(og:image を入れた場合のみ)
+3. `node docs\check.mjs` が全項目OK・終了コード0
+4. 画面のデグレが無いこと(下記の検証手順)
 
 ## 検証手順
-
-ローカルサーバ(`127.0.0.1:3000`)を立て、`node C:\workspace\tools\shot\shot.mjs <URL> --mobile` と PC幅で撮影し、**画像を Read で開いて目視**する。
-
-- `http://127.0.0.1:3000/?demo=zoomout` — mobile / desktop(状態Aが撮れる。チップの横スクロールと文字切れを確認)
-- `http://127.0.0.1:3000/?fixture=kusatsu&simulate=empty` — mobile(0件カードの行数)
-- `http://127.0.0.1:3000/?fixture=kusatsu` — mobile(デグレ確認)
-- `http://127.0.0.1:3000/?fixture=hakone` — mobile(デグレ確認)
-
-外部APIは叩かない(全て固定/デモモードで完結する)。
+1. ローカルサーバを起動し、`node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=kusatsu" --mobile` を撮って Read で目視。**カード30枚・番号ピン判読可・ヘッダー「草津温泉(固定データ)」**が従来どおりであること(head へのメタ追加なので見た目は不変のはず。変わっていたらタグの書き間違い)。
+2. `?demo=zoomout` の mobile も1枚撮り、チップ行と地図が従来どおりであること。
+3. コミット → push。
+4. 上の「完了条件」の curl 2本と `node docs\check.mjs` を実行し、出力をそのまま NIGHTLOG に貼る。
 
 ## 変更禁止範囲
-
-- `index.html` の DOM 構造(`.chips` のマークアップは無変更で足りるはず)
-- `assets/geo.js` / `assets/engine.js` / `fixtures/*.json` / `demo/*`
-- 既存8件のラベル・座標
-- ユーザー入力を増やす要素(泊数・移動手段・○△×等)の追加は禁止
-- git stash / reset --hard / checkout でのファイル復元は禁止
+- `assets\app.js` `assets\geo.js` `assets\engine.js` `assets\*.css` — **一切触らない**(今回は head のテキスト追加のみ)
+- `fixtures\*.json` — 触らない
+- `demo\hotel-page.html` `demo\embed-check.html` — 触らない
+- `index.html` の `<body>` 以降 — 触らない
+- git stash / reset --hard / checkout でのファイル復元 — 禁止
+- 有料API・外部OGP画像生成サービス — 禁止(コスト0円原則)
 
 ## 終わったら
-
-`docs/ROADMAP.md` の F4 と R2-2 を `[x] 2026-09-16` に更新 → `docs/NIGHTLOG.md` に3行(やったこと / 見た目の確認結果 / 次)追記 → コミット → `git push`。報告は簡潔に。
+- ROADMAP の R12 行を `- [x] 2026-09-16 R12 ...` にする
+- NIGHTLOG に「やったこと / 見た目の確認結果 / 次」の3行を追記(curl 出力を含める)
+- **先にコミット・push してから、報告は簡潔に**(長文の報告書を書かない)
