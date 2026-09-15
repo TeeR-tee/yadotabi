@@ -115,6 +115,11 @@
   var suggestItems = [];
   var lastSuggestQuery = '';
 
+  // 受動ログ用: 多重記録・スクロール到達位置の追跡に使うモジュール変数
+  var passiveViewedKey = null;
+  var cardObserver = null;
+  var maxSeenIndex = -1;
+
   /**
    * 撮影・目視QA専用のフラグ。URLパラメータが無ければ全て false のままで、
    * 通常動作には一切影響しない(データ層ではなく表示層だけを差し替える)。
@@ -123,6 +128,7 @@
   var demoFar = false;        // ?demo=far        … 「もっと遠く」を開いた状態
   var demoStateA = false;     // ?demo=suggest|recent|zoomout … 状態Aの撮影中
   var demoNoSaveView = false; // ?demo=zoomout    … 撮影用の地図位置を localStorage に残さない
+  var demoPassive = false;    // ?demo=passive     … 受動ログの中身をその場で目視する
 
   // ---------------------------------------------------------------------------
   // 計測(?perf=1 のときだけ動く)
@@ -179,6 +185,36 @@
   }
 
   // ---------------------------------------------------------------------------
+  // 受動ログの目視ボックス(?demo=passive のときだけ動く)
+  //
+  // perfBox と同じ「フラグが無ければ何も作らない」方式。記録が増えるたびに更新する。
+  // ---------------------------------------------------------------------------
+
+  var passiveBox = null;
+
+  function passiveSummaryLine(entry) {
+    if (entry.type === 'view') return 'view ' + (entry.hotel && entry.hotel.name || '') + ' top' + ((entry.topIds && entry.topIds.length) || 0) + ' n' + entry.n;
+    if (entry.type === 'tap') return 'tap #' + entry.index + ' ' + (entry.cardName || '');
+    if (entry.type === 'link') return 'link ' + (entry.label || '') + ' #' + entry.index + ' ' + (entry.cardName || '');
+    if (entry.type === 'seen') return 'seen max=' + entry.maxIndex;
+    return entry.type;
+  }
+
+  function updatePassiveBox() {
+    if (!demoPassive) return;
+    var list = lsGet(PASSIVE_KEY);
+    if (!Array.isArray(list)) list = [];
+    if (!passiveBox) {
+      passiveBox = document.createElement('pre');
+      passiveBox.className = 'passivebox';
+      document.body.appendChild(passiveBox);
+    }
+    var last = list.slice(-10);
+    var lines = last.map(function (e) { return e.type + ' / ' + passiveSummaryLine(e); });
+    passiveBox.textContent = '[passive] 総件数 ' + list.length + '\n' + lines.join('\n');
+  }
+
+  // ---------------------------------------------------------------------------
   // 小物
   // ---------------------------------------------------------------------------
 
@@ -227,6 +263,25 @@
     } catch (e) {
       // 保存できなくても体験は続く
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // 受動ログ(送信なし・端末内だけ)。詳細は docs/passive-log.md 参照。
+  // ---------------------------------------------------------------------------
+
+  var PASSIVE_KEY = 'yado.passive.v1';
+  var PASSIVE_MAX = 200;
+
+  /** type: 'view' | 'tap' | 'link' | 'seen'。lsGet/lsSet 経由で例外を握りつぶす。 */
+  function passivePush(type, data) {
+    var list = lsGet(PASSIVE_KEY);
+    if (!Array.isArray(list)) list = [];
+    var entry = { t: Date.now(), type: type };
+    for (var k in data) { if (data.hasOwnProperty(k)) entry[k] = data[k]; }
+    list.push(entry);
+    if (list.length > PASSIVE_MAX) list = list.slice(-PASSIVE_MAX);
+    lsSet(PASSIVE_KEY, list);
+    updatePassiveBox();
   }
 
   function emojiFor(categoryLabel) {
@@ -527,6 +582,8 @@
     state.far = [];
     state.stage = 'loading';
     state.osmFailed = false;
+    passiveViewedKey = null;
+    maxSeenIndex = -1;
     pushRecent(hotel);
     render();
     // 状態Bに入った瞬間を計測の起点にする
@@ -719,7 +776,52 @@
       if (details) details.setAttribute('open', '');
     }
 
+    // 表示した宿と上位カードの記録。段階描画で renderFeed が複数回走るので done の1回だけに絞る
+    if (state.stage === 'done') {
+      var viewedKey = hotel.id + '@' + state.cards.length;
+      if (passiveViewedKey !== viewedKey) {
+        passiveViewedKey = viewedKey;
+        passivePush('view', {
+          hotel: { id: hotel.id, name: hotel.name, lat: hotel.lat, lon: hotel.lon },
+          topIds: state.cards.slice(0, 10).map(function (c) { return c.id; }),
+          n: state.cards.length
+        });
+      }
+    }
+
+    observeCards();
+    updatePassiveBox();
+
     renderFeedMap();
+  }
+
+  /**
+   * スクロール到達位置の記録。renderFeed が DOM を作り直すたびに observer も作り直す。
+   * 最大値が更新されたら1秒 debounce して1件だけ passivePush する(連打防止)。
+   */
+  var pushSeenDebounced = debounce(function (hotelId) {
+    passivePush('seen', { hotelId: hotelId, maxIndex: maxSeenIndex });
+  }, 1000);
+
+  function observeCards() {
+    if (typeof IntersectionObserver === 'undefined') return;
+    if (cardObserver) cardObserver.disconnect();
+    var hotel = state.hotel;
+    if (!hotel) return;
+    cardObserver = new IntersectionObserver(function (entries) {
+      var updated = false;
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        var idx = Number(entry.target.dataset.index);
+        if (isFinite(idx) && idx > maxSeenIndex) {
+          maxSeenIndex = idx;
+          updated = true;
+        }
+      });
+      if (updated) pushSeenDebounced(hotel.id);
+    });
+    var cards = els.feedList.querySelectorAll('.feedcard[data-index]');
+    cards.forEach(function (el) { cardObserver.observe(el); });
   }
 
   function ensureFeedMap() {
@@ -938,6 +1040,7 @@
     if (demo === 'far') demoFar = true;
     if (demo === 'zoomout') demoNoSaveView = true;
     if (demo === 'suggest' || demo === 'recent' || demo === 'zoomout') demoStateA = true;
+    if (demo === 'passive') demoPassive = true;
 
     var fixtureName = fixtureNameFromUrl(params);
 
@@ -1108,12 +1211,38 @@
     els.backBtn.addEventListener('click', goBack);
 
     els.feedList.addEventListener('click', function (e) {
-      // リンクのタップは素通しする(地図を動かさない)
-      if (e.target.closest('a')) return;
+      var hotel = state.hotel;
+      var a = e.target.closest('a');
+      if (a) {
+        var art = a.closest('.feedcard');
+        if (art && hotel) {
+          var linkedCard = state.cards[Number(art.dataset.index)];
+          if (linkedCard) {
+            passivePush('link', {
+              hotelId: hotel.id,
+              cardId: linkedCard.id,
+              cardName: linkedCard.name,
+              index: Number(art.dataset.index),
+              label: a.textContent.trim(),
+              url: a.href
+            });
+          }
+        }
+        // リンクのタップは素通しする(地図を動かさない)
+        return;
+      }
       var article = e.target.closest('.feedcard');
       if (!article || article.classList.contains('feedcard--skeleton')) return;
       var card = state.cards[Number(article.dataset.index)];
       if (!card || !feedMap) return;
+      if (hotel) {
+        passivePush('tap', {
+          hotelId: hotel.id,
+          cardId: card.id,
+          cardName: card.name,
+          index: Number(article.dataset.index)
+        });
+      }
       feedMap.panTo([card.lat, card.lon]);
       els.feedMap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     });

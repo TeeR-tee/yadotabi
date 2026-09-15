@@ -1,54 +1,104 @@
-# NEXT: R18 誤併合の修正(施設語つきの別スポットが「草津温泉」の要約・写真を継承する)
+# NEXT: F3 受動ログ(localStorage `yado.passive.v1`・送信なし)
 
-難易度: **opus** / 所要目安: 60〜90分 / 1サイクル1タスク
+**判断理由**: 残りの未完了は R10/R11/R14/R15/R16 とも見た目・撮影の小改善で、F3 だけが計画書08 v3.2 の本筋(将来 rank を学習で改善するためのデータ土台)であり、いま作らないと今後の利用ログが一切残らないため最優先で選んだ。R2-1 は朝の相談待ちのため除外。
 
-## 選定理由(1行)
-R17 の作業役が発見した未修正バグで、**ユーザーに間違った写真と説明を見せる正確性の実害**があるため、他の見た目改善(R10/R11/R14/R15/R16)より最優先。
+**難易度**: sonnet / **所要目安**: 60〜80分
 
-## 何が起きているか
-`engine.js` の `isSamePlace()`(348〜364行)の最後の1行
-```js
-return na.indexOf(nb) !== -1 || nb.indexOf(na) !== -1;   // 363行
-```
-が「一方の名前が他方を含む」だけで同一地点とみなす。その結果:
+---
 
-- 「草津温泉バスターミナル」「草津温泉スキー場」が「草津温泉」(Wikipedia記事)を**含む**ため、150m以内なら記事の要約・写真・リンクを**誤って継承**する。
-- 逆方向の危険もある: `mergeOsmDuplicates()`(380〜413行)は代表名に**短い方**を採るので、誤併合すると長い方(=実在の別施設)の名前が消える。
+## ゴール
 
-一方で R17 が意図的に入れた**妥当な併合は維持しなければならない**:
-「湯畑源泉」→「湯畑」、「草津山 光泉寺」→「光泉寺」、「石垣山城 / 石垣山一夜城 / 史跡 石垣山」→「石垣山」。
+ユーザーが「どのカードのどのリンクを押したか」「何枚目まで見たか」「そのとき表示されていた宿と上位カードのID」を localStorage に黙って記録する。**送信は一切しない。ユーザー操作を求めるUIは一切追加しない。** 将来 rank の重みを実データで検証する材料にする。
 
 ## 対象ファイル(絶対パス)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\engine.js` (唯一の実装変更対象)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-engine.mjs` (テスト追加。**注意: R17 の NIGHTLOG は「80件 pass」と書いているが、このファイルは git 管理下に存在しない**。無ければ既存の `scripts/check-a11y.mjs` / `scripts/dump-rank.mjs` の作法に合わせて新規作成し、今回のケースを最低限カバーすること)
 
-## 実装方針
-1. **まず実物を読む**: `engine.js` の `normalizeName`(141行)/ `isSamePlace`(348行)/ `mergeOsmDuplicates`(380行)/ `collect` 内の wiki 突き合わせ(536〜555行)を読み、どの経路で誤継承が起きるかを特定する。
-2. **誤併合の具体例を全部列挙してから直す**: `fixtures/kusatsu.json` と `fixtures/hakone.json` を Node で読み、`normalizeName` を使って「一方が他方を包含し、かつ 150m 以内」の組を**全ペア洗い出して一覧にする**(scratchpad の使い捨てスクリプトでよい)。そのうち妥当な併合／誤併合を目視で仕分けし、修正後に「誤併合だけが消え、妥当な併合は残る」ことを同じスクリプトで確認する。
-3. **判定の厳格化(方針)**: 包含が成立したとき、**含む側の余り部分(差分文字列)**を見て判断する。
-   - 差分が施設・付帯設備を表す語(例: 駅・バスターミナル・ターミナル・バス停・スキー場・ゴルフ場・駐車場・IC・インターチェンジ・入口・出口・前・口・源泉…ではなく**源泉は除外**、ロープウェイ・ゴンドラ・索道・停留所・トンネル・橋・郵便局・支所・出張所 等)なら**別物**とする。
-   - 逆に R17 の妥当ケースは差分が「源泉」「城」「一夜城」「史跡」「草津山(山号)」なので、**これらは併合を維持**する。除外語リストは「施設語(=別物)」を列挙する方式にし、迷ったら**併合しない側**に倒す(誤継承の害 > 重複カードの害)。
-   - 施設語リストは `engine.js` 冒頭の定数群(`DEDUPE_NEAR_M` が 38行にある付近)に定数として置き、コメントで判断基準を書く。
-   - 併用案として、包含一致だけの組は距離しきい値をより厳しく(例: 50m)してもよい。ただし湯畑源泉(20m差)・光泉寺・石垣山が維持できることを 2. の一覧で確認してから採用すること。
-4. **rank には一切触らない**。`rank()` / `baseScore()` / 重み・閾値・カテゴリ多様性は変更禁止。
+- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js` (**主戦場**)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\passive-log.md` (新規・形式と目的)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-passive.mjs` (新規・機械検査)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\style.css` (`?demo=passive` の表示だけ。末尾に追記)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md` / `docs\NIGHTLOG.md` (完了記録)
 
-## 完了条件(検証可能)
-- `node scripts/dump-rank.mjs kusatsu` と `node scripts/dump-rank.mjs hakone` の出力で、名前に「バスターミナル」「スキー場」「駐車場」「駅」を含む候補が **Wikipedia 要約・写真を持たない(source=osm)** こと。
-- R17 の妥当な併合が**維持**されている: 草津で「湯畑」1件(「湯畑源泉」が別カードとして復活していない)、「光泉寺」が写真+要約+公式サイト付きで上位、箱根で「石垣山」が1件に集約されたまま。
-- `node scripts/check-engine.mjs` が全 pass(誤併合ケースのテストを**追加**した状態で)。追加するテスト最低3件: (a)「草津温泉バスターミナル」vs「草津温泉」→ 別物、(b)「湯畑源泉」vs「湯畑」→ 同一、(c)「草津山 光泉寺」vs「光泉寺」→ 同一。
-- `node --check assets/engine.js` 通過。
-- `node docs/check.mjs` は push 後に実行し全項目 OK。
+## 変更禁止
 
-## 検証手順
-1. `node scripts/dump-rank.mjs kusatsu > before.md` を**修正前に**取り、修正後と差分を取って「消えたカード／増えたカード」を全部説明できること(説明できない差分があれば直しきれていない)。箱根も同様。
-2. `node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=kusatsu" --mobile` と `?fixture=hakone` を撮影し、画像を Read で目視。カード30枚・番号ピン1〜30判読可・リンクチップの折り返し崩れなし・コンソールエラー0件。
-3. 誤併合していたカードが「正しい写真なし/要約なし」になっているか、カード本文を目視で1件ずつ確認する。
+`assets/engine.js` / `assets/geo.js` / rank の重み・閾値・カテゴリ多様性 / `fixtures/*.json` / `index.html`(DOM追加は `?demo=passive` 用の1要素を JS から動的生成するので不要)。
 
-## 変更禁止範囲
-- `rank` の重み・閾値・カテゴリ多様性減点(朝の相談で保留中の設計判断)
-- `fixtures/*.json`(再生成しない。Overpass を叩かない)
-- `assets/geo.js`
-- git stash / reset --hard / checkout でのファイル復元
+## 実装方針(実物の行番号つき)
 
-## 終わったら
-実装が終わったら**まず先にコミット**し、`docs/ROADMAP.md` の R18 を `[x] 日付` に、`docs/NIGHTLOG.md` に3行(やったこと/見た目の確認結果/次)を追記して push。報告は簡潔に(長文の報告書を書かない)。
+既存の `lsGet(key)` / `lsSet(key, value)`(app.js **215行 / 224行**)が既に try/catch で例外を握りつぶす実装なので、**そのまま使う**。新しい localStorage アクセスを生で書かないこと。
+
+### 1) 記録の土台(app.js の `lsSet` 直後、232行 `emojiFor` の手前に新設)
+
+```
+var PASSIVE_KEY = 'yado.passive.v1';
+var PASSIVE_MAX = 200;
+function passivePush(type, data) { ... }   // {t: Date.now(), type: ..., ...data} を配列末尾に push し、
+                                           // 200件を超えたら先頭から捨てる(slice(-200))。lsGet/lsSet 経由。
+```
+- `lsGet(PASSIVE_KEY)` が配列でない(null・壊れたJSON)ときは `[]` から始める。
+- 埋め込み(`state.embed`)でも記録してよい。`?demo=` 系の撮影中でも記録してよい(検査で使うため)。
+
+### 2) 「表示した宿と上位カードのID」— `renderFeed()`(app.js **681行**)
+
+`renderFeed()` の末尾、`renderFeedMap()`(**721行付近**)の直前に、`state.stage === 'done'` かつ「この宿でまだ記録していない」ときだけ 1回 `passivePush('view', {...})` する。多重記録防止用に `var passiveViewedKey = null;` をモジュール変数に持ち、`state.hotel.id + '@' + state.cards.length` 等で判定する(段階描画で renderFeed が複数回走るため、done の1回だけに絞ること)。
+
+記録内容: `{type:'view', hotel:{id,name,lat,lon}, topIds:[上位10件の card.id], n:state.cards.length}`
+`card.id` は engine.js の `toCard`(engine.js 744行)が必ず入れているので存在する。
+
+### 3) リンクのタップ — 既存のクリック委譲(app.js **1110行** `els.feedList.addEventListener('click', ...)`)
+
+現状 1行目が `if (e.target.closest('a')) return;` でリンクを素通ししている。**この return の前に記録を挟む**(return 自体は残す。地図を動かさない挙動は不変)。
+
+```
+var a = e.target.closest('a');
+if (a) {
+  var art = a.closest('.feedcard');
+  if (art) { 上の card を取り出して passivePush('link', {hotelId, cardId, cardName, index, label: a.textContent.trim(), url: a.href}); }
+  return;
+}
+```
+- `target="_blank"` なので新しいタブが開くが、記録はクリック時点で同期的に済むので問題ない。
+- `.far__item a`(`els.feedFar` 側)は今回は対象外でよい(feedList の委譲に乗らないため)。対象外にした旨を passive-log.md に明記する。
+- カード本体のタップ(リンク以外)も `passivePush('tap', {...})` で記録する(既存の panTo 処理の直前)。
+
+### 4) スクロール到達位置 — IntersectionObserver
+
+`renderFeed()` が `els.feedList.innerHTML = html` で毎回 DOM を作り直すので、**描画のたびに observer を作り直す**。モジュール変数 `var cardObserver = null; var maxSeenIndex = -1;` を持ち、
+
+- `renderFeed()` の末尾で `observeCards()` を呼ぶ。`observeCards()` は既存 observer を `disconnect()` してから新規生成し、`els.feedList.querySelectorAll('.feedcard[data-index]')` を全部 observe する。
+- コールバックで `entry.isIntersecting` のものだけ `Number(entry.target.dataset.index)` を見て `maxSeenIndex` を更新する。**更新があったときだけ** `passivePush('seen', {hotelId, maxIndex: maxSeenIndex})` ではなく、**スクロール中の連打を避けるため**「最大値が更新されたら 1秒 debounce して1件だけ記録」にする(既存の `debounce()` が app.js **202行**にあるので流用)。
+- `typeof IntersectionObserver === 'undefined'` なら何もしない(古い端末で落とさない)。
+- 宿を切り替えたとき(`selectHotel`、app.js **518行**)に `maxSeenIndex = -1` と `passiveViewedKey = null` をリセットする。
+
+### 5) 撮影用フラグ `?demo=passive`
+
+- `applyEntryPoint()` の URL パース部(app.js **936〜940行** の `demo` 判定のかたまり)に `if (demo === 'passive') demoPassive = true;` を追加する。`demoStateA` には**含めない**(状態Bのフィードを見せたいので)。
+- `demoPassive` が true のとき、`renderFeed()` の最後で `els.feedList` の後ろ(または body 末尾)に `<pre class="passivebox">` を1つ作り、`lsGet(PASSIVE_KEY)` の中身を「末尾10件を `type / 要約` の1行ずつ + 総件数」で表示する。`perfBox`(app.js 138行付近の `?perf=1` 用固定行)と同じ「フラグが無ければ何も作らない」方式を踏襲する。
+- passivePush のたびにこのボックスを更新する(記録が増えるのを目視できる)。
+- style.css 末尾に `.passivebox` の節(小さい等幅・薄い背景・`max-height` + `overflow:auto`・`font-size:11px`)を追記する。
+
+## 完了条件(機械検査 `scripts/check-passive.mjs`)
+
+`scripts/check-a11y.mjs` の作りをそのまま踏襲する(Playwright は `file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs` を絶対パスで import、ポート3000が空いていれば `python -m http.server 3000` を自分で起動して最後に落とす)。以下が全て真で `exitCode 0`:
+
+1. `?fixture=kusatsu` を 375px 幅で開き、カードが30枚描画されるのを待つ。
+2. localStorage に `yado.passive.v1` があり、`type:'view'` のレコードが**ちょうど1件**、`topIds` が10件、`hotel.name` が入っている。
+3. 3枚目のカードまでスクロール(`.feedcard[data-index="2"]` を `scrollIntoView`)し、1.5秒待つ。`type:'seen'` のレコードがあり `maxIndex >= 2`。
+4. 2枚目のカード(`data-index="1"`)の Instagram リンクをクリックする。`target="_blank"` なので `context.waitForEvent('page')` で新しいページを受け取って**即 close する**。`type:'link'` のレコードがあり `cardId` が2枚目のカードのIDと一致、`label` が `Instagram`。
+5. 上限テスト: `page.evaluate` で 250件のダミーを書いてからリロードし、1件 push させたあと配列長が **200以下**であること。
+6. localStorage を封じた状態(`page.addInitScript` で `localStorage.setItem` を throw させる)で `?fixture=kusatsu` を開き、**カード30枚が普通に出てコンソールエラー0件**であること(例外の握りつぶし確認)。
+
+あわせて既存が壊れていないこと: `node scripts/check-engine.mjs`(103件)・`node scripts/check-a11y.mjs`・`node scripts/check-r5.mjs`・`node --check assets/app.js`・`node docs/check.mjs`。
+
+## 検証手順(目視)
+
+1. `node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=kusatsu&demo=passive" --mobile` を撮り、**画像を Read で開いて**最下部のログボックスに `view` レコードが見えること、カード・小地図・番号ピンに崩れが無いことを確認する。
+2. `?fixture=kusatsu`(フラグ無し)の mobile を撮り、ログボックスが**一切出ていない**・カード30枚のままであることを確認する(デグレ確認)。
+3. `?fixture=hakone` の mobile でもデグレなしを確認する。
+
+## docs/passive-log.md に書くこと
+
+- 目的: 「将来 rank の学習材料にする」。いまは送信も分析もしない、端末内にだけ残る。
+- キー `yado.passive.v1` / 上限200件のローテーション / 各 type(`view` / `tap` / `link` / `seen`)のフィールド表。
+- 収集しないもの: 個人情報・位置情報の実測値・検索クエリ文字列は入れない(宿の座標は URL に元から出ている公開情報なので可)。
+- 対象外: 「もっと遠く」内のリンク(feedList の委譲に乗らないため)。
+- 見る方法: `?demo=passive`、または DevTools で `JSON.parse(localStorage['yado.passive.v1'])`。

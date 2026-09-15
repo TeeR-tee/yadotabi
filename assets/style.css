@@ -501,3 +501,23 @@ body.is-embed .view--feed { padding-bottom: var(--sp-4); }
     scroll-behavior: auto !important;
   }
 }
+
+/* --------------------------------------------------------------------------
+   受動ログの目視ボックス(?demo=passive のときだけ生成される。通常表示には出ない)
+   -------------------------------------------------------------------------- */
+
+.passivebox {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9999;
+  margin: 0;
+  padding: 4px 6px;
+  max-height: 40vh;
+  overflow: auto;
+  background: rgba(0, 0, 0, .82);
+  color: #fff;
+  font: 11px/1.5 monospace;
+  white-space: pre-wrap;
+}
