@@ -2,13 +2,23 @@
 
 ## 朝のまとめ(2026-09-16 06:10 司令塔が記入)
 
-**朝まで103サイクル・145コミット(23:25時点、ループ継続中)。すべて本番 https://teer-tee.github.io/yadotabi/ に反映済み。コスト0円。**
+**朝までR126サイクル・146コミット(2026-09-16 23:40時点、ループ継続中)。すべて本番 https://teer-tee.github.io/yadotabi/ に反映済み。コスト0円。**
 
 ### 触ってみるURL(スマホでOK)
 - 通常: https://teer-tee.github.io/yadotabi/ (地図の宿ピンをタップ、または検索欄に「箱根 ホテル」)
 - 固定データ(APIを叩かない確認用): https://teer-tee.github.io/yadotabi/?fixture=kusatsu / ?fixture=hakone
 - 埋め込みモード: https://teer-tee.github.io/yadotabi/?fixture=kusatsu&embed=1
 - 営業用デモ(予約サイト風の宿ページに埋めた1枚): https://teer-tee.github.io/yadotabi/demo/hotel-page.html
+
+### 直近10サイクルで何が良くなったか(提案の中身)
+
+- 潰れたスキー場・遊園地・閉園した動物園・廃止された鉱山など、もう行けない場所が「見どころ」カードから消えた(R115/R119/R120)。地名や記事タイトルだけでなく、Wikipedia記事の書き出し文が「かつて」「〜であった」と過去形で書いているかまで見て判定するよう改善。
+- 今も入所者が生活している国立療養所を「宿の周りの見どころ」として行き方つきで出していたのをやめた(R121)。学びの場である重監房資料館(ハンセン病の歴史を伝える資料館)は誤って一緒に消えないよう確認済みで、そのまま残っている。
+- 提案カードに他社の宿(ホテル・旅館・民宿など)が紛れ込んでいたのを止めた(R117)。うちのサイトが競合の宿を「見どころ」として無料で紹介してしまっていた状態を解消。
+- 「Wikipediaに記事がありません」と表示されていたのに、実は記事がある場所が4エリア合計26件あった。この誤表示をなくし、記事があるものは正しくリンクを出すようにした(R123)。
+- 「記事はあります」と表示されているのに押せるリンクが1本も無い、行き止まりのカードが13件あった。これを0件にした(R124)。
+- 小地図の右下に必ず出す著作権表示(地図データの出典・法律上の必須表示)と番号ピンが重なって読めなくなる問題を、場当たり的な調整でなく、重ならないことを保証する仕組みに作り直した(R118)。
+- 確かめる例: https://teer-tee.github.io/yadotabi/?fixture=dogo (道後温泉。松山城のリンクや「重監房資料館」を含む療養所まわりの表示が変わっている)
 
 ### 夜にやったこと(上から順)
 1. R1 固定データモード(撮影・検証を外部APIなしで回せる土台)
@@ -37,13 +47,43 @@
 24. R69 キーボード操作の検査と写真のボタン化、R73+R71 READMEの用語辞典と写真あり割合、R70 おまかせ(ランダム)固定データ、R40 別府の固定データ、R79 公共施設(体育館・病院管理棟等)の除外語を再拡充(4エリアで13件除外・誤爆0)
 25. R80 Wikipedia単独候補の救済判定(誤爆3件を発見して厳格化)、R74 サンプル導線を横スクロール化、R76+R19 「もっと遠く」が3エリアで0件になる原因(収集半径15km vs 閾値30km)を実測し是正3案を朝の相談に起票
 26. R14 固定データの軽量化(箱根900KB→588KB、提案結果は不変)、R75+R78+R72 文書整備(サイズ表・履歴方針・検査の解説)、R83 Wikipedia記事が無いカードに正直な代替文
+27. R84 `?debug=1`でスコア内訳を表示、R94 宿0件時の文言統一、R98 埋め込みiframeのセキュリティ属性(sandbox)追加、R96 写真拡大表示のキーボード操作(Tabで外に抜けない)を修正
+28. R91 README のデモ用パラメータ表を実装と一致させ12個に修正、R88 埋め込みの高さ上限を実測ベースに変更、R42 カード要約の文字数カットを句点区切りに改善
+29. R43 宿ピンに宿名の吹き出し(ツールチップ)追加、R45 固定データバッジに生成日を表示、R49+R50 判断待ちの設計課題と固定データ運用手順を文書化
+30. R82 「地図に戻る」ボタンの読み上げラベル検査を追加、R77 「上位30件表示中」の注記は情報の二重化と判断し不採用、R87 読み込み中のスケルトン表示を撮影確認
+31. R89 検査スクリプトの待ち時間を条件待ちに変更して高速化、R101 地図タイル読み込み失敗時に1行で案内、R97 印刷用のレイアウトを新設
+32. R104 READMEの英語説明を拡充、R105 検索で見つからない語句を入力したとき無言で草津のまま止まっていたのを案内表示に変更、R106 検査項目一覧の文書を実体と一致させ
+33. R107 最初のカード表示速度の検査を追加、R108 検索欄の入力値表示を20字で区切り、R110 タップ・スクロール記録(送信なし)に90日で自動削除する期限を追加
+34. R109 埋め込みタグのセキュリティ属性の一貫性検査を追加、R112 埋め込み時の背景色指定に見やすさ(輝度)判定を追加、R113 地図を同じ場所へ何度も飛ばす無駄な再読み込みを防止
+35. R111 外部リンクの安全属性(target/rel)を機械検査、R114 日本語表記と英語表記で同じ城が2枚出る重複を解消(例: 「小田原城」と「Odawara Castle」の統合)
+36. R115/R119/R120 廃止・消滅した施設(スキー場・ロープウェイ・動物園・鉱山など)をカードから除外、R121 現存する療養所を観光提案から除外(重監房資料館は無傷)、R117 他社の宿が候補に混ざる問題を解消
+37. R123 「Wikipediaに記事がありません」の誤表示26件を是正、R124 「記事はあります」なのにリンクが無い行き止まり13件を解消、R118 小地図の著作権表示とピンの重なりを構造的に解消
 
 ### 朝の相談(判断が要るもの、下の節に詳細)
 - 検索候補を開いたときエリアチップをどうするか(隠す/薄くする/そのまま)
-- **カテゴリ多様性の減点が青天井で、有名どころ(大涌谷・彫刻の森)ほど不利になる逆転が起きている**。rankの設計思想なので夜は触らなかった。上限を設ける/Wikipedia紐づけは免除/このまま
+  - 選択肢: (A)検索候補を開いたらエリアチップを隠す / (B)薄く(半透明に)する / (C)今のまま何もしない
+  - 推奨: (C)今のまま。実害の報告が無いため、様子見でよい
+- **カテゴリ多様性の減点が青天井で、有名どころ(大涌谷・彫刻の森)ほど不利になる逆転が起きている**。rankの設計思想なので夜は触らなかった。
+  - 選択肢: (A)減点に上限を設ける / (B)Wikipediaに記事がある候補は減点を免除する / (C)このまま
+  - 推奨: (A)上限を設ける案が影響範囲を見積もりやすい。ただしrankの重み変更はみのるんの承認必須
 - 実APIと固定データでWikipedia件数が食い違う(50件 vs 34件)。深追いするか
+  - 選択肢: (A)原因調査に1サイクル使う / (B)実害(表示崩れ・提案漏れ)が出るまで様子見
+  - 推奨: (B)様子見。現状は表示上の不具合として顕在化していない
 - 小地図のピンを見やすさ優先で最大96pxずらしている方針でよいか
-- **R19 far(車60分超)の是正案、どれを採るか(2026-09-16 R76実測で判断材料は出揃った)**。案A: `FAR_DRIVE_MIN`を収集半径の80%相当に下げる(far は出るがcardsが痩せる)。案B: fixtureの`osmRadiusM`を4エリアとも30000に揃える(hakoneと同条件になるがhakone.json 900KBの肥大がR14と衝突)。案C: farの定義を距離の絶対値でなく候補距離分布の上位X%にする(土地によらず出るがrank側への実装が必要)。詳細は09研究ノート「R76+R19 far の4エリア実測」節。
+  - 選択肢: (A)このまま(見やすさ優先) / (B)ずらし幅の上限を縮める(実際の位置に近づける代わりに重なりリスクが増える)
+  - 推奨: (A)このまま。R118で重なり自体は構造的に解消済みのため、現状の方針を変える理由がない
+- **R19 far(車60分超)の是正案、どれを採るか(2026-09-16 R76実測で判断材料は出揃った)**。
+  - 選択肢: 案A: `FAR_DRIVE_MIN`を収集半径の80%相当に下げる(far は出るがcardsが痩せる)。案B: fixtureの`osmRadiusM`を4エリアとも30000に揃える(hakoneと同条件になるがhakone.json 900KBの肥大がR14と衝突)。案C: farの定義を距離の絶対値でなく候補距離分布の上位X%にする(土地によらず出るがrank側への実装が必要)。
+  - 推奨: 案C(土地の広さに左右されない)が筋は良いが実装コストが最も高い。まず案Aで様子を見て不足なら案Cへ、が現実的。詳細は09研究ノート「R76+R19 far の4エリア実測」節。
+- **R125** 記事の要約が無いカードのうち32件は、地図データ(OSM)の`wikipedia`タグで記事名がすでに判明しているのに取りに行っていない。
+  - 選択肢: (A)`geo.js`に記事名から直接取得する経路(2段目の問い合わせ)を追加し、固定データ(fixtures)を作り直す / (B)今回はやらない
+  - 推奨はどちらか一方を選ぶ形。**(A)を選ぶ場合、`geo.js`の変更・fixturesの再生成・外部API(Wikipedia)の呼び出し回数増加の3点でみのるんの承認が必要**。コストは0円のまま(無料APIの範囲内)。詳細: docs/ROADMAP.md の R125
+- **R122** 場所ではない候補・観光向けでない施設が上位に残っている2件(hakone 11位「石橋山の戦い」=出来事であり場所ではない、kusatsu 8位「本白根第3グランド」=地元の球技場)。
+  - 選択肢: (A)個別の語で除外を追加する / (B)一般化した判定を設計してから対応する / (C)このまま見送る
+  - 推奨: (C)現状維持。1語につき1件しか救えず誤爆リスクが高いため見送り中。詳細: docs/ROADMAP.md の R122
+- **R116** dogo 17位に固有名の無い一般名詞だけの「商店街」が出ている(何の商店街か画面では分からない)。
+  - 選択肢: (A)「固有名を持たない一般名詞のみの名前」を除外する判定を追加する / (B)このまま見送る
+  - 推奨: (B)現状維持。「湯畑」「筆塚」等の正当な短い固有名を巻き込む誤爆リスクがあり、4エリア全件の目視確認が先に必要。詳細: docs/ROADMAP.md の R116
 
 ### 正直に書いておくこと
 - 自動ループの監視役は独立AIではなく司令塔セッション内の監視機構(cron登録が安全判定で止められたため)。セッションを閉じると止まる
@@ -486,106 +526,145 @@
 - 次: ROADMAP残りはR64/R77/R81/R82/R84/R85。
 
 <!-- 以下は誤ってファイル先頭に積まれていたサイクル記録(R42〜R100)。司令塔が 2026-09-16 17:10 に末尾へ移動 -->
+### 2026-09-16 R94 0件文言A/Bを統一
 - R94 状態Aの0件文言A/Bを統一。`app.js:401`直前に定数`NO_HOTEL_TEXT`(「この範囲には宿のデータがありません。エリアチップか検索から選べます。」)を新設し、`app.js:407`と`:444`の重複リテラルを`setMapNote(NO_HOTEL_TEXT)`に置換。`?demo=nohotels`と`?demo=autozoom`の撮影2枚を見てA/Bを同一文言のままとした(自動ズームアウト後も違和感なし)。`scripts/check-nohotels.mjs`(コメント+1箇所)・`scripts/check-autozoom.mjs`(2箇所)の期待文字列も同時更新、混雑文言(C)は無変更。
 - `node --check assets/app.js`通過、mobileで`?demo=nohotels`・`?demo=autozoom`・desktopで`?demo=nohotels`を目視し新文言「この範囲には宿のデータがありません。エリアチップか検索から選べます。」が3行に収まり地図・チップ行と重ならないことを確認、`?fixture=kusatsu`mobileもカード30枚・番号ピン判読可・コンソールエラー0件でデグレなし。`node scripts/check-nohotels.mjs`5件PASS・`node scripts/check-autozoom.mjs`16件PASS・`node scripts/check-all.mjs`27本中27本PASS(exit 0)。
 - 次: R89(check-all.mjs高速化)またはR101(タイルエラー通知)から計画役が選定。
+### 2026-09-16 R98 埋め込みiframeにsandbox追加
 - R98 埋め込みiframeに`sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"`+`referrerpolicy="no-referrer"`を追加。ROADMAP本文の「sandboxは足さない方向」は計画役のPlaywright実測で誤りと判明したため訂正、実iframe・`<pre>`タグ例(`demo/hotel-page.html`)・README埋め込み例の3箇所を同じ属性で揃えた(grep確認済み)。`demo/embed-check.html`はローカル確認用(同一オリジン想定)のため意図的に未変更。
 - 属性追加後に自分でPlaywright実測: カード30枚・iframe高さが16312pxまで自動伸長・外部リンク(`.feedcard__link`)クリックで新規タブがGoogleマップ経路URLへOPENED、コンソールエラー0件。`node scripts/check-embedheight.mjs`8件PASS、`node scripts/check-all.mjs`27本中27本PASS(exit 0)。mobile/desktopの撮影も目視、文字崩れ・二重スクロールなし。
 - 次: R89(check-all.mjs高速化)またはR92〜R94から計画役が選定。
+### 2026-09-16 R96 ライトボックスにフォーカストラップ
 - R96 ライトボックスにフォーカストラップを追加。実装前にPlaywrightで現状を再現したところ、開いた直後は`.lightbox__close`だが**Tab 1回目でbody・2回目で背後の`.topbar__back`・3回目以降は地図とピン**へ抜けていた(実測)。`assets/app.js:920`の`lightboxKeyHandler`に`e.key === 'Tab'`分岐を足し、フォーカス可能要素が閉じるボタン1つだけのため`e.preventDefault()`して閉じるボタンに留める形(+11行、将来要素が増えたとき用の理由コメント付き)。`tabindex`・`Escape`・暗幕クリック・`closeLightbox()`の復帰フォーカス(既に実装済みと再確認)は無変更。
 - `scripts/check-lightbox.mjs`に5ケース追加(開いた直後のフォーカス位置/Tab×5で留まる/Shift+Tab×3で留まる/Escape後に`.feedcard__imgbtn`へ戻る/embed=1でもTab×5で留まる)し26項目全PASS。Tab連打後のoverlayを撮影して目視、閉じるボタンに白いフォーカスリングが残り背後は暗幕のまま。`?fixture=kusatsu`のmobile/PC幅もデグレなし(カード30枚・番号ピン判読可・文字崩れなし・コンソールエラー0件)、`node scripts/check-all.mjs`は27本全PASS(exit 0)。
 - 次: R89(check-all.mjs高速化)またはR92〜R94から計画役が選定。
+### 2026-09-16 R95 fixture再取得手順を文書化
 - R95 `docs/FIXTURES.md` の「既存 fixture は原則再生成しない方針」節の直前に「鮮度の目安と再取得の手順(R95)」節を新設。(a)半年を目安(統計的根拠は無く運用上の目安と明記)・`buildOverpassQuery()`変更時は期間問わず例外・次の見直しは2027-03頃、(b)Overpassマナー節への相互リンク、(c)dump-rank前後比較→撮影→check-all→NIGHTLOG記録の順序リスト、(d)keep-listはmake-fixture.mjs:14のimportで自動適用済みで手動実行不要、を記載。「保存されるmeta」節からも新節へリンクを追加。
 - `git diff --stat -- assets fixtures scripts index.html demo`が空(文書のみ)を確認、`?fixture=kusatsu`をmobileで目視しカード30枚・番号ピン判読可・文字崩れなし・コンソールエラー0件、`node scripts/check-all.mjs`は27本全てPASS(fail語0件)。
 - 次: R89(check-all.mjs高速化)またはR92〜R94から計画役が選定。
+### 2026-09-16 R91 READMEのdemo値一覧を修正
 - R91 README の `?demo=` 値一覧を実装に合わせて修正。app.jsをgrepで再実測し12値(far/zoomout/initpos/suggest/recent/recentmix/passive/imgfail/portrait/nohotels/autozoom/hoteltip)を確認、README.mdの「10個すべて」を「12個すべて」に直し表を3列(値/何が再現されるか/使っている検査)・12行に拡張。portraitの縦長ダミー画像サイズ(400×800)もapp.js:801で実測確認。
 - デグレ確認撮影(`?fixture=kusatsu` mobile)でカード30枚・番号ピン判読可・文字崩れなし・コンソールエラー0件を目視。`node docs/check.mjs`(README画像リンク含む)と`node scripts/check-all.mjs`は27本中27本PASS、`git diff --stat -- assets fixtures scripts index.html demo`は空でREADME.md以外への波及なしを確認。
 - 次: R89(check-all.mjs高速化・hotelparam分割)または朝の相談待ちのR2-1以外の未着手項目(R92・R93・R94・R95)から計画役が選定。
+### 2026-09-16 R88 埋め込み高さ上限を実測値に
 - R88 埋め込み高さ通知の受信側上限を暫定100000pxから実測ベースの60000pxへ変更。計画役が4エリア×2幅×2状態(30枚/60枚展開後)を実測し、最大値は kusatsu desktop 60枚展開後の34075px(ROADMAP旧文言「例20000px」は事実誤認・R48当時と同じ罠だった)。実測最大の約1.8倍を採用し `demo/hotel-page.html` の表示用コピーと実スクリプトの2箇所を60000で揃え、根拠コメントを追加。`assets/app.js`(送信側)は無変更(`git diff --stat -- assets` 空)。
 - `?fixture=kusatsu&embed=1` のデモページを mobile/desktop で目視、iframe内に二重スクロールなくカードが最後まで表示。`node scripts/check-embedheight.mjs` 8件PASS(「もっと見る」展開後も高さがさらに増える検査が上限60000pxで引き続きPASS)、`node scripts/check-all.mjs` 27本中27本PASS。ついでにR90(`loading="lazy"`)が`demo/hotel-page.html:213`に既に実装済みであることを実測確認しROADMAPを[x]に。
 - 次: R89(check-all.mjs高速化・hotelparam分割)または朝の相談待ちのR2-1以外の未着手項目(R91〜R95)から計画役が選定。
+### 2026-09-16 R42 要約の句点打ち切り改善
 - R42 カード要約の `truncate()` を、上限(120字)手前で最後の「。」があればそこで完結させる方式に変更(句点が上限の60%より手前/無いときだけ従来どおり120字+「…」)。engine.js:289付近と定数SUMMARY_SENTENCE_MIN_RATIOを追加、check-engine.mjsに9ケース追加、既存の120字+…ケースは句点なしテキストのため変化なしと確認。
 - kusatsu/hakone/dogoをmobileで目視。1位カード(光泉寺「山号は草津山。」/早雲寺「山号は金湯山。」/伊佐爾波神社「旧社格は県社。」)がすべて句点で終わり文の途中切れ無し、地図ピン30個判読可、コンソールエラー0件。
 - 次: R2-1(朝の相談待ち)またはfixture再生成不要な軽量タスクを計画役が選定。
+### 2026-09-16 R43 宿ピンにツールチップ追加
 - R43 状態Aの宿ピンに宿名ツールチップを追加。app.js:459付近の`renderHotelPins()`で`marker.on('click',...)`直前に`marker.bindTooltip(h.name,{direction:'top',offset:[0,-14],className:'hoteltip'})`を追加し、二重表示を避けるため`L.marker`の`title`オプションを削除(`aria-label`は維持)。タップ即遷移するため開閉はLeaflet既定のhoverのまま(ROADMAP本文の「タップで開く」は不採用、理由をNEXT.mdに明記済み)。撮影用に`?demo=hoteltip`(app.js:1204付近、外部API0回・密集宿6件+長い宿名1件)とscripts/check-hoteltip.mjs(10項目)を新設、check-all.mjsに登録(16本目)。
 - `?demo=hoteltip`をmobile/desktopで目視。長い宿名「草津温泉 ホテル紅葉亭」も地図右端で切れず、密集ペアのツールチップも重ならずピン絵文字も隠れていない。check-all.mjsは16本中16本PASS、`?fixture=kusatsu`のカード30枚・番号ピン判読可・コンソールエラー0件でデグレなしを確認。
 - 次: R2-1(朝の相談待ち)または残候補(R14/R19/R40/R45/R46)から計画役が選定。
+### 2026-09-16 R45 固定データバッジに生成日付
 - R45 固定データバッジに生成日付を追加(app.jsにformatFixtureDate()を新設しローカルYYYY-MM-DDで表示、index.htmlに#feed-badge-date、style.cssに.topbar__badge__date)。R46 docs/check.mjsに実バイト数のKB列を追加(content-lengthはgzip圧縮後のためcheckTargetで読んだ本文実体のバイト数で上書き)、末尾に合計サイズ行を追加。
 - kusatsu/embed/hakoneをmobileで目視、「固定データ 2026-09-16 取得」が1行に収まり見出しと重ならない・カード30枚判読可・コンソールエラー0件。docs/check.mjsのKB上位3件: fixtures/hakone.json 900.1KB / fixtures/dogo.json 117.1KB / fixtures/kusatsu.json 65.3KB。check-all.mjs 16本全PASS。
 - 次: R2-1(朝の相談待ち)または残候補(R14/R19/R40)から計画役が選定。
+### 2026-09-16 R49+R50 文書2本追加(判断課題+FIXTURES)
 - R49+R50 文書2本を追加(コード変更なし)。README に「## 判断待ちの設計課題」節(4件・結論なし・NIGHTLOGへの参照付き)と `docs/FIXTURES.md`(新規)を追加。`docs/FIXTURES.md` はエリア表3行・実行コマンド・meta一覧・Overpassのマナー・再生成しない方針・buildOverpassQuery同期注意を記載、README の `fixtures/` 行から相対リンクを追加。
 - 画面変更が無いため撮影は省略。`ls docs/FIXTURES.md` で実在確認、`node docs/check.mjs` OK(README画像3本含む既存検査もPASS)、`node scripts/check-all.mjs` 17本中17本PASS・exit 0、`git diff --stat -- assets fixtures scripts index.html demo` は空を確認。
 - 次: ROADMAP残りはR14/R19/R23/R28/R31/R32/R33/R34/R40/R42/R43/R51。R49で公開した4件の判断待ちのうち検索候補とチップの重なり(R2-1)含め依然未決。
+### 2026-09-16 R84 ?debug=1でスコア内訳表示
 - R84 `?fixture=` 併用時のみ効く `?debug=1` を追加し、rank のスコア内訳をカード下端に淡色表示。engine.js は baseScore を `scoreBreakdown()`(image/summary/official/both/distance/season/base)に切り出し、加算順を1行も変えずに `rank()` の最後で `entry.item._debug`(rank・source・category・distanceM・total・categoryPenalty・categoryIndex)を後付け、`toCard()` に `_debug` を1行追加。app.js は `fixtureNameFromUrl()` が null なら絶対にフラグを立てず、fixture 読み込み失敗の catch でも `debugRank=false` に戻す。WEIGHT・CATEGORY_FREE_SLOTS は無変更。
 - `?fixture=kusatsu&debug=1` mobile を目視: 1位カードに「#1 · both · place_of_worship · 108m · 合計 71.4 写真+25 要約+15 公式+12 両ソース+20 距離-0.6」が375pxで2行に収まり、リンクチップともカード枠とも重ならず本文より確実に淡い。`?fixture=kusatsu`(debug無し)mobile は内訳行が1つも出ずカード30枚のままでデグレなし。埋め込み(`?embed=1`)でも出す判断にした(埋め込みは `?fixture=` 併用時しか有効にならず、一般公開URLに内訳が漏れる経路が無いため。分岐を足すと debugRank の条件が二重になり漏れの検証が難しくなる)。
 - 検証: `node scripts/dump-rank.mjs` の kusatsu/hakone/dogo/beppu 4エリアが実装前後で差分ゼロ(計算結果は不変)。check-engine.mjs に (r84) 10ケース追加(_debug を落とせば元の JSON に戻る・2回呼んでも順序同一・total === base + categoryPenalty)で226 pass/0 fail、新規 scripts/check-debugflag.mjs(11項目、`?debug=1` 単独で `.dbg` 0件を含む・外部API 0回)を check-all.mjs に登録し27本中27本PASS。次: R64(GitHub Actions 無料枠・朝の相談寄り)/R77(表示可否の判断)/R81(Overpass を叩く fixture 追加)/R82(aria-label 1行)/R85(英語デモページ)から計画役が選定。
+### 2026-09-16 R82 戻るボタンaria-label検査追加
 - R82 実測したら `index.html:56` に `aria-label="地図に戻る"` は既に実装済み(ROADMAP本文は事実誤認)だったため、`scripts/check-a11y.mjs` に別立ての `LABEL_TARGETS` ループを追加し戻るボタンの aria-label 検査のみ新設。既存の44px計測ループは無編集。
+### 2026-09-16 R77 もっと見るB案は不採用
 - R77 `?fixture=kusatsu` mobile で `#feed-note` を撮り比べ。現状(出さない)と「上位30件を表示中（全60件）」を足したB案の2枚を目視した結果、「残り30件」は `moreHtml()` が既に表示しておりB案は情報の二重化かつ行数増で間延びするだけ、かつ正確な総数はengine.js改修なしには出せない(R77はengine不可)ため**不採用**。app.jsは変更なし(撮影用の一時差し込みは撮影後に必ず元へ戻し済み・`git diff --stat -- assets` 空を確認)。
 - 次: ROADMAP残りはR64(GitHub Actions無料枠・朝の相談寄り)/R81(Overpass1回・同僚検証前は4エリアで十分)/R85(国内予約サイト想定で優先度低)。すべて判断寄りのため計画役が朝の相談経由で選定。
+### 2026-09-16 R87 状態Bスケルトンを撮影確認
 - R87 状態Bのスケルトン(読み込み中の骨組み)を`?fixture=kusatsu&slow=osm3000,wiki9000`のmobile/desktopで撮影・目視。(a)骨組み高さ312.3px・実カード高さ370.7px(差約58px、カード間余白で自然に区切られガタつき軽微)(b)灰色グラデーションのスケルトンと白背景の実カードの境目は明確(c)`prefers-reduced-motion: reduce`で`getComputedStyle(el).animationName`が`none`になることを実測、既存のシマー停止実装が機能している。3点とも崩れなしのためstyle.cssは無変更で閉じた。ついでにR86(もっと見るのスクロール位置維持)も計画役の実測により実装不要と判明したため合わせてクローズ。
 - 撮影は`screenshots/`に4枚保存(mobile/desktopのスケルトン状態、mobile全体、デグレ確認用の通常状態)。`node scripts/check-all.mjs`は27本中27本PASS(1回目はcheck-nohotels.mjsが環境要因のERR_NO_BUFFER_SPACEで一過性FAIL、単体再実行と2回目の通しで全緑を確認済み)。
 - 次: ROADMAP残りはR64(GitHub Actions無料枠・朝の相談寄り)/R81(Overpass1回)/R85(英語デモページ)/R88(埋め込み高さ上限見直し)/R89(check-all高速化)/R90(iframe lazy)から計画役が選定。
+### 2026-09-16 R89 check-hotelparamを高速化
 - R89 `scripts/check-hotelparam.mjs` の固定待ち(`waitFor(1500)`×17回)を条件待ちに置換。`waitRendered()`共通ヘルパ(#feed-title描画完了、5000msタイムアウト)を新設し、バッジ可視/日付/状態A(#map の leaflet-container 付与待ち)もそれぞれ専用の条件待ちに変更。タイムアウトは例外を投げず既存の`ok()`判定にFAILとして畳み込む方式にした(全体停止を避けるため)。検査項目・ok()呼び出し数・page.goto回数(17件)は無変更。
 - 実測: 変更前中央値33553ms→変更後中央値8428ms(約75%短縮)、41 pass/0 fail(変更前後で一致)、連続5回すべてPASS(フレークなし)。`?fixture=kusatsu`mobileを目視し番号ピン判読可・カード30枚・コンソールエラー0件でデグレなし。`check-all.mjs`は27本中27本PASS/合計221.2s(前回約244sから短縮)。
 - 次: ROADMAP残りはR64/R81/R85/R88/R90から計画役が選定。
+### 2026-09-16 R101 地図タイル失敗を1行通知
 - R101 状態Aの地図タイル読み込み失敗を1行で伝える。`L.tileLayer(...)`を変数`tiles`で受け`tileerror`を購読、1枚失敗で即出すとネットワーク一過性ノイズになるため**3秒以内に4枚以上失敗**した時だけ`setMapNote(TILE_ERROR_TEXT)`(「地図の背景画像を読み込めませんでした。ピンと提案はそのまま使えます。」の2文形式)をセッション1回だけ出す方式を採用(NEXT.mdの実測では発火回数は未計測だったため、通常のタイル切替や一瞬の途切れでは反応しない安全側のしきい値として自分で決めた)。宿の取得が進むと既存の`setMapNote('')`等で上書きされて消えるが、タイルが復帰しなくても宿の案内の方が新しい情報なので構わない。状態Bの小地図(`app.js:1149`)は`.mapnote`相当の要素が無いため対象外。
 - `page.route()`でtile.openstreetmap.orgを遮断したPlaywrightスクリプトで撮影し、灰色地に白文字で文言が1行に収まり文字崩れ・重なりなしを目視。`scripts/check-nohotels.mjs`に4項目追記(遮断時に文言一致・可視・overpass等fetch0回、通常時は文言が出ないこと)し9 pass/0 fail、`check-all.mjs`は27本中27本PASS。`?fixture=kusatsu`mobileの通常撮影でもデグレなしを確認。
 - 次: ROADMAP残りはR64/R81/R85/R88/R90から計画役が選定。
+### 2026-09-16 R97 印刷用CSSを新設
 - R97 印刷用CSSが0行だった状態を確認後、`assets/style.css`末尾に`@media print`を1ブロック追記(地図非表示・topbar固定解除・戻るボタン非表示・lightbox/passivebox非表示・カード分断防止・チップ枠線を薄く)。地図は紙でタイルが読めない懸念のため**消す方針**にし、`.feedmap`ごと非表示にすることでOSM帰属表示も一緒に消えるが地図が無いので規約上問題なし。また`.feed`は元々`flex-direction:column`の1カラム構成だったため、依頼にあった「カード1カラム化」の追加改修は不要だった。
 - 印刷メディア(desktop1280/A4相当794/mobile375)で戻るボタン・地図・passiveboxが消えカードが白背景で幅内に収まることを撮影・目視。通常表示`?fixture=kusatsu`mobileは変更前と同一でデグレなし。`git diff assets/style.css`は`@media print`ブロック25行の追加のみ。`node scripts/check-all.mjs`は27本中27本PASS。
 - 次: ROADMAP残りはR64/R81/R85/R88/R90から計画役が選定。
+### 2026-09-16 R104 README英語段落を拡張
 - R104 README.md:3の英語段落(3文)を4文に拡張。fixtureがkusatsu/hakone/dogo/beppuの4エリア+randomであること、`?debug=1`はfixture併用時のみ有効なこと、`?embed=1`を`?hotel=`と併用するとiframe埋め込み(高さ自動)ができることを追記し、日本語表を案内する1文で締めた。用語は翻訳せずそのまま使用。
 - `git diff README.md`で日本語行の差分ゼロ・英語段落1行のみの変更を確認。画面変更なしのため撮影省略、`node docs/check.mjs`OK、`node scripts/check-all.mjs`は27本中27本PASS。
 - 次: ROADMAP残りはR64/R81/R85/R88/R90から計画役が選定。
+### 2026-09-16 R105 検索0件時に案内文表示
 - R105 `?q=`が0件のとき無言で草津のまま止まる非対称を解消。`app.js:1676`の早期returnを分岐に変え、0件時のみ`setMapNote()`で「『<入力値>』は見つかりませんでした。エリアチップか検索から選べます。」(`NO_HOTEL_TEXT`後半と同一文言・textContent経由のためescapeHtmlは付けず)を表示。検索欄側(`app.js:641`)の文言は表示先が違う(ドロップダウン)ため今回は統一対象外とし変更なし。
 - `scripts/check-hotelparam.mjs`にPlaywright `page.route()`でNominatimを`[]`応答に差し替えるケースを1件追加(l.q0件でmapnote表示、5項目)し46 pass/0 fail(既存17件のgotoは無削減)。`?q=そんちょうざいしないちめい`0件時の`.mapnote`表示をスクリーンショットで目視し文字崩れ・はみ出しなし、`?fixture=kusatsu`mobileの通常表示もデグレなし。`node scripts/check-all.mjs`は27本中27本PASS。
 - 次: ROADMAP残りはR64/R81/R85/R88/R90から計画役が選定。本番URLでの`?q=`実API確認1回はpush後に実施予定。
+### 2026-09-16 R106 CHECKS.mdを実体と一致させ
 - R106 `docs/CHECKS.md`を`scripts/check-all.mjs`の実体(26本+docs/check.mjs=27本)と一対一に合わせた。実測で名前を突き合わせた結果、幽霊行は0本・未掲載は`check-debugflag`と`check-nosummary`の2本のみで、これを表に追加し本数表記(25→27/24→26/21→23/4本→3本+docs/check.mjs)を全箇所訂正。ROADMAP本文の「27行」は数え方の誤認と判明(名前一致では差分0)。
 - `docs/CHECKS.md`の表27行=`check-all.mjs`実行結果27本と一致を確認、`?fixture=kusatsu`mobileのデグレ確認撮影も文字崩れなし。`git diff --stat -- scripts docs/check.mjs assets index.html`は空(コード無変更)、`node scripts/check-all.mjs`は27本中27本PASS。
 - 次: ROADMAP残りはR64/R81/R85/R88/R90から計画役が選定。
+### 2026-09-16 R107 初回カード描画msを検査
 - R107 `scripts/check-firstcard.mjs`を新設し`?fixture=kusatsu&perf=1`の`first-card-painted`ms(console/`#perf-box`の既存2経路、app.js無変更)を標準出力に記録、しきい値`FIRST_CARD_MAX_MS=200`(実測中央値24msの約8倍、CI揺らぎで赤くしない方針)で判定。`check-all.mjs`に28本目として登録し、`check-all.mjs`本数コメント・`docs/CHECKS.md`表と本数表記・`docs/FIXTURES.md`の「27本全緑」を28本に更新(grep確認済み、AUTOPILOT/README.mdに27本表記なし)。
 - 単体連続5回すべてPASS(実測ms: 24/24/108/26/24、中央値24ms、200ms上限に対し十分な余裕を確認)、`node scripts/check-all.mjs`は28本中28本PASS(合計237.5s)。`git diff --stat -- assets index.html fixtures demo`は空(アプリ本体無変更)、画面変更なしのため撮影は省略。
 - 次: ROADMAP残りはR64/R81/R85/R88/R90/R108(`?q=`長さ上限)/R109(iframe属性一貫性検査)/R110(受動ログの古いエントリ掃除)から計画役が選定。
+### 2026-09-16 R108 検索語の表示を20字に制限
 - R108 `noQueryHitText`に`QUERY_ECHO_MAX=20`を追加し入力値を先頭20字+「…」に切り詰め(文言後半・`NO_HOTEL_TEXT`は無変更)。`check-hotelparam.mjs`の`checkQueryNoHit`は期待文字列組み立てにも同じ切り詰めを適用し、100字`q`のケースを1件追加(51文字以内を機械検査)、既存17件のgotoは無削減。
 - `?q=`100字をmobile/desktopで撮影し黒帯が2行に収まり草津の地図が読めることを目視、`?fixture=kusatsu`mobileもデグレなし。`check-hotelparam.mjs`は53 pass/0 fail、`node scripts/check-all.mjs`は28本中28本PASS。`git diff --stat -- assets/style.css index.html fixtures demo`は空。
 - 次: ROADMAP残りはR64/R81/R85/R88/R90/R109(iframe属性一貫性検査)/R110(受動ログの古いエントリ掃除)から計画役が選定。
+### 2026-09-16 R110 受動ログに90日期限追加
 - R110 受動ログ`yado.passive.v1`に90日の期限掃除を追加。`app.js:294-295`に`PASSIVE_MAX_AGE_DAYS=90`と`PASSIVE_MAX_AGE_MS`を定数化し、`passivePush()`(`app.js:302`)の書き込み時に`t`が90日より古いレコードのみ落とす1行フィルタを追加(件数上限200件は従来どおり別枠で維持)。90日は旅行検討サイクル(数週間〜2ヶ月)+季節1つ分を残す目安として`docs/passive-log.md`の「rank検証の材料」目的と突き合わせて採用。実測での訂正: ROADMAP本文にあった「R61(`initialView()`)が何ヶ月も前の宿を初期位置に使う」は事実誤認で、R61が読むのは`yado.recent.v3`(受動ログとは別キーで`t`を持たない)であり今回の掃除の対象外。
 - `?fixture=kusatsu&demo=passive`で91日前/89日前/`t`なしの3種を仕込んだ機械検査(`scripts/check-passive.mjs`に追加、既存項目は無削減)で91日前のみ消え89日前と`t`なしは残ることを確認、`.passivebox`の総件数表示とも整合。`?fixture=kusatsu`mobileの通常表示もカード30枚・文字崩れなしでデグレ無しを目視。`node scripts/check-all.mjs`は28本中28本PASS、`git diff --stat`で対象外ファイル(style.css/index.html/fixtures/demo/geo.js)は無変更。
 - 次: ROADMAP残りはR64/R81/R85/R88/R90/R109(iframe属性一貫性検査)から計画役が選定。
+### 2026-09-16 R109 iframe属性の一貫性検査
 - R109 `docs/check.mjs`にiframeの`sandbox`/`referrerpolicy`一貫性検査を追加。実iframe(`demo/hotel-page.html`実タグ)・タグ例(同ファイル`<pre class="tag-example">`、HTMLエスケープをデコード)・`README.md`タグ例の3箇所をローカルファイルから直接読み(fs.readFileSync、追加のネットワークアクセス0回)、sandboxトークンをSetにして期待値4トークンと集合一致するか・referrerpolicyが`no-referrer`かを`report()`で3行出す。
 - README.md:42の`allow-popups`を一時的に消して`node docs/check.mjs`を実行しNG+exit 1を確認、直後にEditで元に戻し`git diff README.md`が空であることを確認済み。`node docs/check.mjs`は新3行含め全OK・exit 0、`node scripts/check-all.mjs`は28本中28本PASS(合計236.8s)。
 - 次: ROADMAP残りはR64/R81/R85/R88/R90から計画役が選定。
+### 2026-09-16 R112 ?bg=に輝度判定を追加
 - R112 `bgFromUrl()`(`app.js:1428`)の書式検査直後に相対輝度判定を追加。閾値`BG_MIN_LUMINANCE=0.5`は地色に直接乗る`.feednote`/`.morenote`(`--c-text-faint` #9494a3)が黒地でちらつく実測に基づき採用、`#fff7e6`(L≈0.93)は通し`#333333`(L≈0.033)は弾く境界として決定。閾値未満は`null`を返し既定地色にフォールバック(画面へのエラー表示なし)。根拠と挙動はREADME.mdの`?bg=`説明行と`demo/hotel-page.html`の該当箇所に1行ずつ追記。
 - `bg=000000`/`bg=fff7e6`をmobileで撮影し目視、暗色は既定のクリーム系地色にフォールバック・明色は従来どおり適用されることを確認(文字崩れ・はみ出しなし)。`scripts/check-embedbg.mjs`に暗色2ケース(`000000`/`333333`が既定色フォールバック)を追加し20 pass/0 fail、`node scripts/check-all.mjs`は28本中28本PASS。
 - 次: ROADMAP残りはR64/R81/R85/R88/R90/R113(同一エリアチップ連打でOverpass再取得)から計画役が選定。
+### 2026-09-16 R113 flyToに同一view防止ガード
 - R113 `flyTo()`(`app.js:516`)に第4引数`force`を追加し、直前と同じ中心座標・同じズームなら`setView`/`saveMapView`/`autoZoomArmed`/`loadHotelsInView`を一切呼ばず`return`するガードを実装。`?demo=autozoom`(`app.js:1620`)だけ`force=true`で従来どおり必ず実行、`?q=`ジャンプ・検索候補・エリアチップの3箇所は無変更(ガードを効かせたい経路のため)。
 - `scripts/check-autozoom.mjs`に7・8番として通常モード(page.routeでOverpass/Nominatimをfulfillしカウント)のケースを追加し、同一チップ3連打でリクエストが増えない・別チップで増える・aria-current維持を確認(20 pass/0 fail)。`check-chipcurrent.mjs`(10 pass/0 fail)も回帰なし、`?fixture=kusatsu`mobile撮影も文字崩れ・はみ出しなしを目視。`node scripts/check-all.mjs`は28本中28本PASS。
 - 次: ROADMAP残りはR64/R81/R85/R88/R90から計画役が選定。
+### 2026-09-16 R111 リンクのtarget/rel検査
 - R111 `scripts/check-links-target.mjs`を新設し`?fixture=kusatsu`(embed=1含む)・「もっと見る」展開後の`.feedcard__link`が`target="_blank"`かつ`rel`に`noopener`をトークンとして含むことを機械検査。実測本数は初期表示128本・展開後253本(いずれも0本ではなく全件条件を満たしPASS)、`app.js`側の属性欠落は無かったため`app.js`は無編集。`check-all.mjs`に29本目として登録、`docs/CHECKS.md`表と本数表記・`docs/FIXTURES.md`の「28本全緑」を29本に更新。
 - `?fixture=kusatsu`mobileを撮影し光泉寺カードのチップ5本(行き方/公式/Instagram/TikTok/YouTube)が1行に収まり崩れ・はみ出しなしを目視(画面変更なし)、`git diff --stat -- assets index.html fixtures demo`は空。`node scripts/check-all.mjs`は29本中29本PASS(合計252.9s)。
 - 次: ROADMAP残りはR64/R81/R85/R88/R90から計画役が選定。
+### 2026-09-16 R114 日英表記ゆれの重複を救済
 - R114 `engine.js` の `isSamePlace` **末尾**に日英表記ゆれの救済経路を1本追加(既存3経路は無改変)。ヘルパ `websiteHost()`(`new URL()`でhostname取得・先頭`www.`除去・不正URLはtry/catchでnull)と `looksAscii()`(`/^[\x20-\x7E]+$/`)を新設し、**「公式サイトのホスト一致 + カテゴリ一致 + 片方が純ASCII名/片方が日本語名 + 150m以内」の4条件AND**のときだけ同一地点とみなす。主タグ文字列は items が持っておらず `category` しか無いため主タグ一致は `category` 一致で代用した(`historic=castle` どうしは両方 `castle` に落ちるので主タグ一致と同義)。
 - 4エリアで `dump-rank` を変更前後で全件比較: **kusatsu/hakone/beppu は完全に無差分**、dogo のみ27位「Matsuyama Castle」が消えて28〜30位が1つずつ繰り上がり「日尾山展望台」が30位に繰り上がる期待どおりの差分(松山城は10位に1枚・source=both・公式サイト○を維持、`松山城跡`(historic=memorial)は別物としてmore 4位に残存)。`check-engine.mjs` に救済が効くケースと誤爆しないケース計8件(宮永岳彦記念美術館↔弘法の里湯、うみたまご館内施設3件、カテゴリ違い・ホスト違い・公式サイト欠落・300m超・不正URL)を追加し234 pass/0 fail。なお道後の並びが1つ繰り上がった結果、22番ピンがOSM帰属表示(右上・必須表示)に重なり `check-attrib` が dogo で落ちたため、`app.js` の `renderFeedMap` で帰属表示の矩形中心を `nudgeOverlaps` の `fixedPoints` に渡してピン側を避けさせる修正を併せて実施(rank の重み・閾値・geo.js・fixtures は無改変)。
 - 次: `?fixture=dogo` mobile/desktop と `?fixture=kusatsu` mobile を撮影し目視、松山城1枚・30枚・帰属表示の重なり解消・文字崩れなしを確認。`node scripts/check-all.mjs` は29本中29本PASS。ROADMAP残りはR115(草津の温泉カテゴリ誤判定)/R116(一般名詞のみの候補)ほかR64/R81/R85/R88/R90から計画役が選定。
+### 2026-09-16 R115 廃止施設を定義文で除外
 - R115 `engine.js` のカテゴリ推定に**記事本文の定義文で否認する経路**を追加(rank の重み・閾値・geo.js・fixtures は無改変)。`WIKI_CATEGORY_HINTS` の hot_spring 行にだけ `deny`(バスターミナル/スキー場/遊園地/球技場/ゴルフ場/競馬場/空港/駅である/山。/山である/岳。/岳である)を持たせ、新ヘルパ `definitionScope()`(extract 先頭120字を**最初の句点まで**で打ち切り title と連結)と `isDenied()` を新設。`guessWikiCategory()` の title 走査・extract 走査の**両方**で否認された hint を飛ばす。否認範囲を一文目に限ったのは、二文目の「万座温泉スキー場に隣接している」で正当な温泉宿(万座プリンスホテル)を落とさないため。
 - 9件を1件ずつ確認: **直った4件**=草津温泉バスターミナル(kusatsu 4位 温泉→スポット)・草津温泉スキー場(同22位 温泉→スポット)・冠山 (松山市)(dogo 7位 温泉→スポット)・鶴見園(beppu 10位 温泉→スポット)。**温泉のまま残った5件**=花敷温泉(kusatsu more 3位→cards 23位)・天成園(hakone 9位)・一の湯(hakone 10位)・杉乃井ホテル(beppu 18位)・大江戸温泉物語 別府清風(beppu 30位→19位)。**hakone は完全に無差分**。並び順は kusatsu と beppu で変化あり(カテゴリ多様性減点 `CATEGORY_PENALTY` が温泉枠を空けたため): kusatsu は花敷温泉・白旗源泉が more から cards 23/24位に上がり、横手山・草津聖バルナバ教会・煮川源泉・西の河原源泉が cards から more へ、万座温泉スキー場も温泉→スポットになり more 3位へ。beppu は大江戸温泉物語 別府清風が30位→19位に上がり以降が1つずつ繰り下がった。dogo は7位のラベルのみ変化で並びは不変。`check-engine.mjs` に (r115) 節を新設し実fixture冒頭文ベースで11ケース追加(直す4件・残す5件・deny が hot_spring 行だけであることの対照2件)、245 pass/0 fail。
 - `?fixture=kusatsu` mobile で4位カードが♨温泉→📍スポットに変わり文字崩れ・はみ出し無しを目視、`?fixture=hakone` mobile で9位天成園・10位一の湯が♨温泉のままデグレ無しを目視。`node scripts/check-all.mjs` は29本中29本PASS。
 - 次: ROADMAP残りは R116(一般名詞のみの候補・誤爆リスク高)ほか R64/R81/R85/R88/R90 から計画役が選定。
+### 2026-09-16 R117 他社の宿を候補から除外
 - R117 `engine.js` に**他社の宿を候補ごと落とす**経路を追加(rank の重み・閾値・geo.js・fixtures は無改変)。新配列 `DEFINITION_LODGING_NG`(ホテル/旅館/温泉宿/ペンション/民宿/ゲストハウス/宿泊施設)を `EXTRACT_KEYWORD_NG` の直後に置き、`isExcludedArticle()` の `EXTRACT_KEYWORD_NG` ループ直後で判定。走査範囲は `EXTRACT_KEYWORD_NG`(extract全体)ではなく R115 の `definitionScope()`(冒頭の一文)に限り、さらに新ヘルパ `definitionPredicate()` で主題部(「〇〇ホテル前（まえ）は、」= 記事名の言い直し)を落として**述部だけ**を見る。二文目の「万座温泉スキー場に隣接している」で観光対象を巻き込まないため、かつ名前だけで落とさないため。
 - 12件を1件ずつ確認: **落とした7件**=天成園(hakone 9位)・一の湯(同10位)・ヒルトン小田原リゾート&スパ(同25位)・杉乃井ホテル(beppu 18位)・大江戸温泉物語 別府清風(同19位)・万座プリンスホテル・渋峠ホテル(kusatsu は元々60件外)。**残した側は全件無傷**=日帰り入浴施設(天成園 屋上浴場/天成園足湯/箱根湯寮/かっぱ天国/大滝乃湯/御座之湯/椿の湯/媛彦温泉/やまなみの湯/弥坂湯/姫之湯/不老泉)・本物の温泉記事(竹瓦温泉/浜脇温泉/花敷温泉/尻焼温泉 川風呂)・R115 の4件(草津温泉バスターミナル/草津温泉スキー場/冠山 (松山市)/鶴見園)・峠そのものの記事「渋峠」(kusatsu 29位)。4エリア200記事に対し変更前後で除外判定を全件突き合わせ、**変わったのは上記7件だけ**(誤爆0件)。`dump-rank` 差分は **kusatsu/dogo が完全無差分**、hakone が3件減・beppu が2件減で以降繰り上がり(繰り上がった候補も全件目視、宿・非観光対象なし)。`check-engine.mjs` に (r117) 節を新設し17ケース追加(落とす7件+残す対照6件+日帰り入浴施設4件、既存ケースは1件も削らず R115 の宿4件は期待値を「候補から消える」へ移設)、262 pass/0 fail。
 - なお hakone の並びが繰り上がった結果、23番ピンがOSM帰属表示(右上・必須表示)に重なり `check-attrib` が落ちたため(R114 と同種の再発)、`app.js` の帰属表示の `fixedPoints` を**中心1点から箱の幅に沿った等間隔の複数点**に変更して横長の箱全体で押しのけるよう修正。`?fixture=hakone` mobile で宿が消え帰属表示の重なりも解消・30枚のまま文字崩れ無しを目視、`?fixture=kusatsu` mobile でデグレ無しを目視。`node scripts/check-all.mjs` は29本中29本PASS(exit 0)・外部API 0回。次: ROADMAP残りは R116 ほか R64/R81/R85/R88/R90 から計画役が選定。
+### 2026-09-16 R118 地図の帰属表示を矩形退避
 - R118 OSM帰属表示の退避を**点の集まりから矩形**へ作り直した(帰属表示の表示状態・文言・CSSは無改変。ライセンス上の必須表示なので消さない)。`app.js` の `nudgeOverlaps` に第3引数 `obstacles`(矩形配列)を追加し、`renderFeedMap` は `getBoundingClientRect()` で実測した帰属表示の矩形そのものを1個だけ渡す(1行/2行のどちらでも自動追従)。ピンも中心±実寸/2の矩形(番号24px・上位27px)として扱い、`BOX_PAD=4px` を空けた矩形 vs 矩形で判定。帰属表示だけは**絶対制約**にしてベストエフォートの「いちばんマシな候補」の比較対象から外し、リング探索を使い切った場合は「箱の下端+ピン半径+PAD」へ決定的に逃がす。`clamp` で縁に張り付いた後にももう一度同じ制約を通す。ピン同士の距離定数(TOP_DIST/SUB_DIST/HOTEL_DIST)と rank の重み・閾値・engine.js・geo.js・fixtures は1行も触っていない。
 - **余裕px(矩形間距離の実測)**: kusatsu 26.6px / hakone 10.0px / dogo 9.1px / beppu 20.0px / kusatsu-embed 26.6px。計画役の「hakone 16px」は点(中心)基準の値で、今回の矩形基準では箱とピン矩形の隙間そのものを測っているため数値が小さく出るが、**4エリアすべてで重なり面積0**(BOX_PAD=4px を必ず確保)。ピン同士の矩形重なりは kusatsu 11ペア/hakone 3/dogo 3/beppu 1 で**悪化なし**(dogo は4→3に改善)。`check-attrib.mjs` は判定を矩形の重なり面積で行うよう直し(既存の a〜c 検査は1本も削っていない)、beppu を対象に追加、全ピンが地図の外に出ていないことの検査を新設、そして**順位非依存の実証**として `YadoApp.reorderCardsForTest`(並べ替えて `renderFeedMap` をやり直すだけの検証用フック。rank は呼ばない)で **正順・逆順・ランダム3通りの計5パターン × 5URL** を回し全て重なり0。125 pass / 0 fail。
 - `?fixture=` の4エリア mobile と hakone desktop を撮影して目視、帰属表示「Leaflet | © OpenStreetMap」が5枚とも右上にはっきり読め、ピンが箱に乗らず番号も判読でき、地図外へのはみ出し・文字崩れなし。`node --check assets/app.js` OK、`node scripts/check-all.mjs` は29本中29本PASS(exit 0・合計269.3s)、外部API 0回。次: ROADMAP残りは R116 ほか R64/R81/R85/R88/R90 から計画役が選定。
+### 2026-09-16 R119 存在しない施設を追加除外
 - R119 `engine.js` に**「まだ在るか」を見る経路**を追加(rank の重み・閾値・geo.js・fixtures は無改変)。新定数 `DEFINITION_GONE_MARK`(「かつて」)と `DEFINITION_GONE_PAST`(存在した/存在していた/あった)を `DEFINITION_LODGING_NG` の直後に置き、R117 と同じ `definitionPredicate()`(定義文の述部)で**2語の AND** のときだけ落とす。「あった」単独に緩めると湯築城(dogo 4位の正当な観光対象)・石垣山城・羽根尾城を巻き込むので絶対に緩めない。**NEXT.md の想定と1点違った**: この判定だけは `isProtectedName()`(保護リスト)より**先に**評価する必要があった。保護リストは「名前が観光の種別語で終わるなら守る」という**「何であるか」を守る**仕組みで「まだ在るか」を見ていないため、指示どおり R117 のループ直後に置くと `愛媛県立道後動物園`(`動物園` で保護)・`白根火山ロープウェイ`(`ロープウェイ` で保護)が冒頭文に到達せず生き残った(実測で判明・順序を入れ替えて解決)。
 - 4エリア200記事の除外判定を変更前後で全件突き合わせ、**変わったのは6件だけ**(全て kept→EXCLUDED・観光対象の誤爆0件): **落とした6件**=草津シズカ山スキー場(kusatsu cards 13位)・白根火山ロープウェイ(同 more 4位)・愛媛県立道後動物園(dogo cards 12位)・鶴見園(beppu cards 10位)・キャンプ・チッカマウガ・別府鉱山(後2件は既に別ルールで除外済みのため画面は不変)。**残した側は全件1件ずつ確認して無傷**=湯築城・石垣山城・石垣山一夜城歴史公園・羽根尾城・長野原城・別府駅商業施設(beppu 9位・現役の駅ビル)・群馬鉄山(「かつて」が無いので今回は対象外)・石橋山の戦い。`dump-rank` 差分は **hakone が完全無差分**、kusatsu/dogo/beppu は該当1件が消えて以降が1つずつ繰り上がるだけ(繰り上がった横手山・御幸寺山・城島高原パーク・地蔵の湯・子規堂・鶴見岳も全件目視、廃止施設・宿・非観光対象なし・30枚維持)。`check-engine.mjs` に (r119) 節を新設し13ケース追加(落とす6件+残す対照6件+OSM救済1件、既存ケースは1件も削らず R115 の鶴見園は期待値を「候補から消える」へ移設)、275 pass/0 fail。`check-nosummary.mjs` は要約ありの道後動物園が消えて要約なしの御幸寺山が繰り上がったため定数を19→20に更新(検査項目は不減)。
 - `?fixture=kusatsu` / `?fixture=dogo` / `?fixture=hakone` の mobile を撮影して目視、3枚とも廃止施設が消えてカード30枚・帰属表示「Leaflet | © OpenStreetMap」が右上にはっきり読め・ピンの重なりや番号の判読不能・文字崩れ・はみ出しなし(hakone は1位早雲寺のままデグレなし)。`node --check assets/engine.js` OK、`node scripts/check-all.mjs` は29本中29本PASS(exit 0)・外部API 0回。次: ROADMAP残りは R116 ほか R64/R81/R85/R88/R90 から計画役が選定。なお `check-distance`/`check-embedbg` が別々の回に1度ずつ落ちたが、いずれも単独実行で全PASS・うち1件は終了コード 3221226505(ブラウザ起動のクラッシュ)で変更前の 11:16 にも同じコードで別スクリプトが落ちており、環境由来のフレークと判断。
+### 2026-09-16 R120+R121 現役療養所を観光提案外
 - R120+R121 `engine.js` の除外に2本の経路を追加(rank の重み・閾値・geo.js・fixtures は無改変)。**R120**は `DEFINITION_GONE_SOLO = ['存在した','存在していた']` を新設し、R119 の AND 判定より**前**・保護リストより**前**で単独成立させた。「かつて」を書かずに過去形だけで廃止を述べる記事を落とす経路で、`あった` は**絶対に単独へ入れない**(湯築城 dogo 4位・石垣山城・羽根尾城・長野原城を巻き込むため)。**R121**は新しい軸で、`DEFINITION_NOT_VISITABLE = ['療養所','刑務所','拘置所','少年院']` を同じ位置に置いた。R119/R120 が見ているのは「まだ在るか」だが、`国立療養所栗生楽泉園`は**現存する**ため素通りしていた。入所者が今も生活している現役の療養所を「宿の周りの見どころ」として行き方つきで並べるのは配慮を欠くので、「**現存するが観光目的の訪問が適切でない施設**」として落とす。
 - **重監房資料館の扱い(R121 の前提条件)**: 判定を**名前ではなく定義文の述部**で行ったため、学びの導線は完全に無傷。実データの重監房資料館は OSM 由来(`tourism=museum`・extract 無し)で走査対象にすらならず、**変更後も kusatsu more に残る**(more 29位→27位に繰り上がっただけ)ことを `dump-rank` で実測確認した。名前に `療養所` を含む候補を落とす設計にしていたら敷地内の公開施設まで塞ぐ恐れがあったが、述部判定ならその危険が構造的に無い。4エリア200記事の除外判定を変更前後で全件突き合わせ、**変わったのは2件だけ**(誤爆0件): 国立療養所栗生楽泉園(kusatsu cards 12位)と群馬鉄山(同 14位)。`存在した/存在していた` の述部ヒット7件は全件が本当に現存せず、残り6件は R119 で既に除外済みなので画面は不変。`療養所` の述部ヒットは栗生楽泉園1件のみで、`刑務所/拘置所/少年院` は述部ヒット0件(名前側の TITLE_SUFFIX_NG と同趣旨の取りこぼし塞ぎで、現状の判定は1件も変えない)。`dump-rank` 差分は **hakone/dogo/beppu が完全無差分**、kusatsu のみ2件消えて以降が2つずつ繰り上がり(繰り上がった草津聖バルナバ教会・万座温泉スキー場・横手山渋峠スキー場・今宮渓谷を全件目視、廃止施設・宿・非観光対象なし・cards 30枚維持)。
 - `check-engine.mjs` に (r120) 節(落とす3件+`あった` 系の残す対照5件+OSM救済1件)と (r121) 節(落とす1件+残す3件+**OSM由来の重監房資料館が残ること**の本命ケース)を新設、289 pass/0 fail。既存ケースは削っていないが、R119 節にあった `群馬鉄山`(drop:false)は R120 で期待値が反転するため (r120) 節へ drop:true として移し、空いた枠に同型の残す対照 `長野原城` を足した(検査項目は不減)。`?fixture=kusatsu` mobile で2件が消えてカード30枚・ピン1〜30が判読でき帰属表示「Leaflet | © OpenStreetMap」が右上にはっきり読めること、`?fixture=hakone` mobile でデグレなし(1位早雲寺のまま)を撮影・目視。`node --check assets/engine.js` OK、`node scripts/check-all.mjs` は29本中29本PASS(exit 0・合計272.4s)・外部API 0回。次: ROADMAP残りは R122 ほか R116/R64/R81/R85/R88/R90 から計画役が選定。
+### 2026-09-16 R123 記事なし誤表示26件を是正
 - R123 「Wikipediaに記事がありません」の誤表示を是正。`engine.js` の `toCard()` に `wikipediaTitle`/`wikidataId` を2行追加(rank・除外・geo.js・fixtures は無改変)、`app.js` は要約なしのカードを「記事あり(HAS_ARTICLE_NO_SUMMARY_TEXT)+Wikipediaへのリンク」と「真に記事なし(NO_SUMMARY_TEXT)」の3分岐に分け、リンクは他の外部リンクと同じ target="_blank" rel="noopener"。dogo で --none の内訳が **20件(記事あり0/記事なし20)→20件(記事あり8/記事なし12)** に是正、4エリア合計では誤表示だった26件(kusatsu2/hakone6/dogo8/beppu10)全てが新文言に切り替わり、真に記事が無い40件は従来どおりを実測確認(誤爆0件)。
 - 撮影は dogo(松山城10位)・beppu(別府地獄めぐり16位・うみたまご17位)・hakone(小田原城天守閣15位)・kusatsu(デグレ確認)の計4枚をRead目視、新文言とリンクが正しく表示され文字崩れ・重なりなし。`dump-rank` は4エリアとも指示書記載の順位と一致(差分ゼロ)。`check-nosummary.mjs` に記事あり/記事なしの突き合わせ検査を追加、既存 `check-engine.mjs` のCardフィールド一覧も2フィールド分更新。`node scripts/check-all.mjs` は29本中29本PASS(exit 0・合計262.4s)・外部API 0回。
 - 次: `card.wikipediaTitle` 自体は画面に出していない(記事名の直接表示は「押せそう」に見えてリンクが無いのは不親切なため見送り)。ROADMAP残りは R122 ほか R116/R64/R81/R85/R88/R90 から計画役が選定。
+### 2026-09-16 R124 行き止まり13件を解消
 - R124 R123 が塞ぎ切れなかった行き止まり13件(cards 7件+more 6件)を解消。`app.js` の `wikipediaUrl` を2段構えにし、`wikipediaTitle` が無く `wikidataId` のみの候補は `https://www.wikidata.org/wiki/Special:GoToLinkedPage/jawiki/<Q番号>`(Wikidata公式の転送URL・外部API 0回)へフォールバック、Q番号は `/^Q[1-9][0-9]*$/` で厳格検証。`hasArticle` を「URLが作れたか」で判定し直し、「記事はあります」と言った以上は必ず辿れる不変条件にした。
 - 4エリア(kusatsu/hakone/dogo/beppu)で「案内文が出ているのにリンクが1本も無いカード」は**13件→0件**に減少(`check-nosummary.mjs` に不変条件の機械検査を新設し実測)。`?fixture=beppu` mobile のうみたまご(18位)・`?fixture=kusatsu` mobile の大滝乃湯(8位)でリンク出現を目視、`?fixture=hakone` mobile の小田原城天守閣(wikipediaTitleあり)は従来どおりのURLでデグレ無しを確認。リンク属性は他と同じ target="_blank" rel="noopener"(`check-links-target.mjs` PASS)。`dump-rank` で4エリアの順位は完全無差分(表示のみの変更)。
 - `node --check assets/app.js` OK、`check-nosummary.mjs` は新設2ケース込み9 pass/0 fail、`node scripts/check-all.mjs` は29本中29本PASS(exit 0)・外部API 0回。次: ROADMAP残りは R125(wikipedia タグの記事名を `titles=` で直接引いて要約32件を埋める・geo.js改修要)ほか R122/R116/R64/R81/R85/R88/R90 から計画役が選定。
+### 2026-09-16 R126 朝のまとめの更新とNIGHTLOGの見出し整備
+- 朝のまとめの冒頭数字を実測値(146コミット・R126まで)に更新し、直近10サイクル(R115〜R124)の成果を画面で確かめられる言葉でまとめた新節を追加。「夜にやったこと」に項目27〜37を追記(既存26項目は無傷)、見出しの無かった裸の箇条書き35サイクル分に`### `見出しを補い(過去の本文は1行も削除せず)、「朝の相談」全項目に選択肢・推奨を付けR125/R122/R116を追加した。
+- 文書のみの変更のため撮影は省略。`node scripts/check-all.mjs`は29本中29本PASS(exit 0)、`git diff --stat -- assets fixtures`は空、`git diff --numstat docs/NIGHTLOG.md`の削除は3行(冒頭数字1行+朝の相談の整形分)のみでサイクル記録本文の削除は無いことを確認。
+- 次: R125(geo.js改修+fixtures再生成、みのるんの承認待ち)またはROADMAP残り(R64/R81/R85/R92/R102/R103/R116/R122)から計画役が選定。
