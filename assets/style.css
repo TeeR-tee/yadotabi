@@ -424,15 +424,15 @@ body {
 .feedcard__links {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px 8px;
+  gap: 10px 6px;
   margin-top: var(--sp-1);
 }
 .feedcard__link {
   position: relative;
-  padding: 5px 10px;
+  padding: 3px 7px;
   border: 1px solid var(--c-border);
   border-radius: var(--r-full);
-  font-size: var(--fs-xs);
+  font-size: 11px;
   font-weight: 600;
   color: var(--c-text-sub);
   text-decoration: none;

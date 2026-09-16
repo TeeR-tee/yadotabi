@@ -324,3 +324,8 @@
 - やったこと: `app.js`の`setEmbed(on)`直後に`postHeightToParent()`(rAF丸め+前回同値なら送らない)と`startHeightObserver()`(`document.body`をResizeObserver監視、embed時のみ張り非embedでdisconnect)を新設し、`renderFeed()`末尾と「もっと見る」クリック後にも保険で1回呼ぶ。`demo/hotel-page.html`に`message`受信スクリプトを追加(origin検証: 本番`https://teer-tee.github.io`と`location.origin`のみ許可、`height`は100〜100000の有限数のみ反映)。60枚展開後の実測が22309pxと想定より大きく、NEXT.md指定の上限20000だと正規の伸長まで弾いてしまうため上限を100000に引き上げた。
 - テストと目視: 新設`check-embedheight.mjs`(8 pass/0 fail)を`check-all.mjs`に追加し18本全PASS、`node --check assets/app.js`OK。`demo/hotel-page.html`mobile`--full`をRead目視しiframeが内容に合わせて伸び二重スクロールなし、`?fixture=kusatsu`(非embed)/`&embed=1`(単体)mobileもデグレなし(カード30枚・番号ピン判読可・文字崩れなし)。
 - 次: ROADMAP残りはR2-1/R11/R14/R19/R28/R37/R40/R51。上限値100000は暫定なので気になれば朝の相談へ。
+
+### 2026-09-16 R56 リンクチップを1段小さくして5個を1行に収める
+- やったこと: 案A(padding 5px10px→4px8px, gap横8px→6px)、案B(案A+font-size 11px)、案C(gap横8→5,padding横10→8のみ)の3案を`?fixture=kusatsu`mobileで撮影・Playwrightのoffsetでも実測。案A・Cは実測でYouTubeが2行目に落ち、NEXT.mdの指示通り案Bをさらに`padding:3px 7px`まで詰めて再撮影したところ、全5個の`offsetTop`が620pxで一致(1行化成功)。最終値: `.feedcard__link { padding:3px 7px; font-size:11px }` / `.feedcard__links { gap:10px 6px }`。
+- 見た目の確認結果: `check-a11y.mjs`全OK(`.feedcard__link::after`は44px維持)、`check-all.mjs`18本全PASS。`?fixture=kusatsu`(5個)/`hakone`(4個・長い名前「早雲寺」)/`dogo`(5個・長い名前「伊佐爾波神社」)/`kusatsu&embed=1`のmobile4枚をRead目視し、全て1行・文字読める・チップ接触なし・コンソールエラー0件を確認。
+- 次: ROADMAP残りはR2-1/R11/R14/R19/R28/R37/R40/R51。撮り比べの申し送り: paddingか font-size 単独の1段縮小では不足で、両方の複合縮小が必要だった。
