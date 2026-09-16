@@ -531,3 +531,6 @@
 - R101 状態Aの地図タイル読み込み失敗を1行で伝える。`L.tileLayer(...)`を変数`tiles`で受け`tileerror`を購読、1枚失敗で即出すとネットワーク一過性ノイズになるため**3秒以内に4枚以上失敗**した時だけ`setMapNote(TILE_ERROR_TEXT)`(「地図の背景画像を読み込めませんでした。ピンと提案はそのまま使えます。」の2文形式)をセッション1回だけ出す方式を採用(NEXT.mdの実測では発火回数は未計測だったため、通常のタイル切替や一瞬の途切れでは反応しない安全側のしきい値として自分で決めた)。宿の取得が進むと既存の`setMapNote('')`等で上書きされて消えるが、タイルが復帰しなくても宿の案内の方が新しい情報なので構わない。状態Bの小地図(`app.js:1149`)は`.mapnote`相当の要素が無いため対象外。
 - `page.route()`でtile.openstreetmap.orgを遮断したPlaywrightスクリプトで撮影し、灰色地に白文字で文言が1行に収まり文字崩れ・重なりなしを目視。`scripts/check-nohotels.mjs`に4項目追記(遮断時に文言一致・可視・overpass等fetch0回、通常時は文言が出ないこと)し9 pass/0 fail、`check-all.mjs`は27本中27本PASS。`?fixture=kusatsu`mobileの通常撮影でもデグレなしを確認。
 - 次: ROADMAP残りはR64/R81/R85/R88/R90から計画役が選定。
+- R97 印刷用CSSが0行だった状態を確認後、`assets/style.css`末尾に`@media print`を1ブロック追記(地図非表示・topbar固定解除・戻るボタン非表示・lightbox/passivebox非表示・カード分断防止・チップ枠線を薄く)。地図は紙でタイルが読めない懸念のため**消す方針**にし、`.feedmap`ごと非表示にすることでOSM帰属表示も一緒に消えるが地図が無いので規約上問題なし。また`.feed`は元々`flex-direction:column`の1カラム構成だったため、依頼にあった「カード1カラム化」の追加改修は不要だった。
+- 印刷メディア(desktop1280/A4相当794/mobile375)で戻るボタン・地図・passiveboxが消えカードが白背景で幅内に収まることを撮影・目視。通常表示`?fixture=kusatsu`mobileは変更前と同一でデグレなし。`git diff assets/style.css`は`@media print`ブロック25行の追加のみ。`node scripts/check-all.mjs`は27本中27本PASS。
+- 次: ROADMAP残りはR64/R81/R85/R88/R90から計画役が選定。

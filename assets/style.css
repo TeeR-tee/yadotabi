@@ -788,3 +788,28 @@ body.is-embed { background: var(--c-bg); }
 body.is-lightbox {
   overflow: hidden;
 }
+
+@media print {
+  .feedmap,
+  .feedmap--tall {
+    display: none !important;
+  }
+  .topbar {
+    position: static;
+  }
+  .topbar__back {
+    display: none;
+  }
+  .lightbox,
+  .passivebox {
+    display: none !important;
+  }
+  .feedcard {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .feedcard__link {
+    border-color: #999;
+    color: #333;
+  }
+}
