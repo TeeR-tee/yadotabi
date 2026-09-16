@@ -561,3 +561,6 @@
 - R113 `flyTo()`(`app.js:516`)に第4引数`force`を追加し、直前と同じ中心座標・同じズームなら`setView`/`saveMapView`/`autoZoomArmed`/`loadHotelsInView`を一切呼ばず`return`するガードを実装。`?demo=autozoom`(`app.js:1620`)だけ`force=true`で従来どおり必ず実行、`?q=`ジャンプ・検索候補・エリアチップの3箇所は無変更(ガードを効かせたい経路のため)。
 - `scripts/check-autozoom.mjs`に7・8番として通常モード(page.routeでOverpass/Nominatimをfulfillしカウント)のケースを追加し、同一チップ3連打でリクエストが増えない・別チップで増える・aria-current維持を確認(20 pass/0 fail)。`check-chipcurrent.mjs`(10 pass/0 fail)も回帰なし、`?fixture=kusatsu`mobile撮影も文字崩れ・はみ出しなしを目視。`node scripts/check-all.mjs`は28本中28本PASS。
 - 次: ROADMAP残りはR64/R81/R85/R88/R90から計画役が選定。
+- R111 `scripts/check-links-target.mjs`を新設し`?fixture=kusatsu`(embed=1含む)・「もっと見る」展開後の`.feedcard__link`が`target="_blank"`かつ`rel`に`noopener`をトークンとして含むことを機械検査。実測本数は初期表示128本・展開後253本(いずれも0本ではなく全件条件を満たしPASS)、`app.js`側の属性欠落は無かったため`app.js`は無編集。`check-all.mjs`に29本目として登録、`docs/CHECKS.md`表と本数表記・`docs/FIXTURES.md`の「28本全緑」を29本に更新。
+- `?fixture=kusatsu`mobileを撮影し光泉寺カードのチップ5本(行き方/公式/Instagram/TikTok/YouTube)が1行に収まり崩れ・はみ出しなしを目視(画面変更なし)、`git diff --stat -- assets index.html fixtures demo`は空。`node scripts/check-all.mjs`は29本中29本PASS(合計252.9s)。
+- 次: ROADMAP残りはR64/R81/R85/R88/R90から計画役が選定。

@@ -1,10 +1,10 @@
-# CHECKS.md — `scripts/check-all.mjs` が回す28本の一覧と並列化できない理由
+# CHECKS.md — `scripts/check-all.mjs` が回す29本の一覧と並列化できない理由
 
 この表は `scripts/check-all.mjs` の `SCRIPTS` 配列(`check-all.mjs:14`)と**一対一で一致させること**。check 本を増減したらこの表も同じコミットで直す。
 
 ## 対象範囲
 
-`node scripts/check-all.mjs` は `scripts/check-*.mjs` の27本と `docs/check.mjs` の1本、計28本を `spawnSync` で直列に呼ぶだけの外側の殻です。各 check 本の中身はこのタスクでは無編集(AUTOPILOT の運用どおり)。
+`node scripts/check-all.mjs` は `scripts/check-*.mjs` の28本と `docs/check.mjs` の1本、計29本を `spawnSync` で直列に呼ぶだけの外側の殻です。各 check 本の中身はこのタスクでは無編集(AUTOPILOT の運用どおり)。
 
 ## サーバを立てる24本(ポート3000占有・全て Playwright あり)
 
@@ -28,6 +28,7 @@
 | check-imgfail | 画像読み込み失敗時のフォールバック |
 | check-initpos | 初期表示位置 |
 | check-keyboard | キーボード操作対応 |
+| check-links-target | カード内外部リンクが `target="_blank"` かつ `rel` に `noopener` を含むこと(R111、embed時・もっと見る展開後も含む) |
 | check-lightbox | 画像ライトボックス表示 |
 | check-more | 「もっと見る」展開挙動 |
 | check-nohotels | 宿0件画面(`?demo=nohotels`)の案内文と、タイル読込失敗時の案内(R101) |

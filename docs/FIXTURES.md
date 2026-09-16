@@ -79,7 +79,7 @@ node scripts/make-fixture.mjs <area>
 
 1. `node scripts/dump-rank.mjs <area>` を**再取得の前後**で取り、カード枚数・上位の並びの差分を全件目視する(差分が出ること自体は正常。消えた観光スポットが無いかを見る)
 2. `?fixture=<area>` を mobile で撮影して目視(カード30枚・番号ピン判読可)
-3. `node scripts/check-all.mjs` が**28本全緑**
+3. `node scripts/check-all.mjs` が**29本全緑**
 4. 差分の要点を `docs/NIGHTLOG.md` に記録する
 
 ### (d) keep-list は手動実行不要
