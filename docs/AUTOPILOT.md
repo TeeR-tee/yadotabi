@@ -25,6 +25,8 @@
 2. 作業役: 実装 → `node --check` → 撮影(mobile+desktop、必要な画面) → 画像を目視 → `node scripts/check-all.mjs` が緑であることを確認 → `docs/ROADMAP.md` を `[x] 日付` に → `docs/NIGHTLOG.md` に3行追記 → コミット → `git push`。
 3. 司令塔: 報告を確認し、push 済みかを `git status -sb` で確認。
 
+過去の `docs/NEXT.md` は `git log --oneline -- docs/NEXT.md` で一覧でき、`git show <コミットID>:docs/NEXT.md` で当時の全文が読める。毎サイクル上書きしてよく、アーカイブ用のコピーは作らない(2026-09-16 R78 で決定)。
+
 ## NIGHTLOG の書き方(みのるんが朝に読む)
 - 1サイクル3行: 「やったこと / 見た目の確認結果 / 次」。
 - 「朝の相談」節に、判断が要る案を溜める(実装はしない)。

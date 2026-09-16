@@ -6,6 +6,8 @@
 
 URLパラメータ全体の一覧は [README.md](../README.md#urlパラメータ一覧) の「## URLパラメータ一覧」節を参照してください。
 
+ファイルサイズの実測表は [README.md](../README.md#fixtures-のファイルサイズ) の「fixtures のファイルサイズ」節を参照してください。
+
 ## 対象エリア表
 
 `AREAS`(`scripts/make-fixture.mjs:18-23`)の実値です。

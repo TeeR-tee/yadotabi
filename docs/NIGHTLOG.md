@@ -472,3 +472,8 @@
 - やったこと: `scripts/slim-fixtures.mjs` を新設(`KEEP_TAG_KEYS` 14種+`wikipedia`前方一致をexport)、`make-fixture.mjs` が同じ関数をimportして保存直前に適用する片方管理に統一。既存4 fixture に適用: kusatsu 65.3→55.5KB / hakone 900.1→585.7KB(-35%) / dogo 117.1→93.7KB / beppu 172.7→122.7KB。
 - 見た目の確認結果: dump-rank を4エリアで before/after 比較し**差分ゼロ**を確認。`?fixture=hakone`・`?fixture=kusatsu` mobile 撮影して目視、カード・番号ピン・写真・要約・行き方/公式/Instagram等のリンクが従来どおり。`node scripts/check-all.mjs` 25本全緑。
 - 次: R75(fixturesサイズ表をREADMEに記録)がR14のafter値を使えるので候補。
+
+### 2026-09-16 R75+R78+R72 文書3件まとめ(コード変更なし)
+- やったこと: README にfixturesサイズ表(4エリア×6列、hakoneが大きい理由の説明)を追加しdocs/FIXTURES.mdと相互リンク。`docs/AUTOPILOT.md`に「NEXT.mdの履歴はgit logで追えるためnext-archiveは作らない」旨を追記。`docs/CHECKS.md`を新規作成し25本(サーバを立てる21本/不要な4本)の表・所要目安・並列化不可の理由・必要な改修4点を記載。ROADMAPのR72本文にあった事実誤認(23本→25本、7本以上→21本)も訂正。
+- 見た目の確認結果: 文書のみのためデグレ確認1枚(`?fixture=kusatsu` mobile)を撮影・目視、地図ピン30個判読可・カード表示正常・コンソールエラーなし。`git diff --stat -- assets fixtures scripts index.html demo`は空、`node scripts/check-all.mjs`25本全PASS(222.7s)。
+- 次: ROADMAP残りはR64/R77/R81〜R85。R64はGitHub Actions無料枠確認で判断寄りのため朝の相談向き。

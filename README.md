@@ -193,6 +193,23 @@ git push
 
 「もっと遠く」に振り分ける far の閾値(`FAR_DRIVE_MIN`、車60分超)は 60分×500m/分＝30km で、`scripts/make-fixture.mjs` の収集半径(`osmRadiusM`)とは独立に決まっている定数です。収集半径が30kmに満たないエリアでは far が構造上0件になる点に注意してください(実測は [docs/FIXTURES.md](docs/FIXTURES.md) の「far 実測表」を参照)。
 
+`node scripts/check-all.mjs` が何を実行しているかの一覧は [docs/CHECKS.md](docs/CHECKS.md) を参照してください(25本の検査それぞれが何を検査するか・サーバを立てるか・所要目安と、並列化できない理由をまとめています)。
+
+### fixtures のファイルサイズ
+
+`fixtures/*.json` の実測値です(R14 の keep-list 除去後の値。カッコ内は除去前)。
+
+| エリア | osmRadiusM | OSM elements | Wikipedia pages | ファイルKB(R14後) | R14前 |
+|---|---|---|---|---|---|
+| kusatsu(草津温泉) | 15,000 | 189 | 50 | 55.5 KB | 65.3 KB |
+| hakone(箱根湯本) | **30,000** | 4,186 | 50 | 585.7 KB | 900.1 KB |
+| dogo(道後温泉) | 15,000 | 463 | 50 | 93.7 KB | 117.1 KB |
+| beppu(別府温泉) | 15,000 | 667 | 50 | 122.7 KB | 172.7 KB |
+
+- **hakone だけ 10倍近く大きい理由は収集半径**です。hakone のみ `osmRadiusM=30000` で、他3エリアの 15,000 に対して面積が4倍になり OSM 要素が 4,186件(他の6〜22倍)になります。ファイルサイズはほぼ OSM 要素数で決まります。
+- Wikipedia 側は4エリアとも 50件でファイルサイズに効いていません(geosearch の1リングあたり上限が 50件のため)。
+- R14 の keep-list 除去で全体が 30〜35% 縮みました。詳細は [docs/FIXTURES.md](docs/FIXTURES.md) を参照してください。
+
 ## v1 からの変更点
 
 - ホテル名・泊数・移動手段を入力させるUIをすべて廃止。宿を選んだ瞬間に提案が出る仕組みに変更(入力ゼロ)。
