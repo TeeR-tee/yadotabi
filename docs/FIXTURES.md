@@ -52,7 +52,7 @@ node scripts/make-fixture.mjs <area>
 
 ## 保存される meta
 
-`area` / `label` / `lat` / `lon` / `osmRadiusM`(実際に成功した半径) / `wikiRadiusM` / `generatedAt`(ISO文字列)。`generatedAt` は画面ヘッダーの「固定データ」バッジに取得日として表示される(R45)ので、鮮度が古くなったことに気づけます。
+`area` / `label` / `lat` / `lon` / `osmRadiusM`(実際に成功した半径) / `wikiRadiusM` / `generatedAt`(ISO文字列)。`generatedAt` は画面ヘッダーの「固定データ」バッジに取得日として表示される(R45)ので、鮮度が古くなったことに気づけます。取得日を見て古いと感じたら [鮮度の目安と再取得の手順(R95)](#鮮度の目安と再取得の手順r95) を参照してください。
 
 ## Overpass のマナー(スクリプトの実装どおり)
 
@@ -60,6 +60,31 @@ node scripts/make-fixture.mjs <area>
 - Overpass が 429/504 を返したときは60秒待って最大2回再試行します(`RETRY_WAIT_MS=60000` / `MAX_RETRY=2`)。それでも駄目なら半径 4000m(`FALLBACK_RADIUS_M=4000`)に落として1回試します。
 - **半径が落ちて成功した場合は fixture として採用せず日を改めます**(`meta.osmRadiusM` が意図と違う値で残るため)。
 - 1サイクルあたりの生成は1エリアまでです。
+
+## 鮮度の目安と再取得の手順(R95)
+
+### (a) 判断基準
+
+目安は**半年**。理由は、OSM の観光施設(神社・寺・美術館・展望台等)は年単位でしか動かず、これより短くすると Overpass を無駄に叩くだけになるからです。ただし**半年という数字は統計的根拠のある値ではなく、あくまで運用上の目安**です(観光施設の実際の変化頻度は未計測)。
+
+半年未満でも再取得してよい例外が1つあります。**`assets/geo.js` の `buildOverpassQuery()` を変更したとき**は、fixture と本番で候補が食い違うため、期間に関わらずすぐに対象エリアを取り直してください(上の「[`buildOverpassQuery` の同期注意](#buildoverpassquery-の同期注意)」参照)。
+
+現在の4 fixture の `generatedAt` はいずれも 2026-09-15〜16 生成(全エリア同一日、実測済み)なので、**次の見直し目安は 2027-03 頃**です。
+
+### (b) 再取得のマナー
+
+既存の「[Overpass のマナー](#overpass-のマナースクリプトの実装どおり)」節の制約と同じです(各エリア1回まで・1サイクル1エリアまで、429/504は待たず日を改める、半径が `FALLBACK_RADIUS_M` に落ちて成功した場合は採用しない)。重複するのでここでは繰り返しません。
+
+### (c) 再取得後に必須の確認
+
+1. `node scripts/dump-rank.mjs <area>` を**再取得の前後**で取り、カード枚数・上位の並びの差分を全件目視する(差分が出ること自体は正常。消えた観光スポットが無いかを見る)
+2. `?fixture=<area>` を mobile で撮影して目視(カード30枚・番号ピン判読可)
+3. `node scripts/check-all.mjs` が**27本全緑**
+4. 差分の要点を `docs/NIGHTLOG.md` に記録する
+
+### (d) keep-list は手動実行不要
+
+`scripts/make-fixture.mjs` は保存直前に `slim-fixtures.mjs` の `slimOverpassElements` を自動適用するため(「[タグの軽量化](#タグの軽量化r14keep-list)」節参照)、再取得後に `node scripts/slim-fixtures.mjs` を別途走らせる必要はありません。
 
 ## 既存 fixture は原則再生成しない方針
 

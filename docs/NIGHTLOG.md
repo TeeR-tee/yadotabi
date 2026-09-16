@@ -1,6 +1,9 @@
 # 夜間ログ(みのるんが朝に読む)
 
 ## サイクル記録
+- R95 `docs/FIXTURES.md` の「既存 fixture は原則再生成しない方針」節の直前に「鮮度の目安と再取得の手順(R95)」節を新設。(a)半年を目安(統計的根拠は無く運用上の目安と明記)・`buildOverpassQuery()`変更時は期間問わず例外・次の見直しは2027-03頃、(b)Overpassマナー節への相互リンク、(c)dump-rank前後比較→撮影→check-all→NIGHTLOG記録の順序リスト、(d)keep-listはmake-fixture.mjs:14のimportで自動適用済みで手動実行不要、を記載。「保存されるmeta」節からも新節へリンクを追加。
+- `git diff --stat -- assets fixtures scripts index.html demo`が空(文書のみ)を確認、`?fixture=kusatsu`をmobileで目視しカード30枚・番号ピン判読可・文字崩れなし・コンソールエラー0件、`node scripts/check-all.mjs`は27本全てPASS(fail語0件)。
+- 次: R89(check-all.mjs高速化)またはR92〜R94から計画役が選定。
 - R91 README の `?demo=` 値一覧を実装に合わせて修正。app.jsをgrepで再実測し12値(far/zoomout/initpos/suggest/recent/recentmix/passive/imgfail/portrait/nohotels/autozoom/hoteltip)を確認、README.mdの「10個すべて」を「12個すべて」に直し表を3列(値/何が再現されるか/使っている検査)・12行に拡張。portraitの縦長ダミー画像サイズ(400×800)もapp.js:801で実測確認。
 - デグレ確認撮影(`?fixture=kusatsu` mobile)でカード30枚・番号ピン判読可・文字崩れなし・コンソールエラー0件を目視。`node docs/check.mjs`(README画像リンク含む)と`node scripts/check-all.mjs`は27本中27本PASS、`git diff --stat -- assets fixtures scripts index.html demo`は空でREADME.md以外への波及なしを確認。
 - 次: R89(check-all.mjs高速化・hotelparam分割)または朝の相談待ちのR2-1以外の未着手項目(R92・R93・R94・R95)から計画役が選定。
