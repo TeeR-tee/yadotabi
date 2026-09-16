@@ -543,3 +543,6 @@
 - R106 `docs/CHECKS.md`を`scripts/check-all.mjs`の実体(26本+docs/check.mjs=27本)と一対一に合わせた。実測で名前を突き合わせた結果、幽霊行は0本・未掲載は`check-debugflag`と`check-nosummary`の2本のみで、これを表に追加し本数表記(25→27/24→26/21→23/4本→3本+docs/check.mjs)を全箇所訂正。ROADMAP本文の「27行」は数え方の誤認と判明(名前一致では差分0)。
 - `docs/CHECKS.md`の表27行=`check-all.mjs`実行結果27本と一致を確認、`?fixture=kusatsu`mobileのデグレ確認撮影も文字崩れなし。`git diff --stat -- scripts docs/check.mjs assets index.html`は空(コード無変更)、`node scripts/check-all.mjs`は27本中27本PASS。
 - 次: ROADMAP残りはR64/R81/R85/R88/R90から計画役が選定。
+- R107 `scripts/check-firstcard.mjs`を新設し`?fixture=kusatsu&perf=1`の`first-card-painted`ms(console/`#perf-box`の既存2経路、app.js無変更)を標準出力に記録、しきい値`FIRST_CARD_MAX_MS=200`(実測中央値24msの約8倍、CI揺らぎで赤くしない方針)で判定。`check-all.mjs`に28本目として登録し、`check-all.mjs`本数コメント・`docs/CHECKS.md`表と本数表記・`docs/FIXTURES.md`の「27本全緑」を28本に更新(grep確認済み、AUTOPILOT/README.mdに27本表記なし)。
+- 単体連続5回すべてPASS(実測ms: 24/24/108/26/24、中央値24ms、200ms上限に対し十分な余裕を確認)、`node scripts/check-all.mjs`は28本中28本PASS(合計237.5s)。`git diff --stat -- assets index.html fixtures demo`は空(アプリ本体無変更)、画面変更なしのため撮影は省略。
+- 次: ROADMAP残りはR64/R81/R85/R88/R90/R108(`?q=`長さ上限)/R109(iframe属性一貫性検査)/R110(受動ログの古いエントリ掃除)から計画役が選定。

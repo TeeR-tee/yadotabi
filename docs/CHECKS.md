@@ -1,12 +1,12 @@
-# CHECKS.md — `scripts/check-all.mjs` が回す27本の一覧と並列化できない理由
+# CHECKS.md — `scripts/check-all.mjs` が回す28本の一覧と並列化できない理由
 
 この表は `scripts/check-all.mjs` の `SCRIPTS` 配列(`check-all.mjs:14`)と**一対一で一致させること**。check 本を増減したらこの表も同じコミットで直す。
 
 ## 対象範囲
 
-`node scripts/check-all.mjs` は `scripts/check-*.mjs` の26本と `docs/check.mjs` の1本、計27本を `spawnSync` で直列に呼ぶだけの外側の殻です。各 check 本の中身はこのタスクでは無編集(AUTOPILOT の運用どおり)。
+`node scripts/check-all.mjs` は `scripts/check-*.mjs` の27本と `docs/check.mjs` の1本、計28本を `spawnSync` で直列に呼ぶだけの外側の殻です。各 check 本の中身はこのタスクでは無編集(AUTOPILOT の運用どおり)。
 
-## サーバを立てる23本(ポート3000占有・全て Playwright あり)
+## サーバを立てる24本(ポート3000占有・全て Playwright あり)
 
 `spawn('python', ['-m','http.server','3000','--bind','127.0.0.1'])` を実行し `finally` で `kill()` する構成です。
 
@@ -21,6 +21,7 @@
 | check-embedbg | embed時の背景表示 |
 | check-embedheight | embed時の高さ調整 |
 | check-feednote | フィード注記の表示 |
+| check-firstcard | first-card-painted の実測ms記録と緩いしきい値検査(R107) |
 | check-history | 「最近の宿」履歴の記録・表示 |
 | check-hotelparam | ホテルURLパラメータの解釈 |
 | check-hoteltip | ホテル選択時のツールチップ |
