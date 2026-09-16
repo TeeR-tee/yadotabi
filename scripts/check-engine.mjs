@@ -549,10 +549,12 @@ console.log('\n(r119) 既に無くなった施設を候補から落とす(「か
     // beppu の cards 9位。総称が「かつて」使われていただけで、駅ビルは現役。
     { title: '別府駅商業施設', drop: false,
       extract: '本項では、かつて別府駅商業施設（べっぷえきしょうぎょうしせつ）と総称されていた、大分県別府市のJR九州別府駅に併設されている以下の商業施設について述べる。' },
-    // --- 残す側4: 「に存在した」を含むが「かつて」が無い(条件を広げない証拠) ---
-    // 鉱山跡は現地に遺構が残る場合があるので、1件のために AND を崩さない。
-    { title: '群馬鉄山', drop: false,
-      extract: '群馬鉄山（ぐんまてつざん）は、群馬県吾妻郡六合村（現・中之条町）に存在した鉱山。' }
+    // 注: R119 当時ここにあった `群馬鉄山`(drop:false =「かつて」が無いので残る)は、
+    // R120 で `存在した` を単独成立にしたため期待値が反転した。ケース自体は消さず、
+    // 下の (r120) 節に drop:true として移してある。
+    // --- 残す側4: 「かつて」も過去存在語も無い現役の城跡公園(AND の下限を守る) ---
+    { title: '長野原城', drop: false,
+      extract: '長野原城（ながのはらじょう）は、群馬県吾妻郡長野原町にあった日本の城。' }
   ];
 
   const E = loadEngine({
@@ -585,6 +587,121 @@ console.log('\n(r119) 既に無くなった施設を候補から落とす(「か
   });
   ok(new Set((await E3.collect(HOTEL)).map(i => i.name)).has('鶴見園'),
     'R119 OSM に観光タグ付きで実在すれば救済される(現地に何か残っている)');
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n(r120) 「かつて」を含まない廃止表現を単独成立で落とす(存在した/存在していた)');
+{
+  // R119 の AND 判定は「かつて」が無いと通らないため、過去形だけで廃止を述べる記事が
+  // 素通りしていた(kusatsu cards 14位 群馬鉄山)。単独成立にできるのは実測で誤爆0件だった
+  // `存在した` / `存在していた` の2語だけ。**`あった` は絶対に単独にしない**ので、
+  // 残す側の城ケースでその下限を守る(1件でも落ちたら条件が広すぎる)。
+  const R120_CASES = [
+    // --- 落とす側: 「かつて」が無く過去形だけで廃止を述べる(R120 で新たに落ちる本命) ---
+    { title: '群馬鉄山', drop: true,
+      extract: '群馬鉄山（ぐんまてつざん）は、群馬県吾妻郡六合村（現・中之条町）に存在した鉱山。群馬鉱山とも呼ばれる。' },
+    // 「かつて」付きでも当然落ちる(R119 の経路とどちらでも落ちることの確認)。
+    { title: '別府鉱山', drop: true,
+      extract: '別府鉱山（べっぷこうざん）は、大分県別府市にかつて存在した鉱山。' },
+    // `存在していた` も単独で成立する。
+    { title: '草津シズカ山スキー場', drop: true,
+      extract: '草津シズカ山スキー場（くさつシズカやまスキーじょう）は、かつて群馬県吾妻郡草津町に存在していたスキー場。' },
+    // --- 残す側: 述部に `あった` を持つ城跡。単独成立に `あった` を入れた瞬間に全滅する ---
+    // 湯築城は dogo の cards 4位。城跡は跡地が整備されていて**現地に行ける**。
+    { title: '湯築城', drop: false,
+      extract: '湯築城（ゆづきじょう）は、愛媛県松山市道後公園にあった日本の城。' },
+    { title: '石垣山城', drop: false,
+      extract: '石垣山城（いしがきやまじょう）は、神奈川県小田原市早川にあった日本の城。' },
+    { title: '羽根尾城', drop: false,
+      extract: '羽根尾城（はねおじょう）は、群馬県吾妻郡長野原町（上野国吾妻郡羽根尾）にあった日本の城。' },
+    { title: '長野原城', drop: false,
+      extract: '長野原城（ながのはらじょう）は、群馬県吾妻郡長野原町にあった日本の城。' },
+    // 跡地を整備した現役の公園(過去存在語そのものが無い)。
+    { title: '石垣山一夜城歴史公園', drop: false,
+      extract: '石垣山一夜城歴史公園（いしがきやまいちやじょうれきしこうえん）は、神奈川県小田原市早川にある、石垣山一夜城の跡地を整備した公園。' }
+  ];
+
+  const E = loadEngine({
+    ...geoMock(),
+    fetchSpots: () => Promise.resolve([]),
+    fetchWikiNearby: () => Promise.resolve(R120_CASES.map((c, i) => ({
+      id: 'wp/' + (1200 + i), title: c.title, lat: at(300 + i * 500), lon: HOTEL.lon,
+      distanceM: 300 + i * 500, thumbnailUrl: null, extract: c.extract, url: ''
+    })))
+  });
+  const got120 = new Set((await E.collect(HOTEL)).map(i => i.name));
+  R120_CASES.forEach(c => {
+    if (c.drop) ok(!got120.has(c.title), 'R120 落とす: ' + c.title);
+    else ok(got120.has(c.title), 'R120 残す: ' + c.title);
+  });
+
+  // 救済経路は R119 と同じまま: OSM に観光タグ付きで実在すれば落ちない。
+  const E120b = loadEngine({
+    ...geoMock(),
+    fetchWikiNearby: () => Promise.resolve([
+      { id: 'wp/1290', title: '群馬鉄山', lat: at(500), lon: HOTEL.lon, distanceM: 500,
+        thumbnailUrl: null, extract: '群馬鉄山（ぐんまてつざん）は、群馬県吾妻郡六合村（現・中之条町）に存在した鉱山。', url: '' }
+    ]),
+    fetchSpots: () => Promise.resolve([
+      { id: 'node/1290', name: '群馬鉄山', lat: at(500), lon: HOTEL.lon,
+        category: 'attraction', categoryLabel: '観光名所', distanceM: 500 }
+    ])
+  });
+  ok(new Set((await E120b.collect(HOTEL)).map(i => i.name)).has('群馬鉄山'),
+    'R120 OSM に観光タグ付きで実在すれば救済される(現地に遺構が残っている)');
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n(r121) 現存するが観光目的の訪問が適切でない施設を落とす(療養所・刑務所ほか)');
+{
+  // R119/R120 の「まだ在るか」では落ちない**現役の**施設のうち、人が収容・居住していて
+  // 観光対象として提案するのが適切でないものを、定義文の述部で落とす。
+  // **判定は名前ではなく述部で行う**のが要点で、これにより敷地内の公開施設
+  // (重監房資料館・OSM の tourism=museum・extract 無し)は走査対象にすらならず、
+  // 歴史を学ぶ導線が残る。学びの場を塞がないことが本ルールの前提条件。
+  const R121_CASES = [
+    // --- 落とす側: 入所者が今も生活している現役の療養所(kusatsu cards 12位) ---
+    { title: '国立療養所栗生楽泉園', drop: true,
+      extract: '国立療養所栗生楽泉園（こくりつりょうようじょくりうらくせんえん）は、群馬県吾妻郡草津町に位置する国立ハンセン病療養所。厚生労働省所管の施設等機関である。' },
+    // --- 残す側1: 同じ敷地の公開資料館。Wikipedia 記事があっても述部は「資料館」なので残る ---
+    // 実際の kusatsu では OSM 由来(extract 無し)で more に残ることを実測で確認済み。
+    // ここでは「記事があっても落ちない」ことまで確かめ、学びの導線を二重に守る。
+    { title: '重監房資料館', drop: false,
+      extract: '重監房資料館（じゅうかんぼうしりょうかん）は、群馬県吾妻郡草津町にある国立ハンセン病資料館の分館。重監房の歴史を伝える展示施設である。' },
+    // --- 残す側2: 病院・医療を語るが観光の学びの場である資料館・記念館 ---
+    { title: '松永記念館', drop: false,
+      extract: '松永記念館（まつながきねんかん）は、神奈川県小田原市板橋にある美術館・記念館である。' },
+    // --- 残す側3: 名前に種別語を持つ現役の観光施設(誤爆の下限確認) ---
+    { title: '草津温泉', drop: false,
+      extract: '草津温泉（くさつおんせん）は、群馬県吾妻郡草津町にある温泉。日本三名泉の一つに数えられる。' }
+  ];
+
+  const E121 = loadEngine({
+    ...geoMock(),
+    fetchSpots: () => Promise.resolve([]),
+    fetchWikiNearby: () => Promise.resolve(R121_CASES.map((c, i) => ({
+      id: 'wp/' + (1300 + i), title: c.title, lat: at(300 + i * 500), lon: HOTEL.lon,
+      distanceM: 300 + i * 500, thumbnailUrl: null, extract: c.extract, url: ''
+    })))
+  });
+  const got121 = new Set((await E121.collect(HOTEL)).map(i => i.name));
+  R121_CASES.forEach(c => {
+    if (c.drop) ok(!got121.has(c.title), 'R121 落とす: ' + c.title);
+    else ok(got121.has(c.title), 'R121 残す: ' + c.title);
+  });
+
+  // 重監房資料館は実データでは OSM 由来(extract 無し)。述部判定なので当たらず必ず残る。
+  // 「療養所ごと落として学びの導線まで塞ぐ」ことが起きないことの本命ケース。
+  const E121b = loadEngine({
+    ...geoMock(),
+    fetchWikiNearby: () => Promise.resolve([]),
+    fetchSpots: () => Promise.resolve([
+      { id: 'node/8899615699', name: '重監房資料館', lat: at(2935), lon: HOTEL.lon,
+        category: 'museum', categoryLabel: '美術館・博物館', distanceM: 2935 }
+    ])
+  });
+  ok(new Set((await E121b.collect(HOTEL)).map(i => i.name)).has('重監房資料館'),
+    'R121 OSM 由来の重監房資料館は残る(学びの導線を塞がない)');
 }
 
 // ---------------------------------------------------------------------------
