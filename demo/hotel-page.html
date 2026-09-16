@@ -218,7 +218,20 @@
         <li>APIキー不要・利用料無料でご利用いただけます。</li>
       </ul>
       <pre class="tag-example">&lt;iframe src="https://teer-tee.github.io/yadotabi/?hotel=36.6226,138.5960,草津 湯けむり荘&amp;embed=1" width="100%" height="720" style="border:0;border-radius:10px;"&gt;&lt;/iframe&gt;</pre>
+      <!-- 高さを自動で伸ばすには、上のiframeタグに加えて下記の受信スクリプトも設置してください -->
     </div>
   </div>
+  <script>
+    window.addEventListener('message', function (e) {
+      if (e.origin !== 'https://teer-tee.github.io' && e.origin !== location.origin) return;
+      var data = e.data;
+      if (!data || typeof data !== 'object' || data.type !== 'yadotabi:height') return;
+      var height = data.height;
+      if (typeof height !== 'number' || !isFinite(height) || height < 100 || height > 100000) return;
+      var iframe = document.querySelector('iframe.embed');
+      if (!iframe) return;
+      iframe.style.height = height + 'px';
+    });
+  </script>
 </body>
 </html>

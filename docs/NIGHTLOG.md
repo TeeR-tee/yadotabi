@@ -313,3 +313,8 @@
 - やったこと: `farHtml()`直後に`noteHtml(cardCount)`を新設し、`#feed-far`の直後の`#feed-note`に「この提案は、周辺の地図情報（OpenStreetMap）とWikipediaから、宿からの距離と種類の多様性で並べた暫定版です。有名な場所が下に来ることがあります。」+「くわしい仕組み」リンクを描画。0件時・読み込み中・error時は出さない。`docs/09_研究ノート`はリポジトリに存在しないため、README.md:48の「仕組み(かんたん解説)」節(rankが暫定であることを正直に書いた既存段落)へのGitHubアンカーリンクに差し替えた。embedでも隠すCSSは書かず表示する判断とした(埋め込み先の宿ページにとっても「暫定」と明示される方が誠実で、やどたび側の免責にもなるため。高さ増分は1〜2行のみ)。
 - テストと目視: 新設`scripts/check-feednote.mjs`(11 pass/0 fail)を`check-all.mjs`に追加し17本全PASS、`node --check assets/app.js`OK。`?fixture=kusatsu`/`&embed=1`mobile --fullをRead目視し、注記がフィード最下部に3行で収まりカード・もっと見るボタンと重ならず、375px幅で文字切れ・「くわしい仕組み」の途中折り返しなし、リンクは下線で識別できるが目立ちすぎず、embed版も同じ見え方でカード30枚のデグレなしを確認。
 - コミットとpush: 完了。次はROADMAP残り(R2-1/R11/R14/R19/R28/R37/R40/R48/R51等)。
+
+### 2026-09-16 R48 `?embed=1` で高さを親にpostMessage通知
+- やったこと: `app.js`の`setEmbed(on)`直後に`postHeightToParent()`(rAF丸め+前回同値なら送らない)と`startHeightObserver()`(`document.body`をResizeObserver監視、embed時のみ張り非embedでdisconnect)を新設し、`renderFeed()`末尾と「もっと見る」クリック後にも保険で1回呼ぶ。`demo/hotel-page.html`に`message`受信スクリプトを追加(origin検証: 本番`https://teer-tee.github.io`と`location.origin`のみ許可、`height`は100〜100000の有限数のみ反映)。60枚展開後の実測が22309pxと想定より大きく、NEXT.md指定の上限20000だと正規の伸長まで弾いてしまうため上限を100000に引き上げた。
+- テストと目視: 新設`check-embedheight.mjs`(8 pass/0 fail)を`check-all.mjs`に追加し18本全PASS、`node --check assets/app.js`OK。`demo/hotel-page.html`mobile`--full`をRead目視しiframeが内容に合わせて伸び二重スクロールなし、`?fixture=kusatsu`(非embed)/`&embed=1`(単体)mobileもデグレなし(カード30枚・番号ピン判読可・文字崩れなし)。
+- 次: ROADMAP残りはR2-1/R11/R14/R19/R28/R37/R40/R51。上限値100000は暫定なので気になれば朝の相談へ。

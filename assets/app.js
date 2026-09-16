@@ -945,6 +945,7 @@
     updatePassiveBox();
 
     renderFeedMap();
+    postHeightToParent();
   }
 
   /**
@@ -1217,6 +1218,47 @@
   function setEmbed(on) {
     state.embed = !!on;
     document.body.classList.toggle('is-embed', !!on);
+    if (state.embed) {
+      startHeightObserver();
+    } else if (heightObserver) {
+      heightObserver.disconnect();
+      heightObserver = null;
+    }
+  }
+
+  var heightObserver = null;
+  var lastSentHeight = 0;
+  var heightRaf = null;
+
+  /**
+   * `?embed=1` のときだけ、親ウィンドウへ現在の高さを知らせる。
+   * 受信側は origin を検証した上で iframe の高さを伸ばす想定(demo/hotel-page.html 参照)。
+   */
+  function postHeightToParent() {
+    if (!state.embed) return;
+    if (!global.parent || global.parent === global) return;
+    if (heightRaf) return;
+    heightRaf = global.requestAnimationFrame(function () {
+      heightRaf = null;
+      var height = Math.ceil(Math.max(
+        document.body ? document.body.scrollHeight : 0,
+        document.documentElement.scrollHeight
+      ));
+      if (height === lastSentHeight) return;
+      lastSentHeight = height;
+      global.parent.postMessage({ type: 'yadotabi:height', height: height }, '*');
+    });
+  }
+
+  /** embed 中だけ body の変化を監視し、高さ変化を親へ伝える。 */
+  function startHeightObserver() {
+    if (heightObserver) return;
+    if (typeof ResizeObserver !== 'function') return;
+    heightObserver = new ResizeObserver(function () {
+      postHeightToParent();
+    });
+    heightObserver.observe(document.body);
+    postHeightToParent();
   }
 
   function applyEntryPoint() {
@@ -1590,6 +1632,7 @@
         if (!e.target.closest('#more-btn')) return;
         state.moreOpen = true;
         renderFeed();
+        postHeightToParent();
       });
     }
   }

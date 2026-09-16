@@ -1,88 +1,75 @@
-# NEXT: R49 + R50 文書2本(判断待ちの設計課題 / fixture 再生成手順)
+# NEXT: R48 `?embed=1` で高さを親に postMessage で通知する
 
-**判断理由**: 残る未完了は R14・R19・R40(いずれも Overpass を叩く fixture 再生成が前提)、R48(embed 高さ postMessage・親子2ファイル改修)、R49・R50(文書)、R51(チップ並び替え)。R49+R50 はコード0行・外部API0回で、しかも R14/R19/R40 の前提資料(再生成の判断基準)と公開向けの正直さ(朝の相談の公開)を同時に埋められるため、外部APIマナーを一切消費しないこのタイミングで先に片づける。
+選定理由: 残る未完了は R14 / R19 / R40 / R51 だが、R14・R19・R40 は fixture 再生成や rank 分布調査を伴い Overpass を叩くリスクがある(無料APIのマナー)。R48 は外部API 0回・fixture 不変で、しかも「予約サイトに貼れる部品」という本プロジェクトの売り(F1/F2)の完成度を直接上げるので最優先。R51 は次サイクル送り。
 
-- 難易度: **sonnet**
-- 所要目安: **20分**
-- 外部API呼び出し: **0回**(Overpass/Wikipedia を叩かない。`make-fixture.mjs` は**実行しない**)
-
----
+## 目的
+現在 `demo/hotel-page.html` の iframe は `height: 640px`(PC 720px)固定で、中身(カード30枚+「もっと見る」で+30枚)が必ずはみ出して **iframe 内に二重スクロール**が出る。埋め込み時だけ中身の高さを親へ通知し、親が iframe を伸ばせるようにする。
 
 ## 対象ファイル(絶対パス)
-
-編集してよいのはこの3つだけ。
-1. `C:\workspace\claude\旅行先用サイト\yadotabi\docs\FIXTURES.md` — **新規作成**
-2. `C:\workspace\claude\旅行先用サイト\yadotabi\README.md` — 節を1つ追加 + `docs/FIXTURES.md` へのリンク1行
-3. `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md` / `docs\NIGHTLOG.md` — 完了記録(毎サイクル恒例)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js`(送信側)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\demo\hotel-page.html`(受信側サンプル)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-embedheight.mjs`(新規・機械検査)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-all.mjs`(18本目として登録)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md` / `docs\NIGHTLOG.md`(完了記録)
 
 ## 実装方針
 
-### R49: README に「判断待ちの設計課題」節を追加
+### 1. 送信側 `assets/app.js`
+- 既存の `setEmbed(on)`(**app.js:1217**)の直後に `postHeightToParent()` と `startHeightObserver()` を新設する。
+- **必ず `state.embed === true` のときだけ送る**。非 embed では ResizeObserver も張らない(`setEmbed(true)` の中からのみ `startHeightObserver()` を呼ぶ)。フォールバック経路(app.js:1318 付近の `setEmbed(false)` 相当)で embed が解除されたら observer を `disconnect()` する。
+- 送る内容:
+  ```
+  parent.postMessage({ type: 'yadotabi:height', height: <number> }, '*');
+  ```
+  他の情報は載せない。受信は一切しない(`message` リスナーを足さない)。
+- 高さの取り方: `Math.ceil(document.documentElement.scrollHeight)`。`body` は `margin:0` 前提だが、念のため `Math.max(body.scrollHeight, documentElement.scrollHeight)` を取る。
+- 発火点は 2 系統:
+  1. `new ResizeObserver(...)` で `document.body` を監視(描画完了・画像読み込み・「もっと見る」展開のすべてを1つで拾える)。`ResizeObserver` が無い環境(古いブラウザ)は `typeof ResizeObserver === 'function'` でガードし、無ければ何もしない(送らないだけで壊れない)。
+  2. 保険として `renderFeed()`(**app.js:869**)の末尾と、「もっと見る」クリックハンドラ(**app.js:1589-1593**、`state.moreOpen = true; renderFeed();` の直後)から `postHeightToParent()` を1回呼ぶ。ResizeObserver が先に発火していれば同値なので二重送信は無害。
+- **連打防止**: 直前に送った高さと同じなら送らない(`lastSentHeight` を持つ)。さらに `requestAnimationFrame` で1フレームに1回へ丸める。
+- 状態Aや通常モードのコードパス(`render()` app.js:1148、`ensureMap()`)には触らない。
 
-- 置き場所: README の「## 仕組み(かんたん解説)」の**後ろ**、「## URLパラメータ一覧」の**前**。`## 判断待ちの設計課題` として新設する。
-- 中身は `docs/NIGHTLOG.md` の「## 朝の相談(判断が要るもの)」節(NIGHTLOG:176〜184 付近)の4件を、**外部の読者が読んでも分かる日本語**に書き直したもの。1件あたり「現象 → なぜ迷っているか → 選択肢」を2〜4行。**判断はしない**(「〜にした」と書かない。「未決」であることを明示する)。
-- 4件の事実(NIGHTLOG から確認済み。これ以外を創作しない):
-  1. **検索候補とエリアチップの重なり(R2-1)** — 候補ドロップダウンは検索欄の真下に出るため、その下のエリアチップ行に必ず重なる。選択肢: (a)候補が開いている間チップを隠す (b)薄くする (c)このまま。
-  2. **カテゴリ多様性の減点が有名どころを締め出す** — 箱根では attraction 118件・museum 109件が競合し、減点 `18×(n-2)` が上限なく積み上がる。大涌谷 −72・彫刻の森美術館 −108 で、距離加点や2ソース一致 +20 を打ち消して上位30枚に入らない。近場の無名スポットが先にカテゴリ枠を埋めるため**有名どころほど不利**という逆転。選択肢: (a)減点に上限 (b)Wikipedia記事があるものは免除 (c)このまま(「認知外を出す」狙い通りとみなす)。
-  3. **実APIと fixture の Wikipedia 件数の食い違い** — 同じ中心(箱根湯本 35.2324,139.1069)・同じ半径10kmで `fixtures/hakone.json` は 50件・最遠3,720m、R20修正後の実API実測は 34件・最遠3,574m。つまり「50件上限で打ち切られている」という当初の前提が現在は再現しない。選択肢: (a)fixture 再生成で実APIに合わせる (b)真因調査に1サイクル使う (c)深追いしない。
-  4. **小地図のピンのずらし幅** — 密集時に表示位置だけ最大96pxずらして番号を読めるようにしている(実座標は書き換えない)。180pxの概観図なので「正確さより見やすさ」を優先し、厳密な位置は Googleマップリンク側に任せる方針でよいか。
-- 節の冒頭に1行だけ前置き(例: 「作りかけを隠さないために、まだ決めていない設計上の論点をそのまま公開しています。」)。
-- 節の末尾に `docs/NIGHTLOG.md` への参照を1行。
+### 2. 受信側サンプル `demo/hotel-page.html`
+- `iframe.embed`(**demo/hotel-page.html:209**)の `height: 640px`(CSS **:136-145**)は**初期高さとして残す**(JSが無効/postMessage が来ないときに真っ白にならないため)。
+- `</body>`(**:223**)の直前に `<script>` を1つ足す:
+  - `window.addEventListener('message', function (e) { ... })`
+  - **origin を必ず検証する**。許可するのは `https://teer-tee.github.io`(本番)と、ローカル検査用に `window.location.origin`(同一オリジンで `../index.html` を読むため `e.origin === location.origin` になる)。この2つ以外は即 return。
+  - `e.data` が object で `e.data.type === 'yadotabi:height'` かつ `height` が 100〜20000 の有限数のときだけ `iframe.style.height = height + 'px'`。範囲外は無視(暴走防止)。
+  - 対象 iframe は `document.querySelector('iframe.embed')` を1つだけ。
+- 埋め込みコード例の `<pre class="tag-example">`(**:220**)にも、受信スクリプトが必要である旨の1行コメントを添える(営業資料としての正しさ)。
 
-### R50: `docs/FIXTURES.md` を新規作成
+### 3. 機械検査 `scripts/check-embedheight.mjs`(新規)
+`scripts/check-more.mjs` の作り(自前で `python -m http.server 3000` を起動し finally で落とす / Playwright は `file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs` を絶対パスで読む)をそのまま踏襲する。確認項目:
+1. `/demo/hotel-page.html` を開き、カード描画完了後に `iframe.embed` の実高さ(`getBoundingClientRect().height`)が初期値 640px より**大きく**なっている
+2. iframe 内の `#more-btn` をクリック(`frameLocator`)した後、iframe の高さが**さらに増える**
+3. 増えた後の iframe 高さが、iframe 内の `document.documentElement.scrollHeight` と ±4px 以内で一致する
+4. 親ページ側に二重スクロールが無い(iframe 内 `scrollHeight <= clientHeight + 4`)
+5. **非 embed の検査**: `/index.html?fixture=kusatsu`(embed なし)を直接開き、`postMessage` が一度も呼ばれないこと。`addInitScript` で `window.parent.postMessage` をラップしてカウンタに記録し、描画完了後に 0 件であることを確認する
+6. `?fixture=kusatsu&embed=1` 単体(親なし)を開いてもコンソールエラー 0 件
+7. コンソールエラー 0 件(親・子とも)
 
-`scripts/make-fixture.mjs` の**実物**(読んで確認済みの事実のみ)を元に書く。創作禁止。
+`scripts/check-all.mjs` の `SCRIPTS` 配列(**:13-28**)にアルファベット順の位置(`check-chipcurrent.mjs` と `check-engine.mjs` の間)で `'scripts/check-embedheight.mjs'` を追加し、ヘッダコメント(**:2**)の「16本」「17本」を「17本」「18本」に直す。
 
-- **目的**: `?fixture=<area>` は撮影・検証を外部API0回で回すための保存済み生レスポンス。加工前の生JSONを保存し、ブラウザ側 geo.js の整形コードをそのまま通す(make-fixture.mjs:1-9)。
-- **対象エリア表**(`AREAS` = make-fixture.mjs:18-22 の実値):
+## 完了条件(検証可能)
+- `node scripts/check-embedheight.mjs` が全項目 PASS・exit 0
+- `node scripts/check-all.mjs` が **18本中18本 PASS**・exit 0
+- `node --check assets/app.js` 通過
 
-  | area | ラベル | lat | lon | osmRadiusM | wikiRadiusM |
-  |---|---|---|---|---|---|
-  | kusatsu | 草津温泉 | 36.6226 | 138.5960 | 15000(既定) | 10000 |
-  | hakone | 箱根湯本 | 35.2324 | 139.1069 | 30000(個別指定) | 10000 |
-  | dogo | 道後温泉 | 33.8520 | 132.7860 | 15000(既定) | 10000 |
-
-- **実行方法**: `node scripts/make-fixture.mjs <area>`(引数なしは kusatsu)。出力先 `fixtures/<area>.json`。
-- **エリアを増やす手順**: (1) `make-fixture.mjs` の `AREAS` に `{ lat, lon, label }`(必要なら `osmRadiusM`)を追加 → (2) `node scripts/make-fixture.mjs <area>` を**1回だけ**実行 → (3) `docs/check.mjs` の TARGETS に `fixtures/<area>.json` を追加 → (4) README の `?fixture=` の行と URLパラメータ表に area 名を追記 → (5) `?fixture=<area>` を mobile で撮影して目視。エリア名は `/^[a-z0-9_-]+$/` のみ(app.js の `fixtureNameFromUrl` と同じ検証)。
-- **保存される meta**: `area` / `label` / `lat` / `lon` / `osmRadiusM`(実際に成功した半径) / `wikiRadiusM` / `generatedAt`(ISO文字列)。`generatedAt` は画面ヘッダーの「固定データ」バッジに取得日として表示される(R45)ので、鮮度が古くなったことに気づける。
-- **Overpass のマナー**(スクリプトの実装どおり): Wikipedia を先に取り、Overpass は後(Wikipedia 失敗時に Overpass を無駄打ちしないため・make-fixture.mjs:178-180)。429/504 は 60秒待って最大2回再試行、それでも駄目なら半径 4000m に落として1回試す(`RETRY_WAIT_MS=60000` / `MAX_RETRY=2` / `FALLBACK_RADIUS_M=4000`)。**半径が落ちて成功した場合は fixture として採用せず日を改める**(meta.osmRadiusM が意図と違う値で残るため)。1サイクルあたりの生成は1エリアまで。
-- **既存 fixture は原則再生成しない方針**: 既存3エリアを取り直すと元データが変わり、カードの並び・枚数・写真が変わる。過去の撮影・検査(`scripts/check-*.mjs` の期待値、09研究ノートの順位記録)との比較ができなくなるため、**再生成は「上流のクエリを変えた」「データが明らかに古い」など理由があるときだけ**。実施する場合は前後で `node scripts/dump-rank.mjs <area>` を取ってカード枚数と上位の並びを差分比較し、NIGHTLOG に記録する。
-- **`buildOverpassQuery` の同期注意**: make-fixture.mjs のクエリは `assets/geo.js` の同名関数と**同一でなければならない**(make-fixture.mjs:51-52 のコメント)。片方だけ直すと fixture と本番で候補が食い違う。
-- 末尾に「関連: R14(hakone.json 900KB の軽量化)・R19(far 分布)・R40(別府追加)はいずれもこの手順を前提にする」と1行。
-
-### README からのリンク
-
-「## ファイル構成」の `fixtures/` の行、または「開発者向け」節に
-`固定データの作り方・再生成の判断基準は [docs/FIXTURES.md](docs/FIXTURES.md) を参照。` を1行足す。
-
-## 完了条件(すべて検証可能)
-
-1. `docs/FIXTURES.md` が存在し、上記のエリア表(3行)・実行コマンド・meta 一覧・Overpass のマナー・再生成しない方針 が書かれている。
-2. README に `## 判断待ちの設計課題` 節があり、4件すべてが載っている。**どれにも結論が書かれていない**こと。
-3. README から `docs/FIXTURES.md` への相対リンクが1本ある。
-   ※ `docs/check.mjs` の README 検査は `<img src>` と `![]()` の**画像のみ**抽出する実装(check.mjs:225-230)なので、この .md リンクは自動検査の対象外。**リンク先ファイルが実在することを `ls docs/FIXTURES.md` で目視確認**すること(check.mjs は改造しない)。
-4. `node scripts/check-all.mjs` が **全本 PASS・exit 0**(README の画像3本を含む既存のリンク検査が壊れていないことの確認を兼ねる)。
-5. `git status --porcelain` で **`assets/` `fixtures/` `scripts/` `demo/` `index.html` の差分が空**(変更は docs/ と README.md のみ)。
-
-## 検証手順
-
-```
-node scripts/check-all.mjs          # 全本 PASS / exit 0
-git status --porcelain              # assets/ fixtures/ scripts/ demo/ index.html が出ないこと
-```
-
-画面変更が無いため**撮影は省略してよい**(NIGHTLOG にその旨を書く)。
+## 検証手順(撮影・目視)
+1. `node C:\workspace\tools\shot\shot.mjs http://127.0.0.1:3000/demo/hotel-page.html --mobile --full` を撮り、**iframe の下端でカードが切れておらず**、iframe の下に「1行の iframe タグを貼るだけで…」の営業注記が続いていることを Read で目視
+2. 同 URL の desktop 幅も1枚
+3. デグレ確認: `?fixture=kusatsu`(非 embed・mobile)と `?fixture=kusatsu&embed=1`(単体・mobile)を各1枚。カード30枚・番号ピン1〜30判読可・文字崩れなし・コンソールエラー0件
+4. 撮影は全て fixture 経由なので **外部API 0回**
 
 ## 変更禁止範囲
+- `assets/engine.js` / `assets/geo.js` / `fixtures/*.json`(rank の重み・閾値・収集ロジックには一切触らない)
+- 既存 `scripts/check-*.mjs` の中身(`check-all.mjs` への1行追加のみ可)
+- `?embed=1` の既存の出し分け(検索・チップ・地図を隠す挙動、`.is-embed` の CSS)
+- git stash / reset --hard / checkout でのファイル復元は禁止
 
-- `assets/` 配下すべて(app.js / geo.js / engine.js / *.css)
-- `fixtures/` 配下すべて(**再生成しない**)
-- `scripts/` 配下すべて(`make-fixture.mjs` も `check-*.mjs` も編集しない)
-- `docs/check.mjs`(README のリンク検査ロジックを .md 対応に拡張しない。やるなら別タスクとして ROADMAP に起票)
-- `index.html` / `demo/`
-- 外部API(Overpass / Wikipedia / Nominatim)を**1回も叩かない**
-- 朝の相談4件について**判断を下さない**(選択肢を並べるだけ)
+## 難易度・所要目安
+- 難易度: **sonnet**(既存パターンの踏襲。新規ロジックは postMessage 送信 15行程度+受信サンプル 15行程度)
+- 所要目安: 実装 20分 + check-all 約1分 + 撮影/目視 10分 = **30〜40分**
 
-## 終わったら
-
-`docs/ROADMAP.md` の R49・R50 を `[x] 2026-09-16` にし、`docs/NIGHTLOG.md` に3行(やったこと/確認結果/次)追記 → コミット → `git push`。
+## 実装後
+`docs/ROADMAP.md` の R48 を `[x] 2026-09-16` に、`docs/NIGHTLOG.md` に3行(やったこと/見た目の確認結果/次)を追記し、コミット→push。報告は簡潔に。
