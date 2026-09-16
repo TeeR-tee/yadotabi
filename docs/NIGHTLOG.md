@@ -525,3 +525,6 @@
 - R87 状態Bのスケルトン(読み込み中の骨組み)を`?fixture=kusatsu&slow=osm3000,wiki9000`のmobile/desktopで撮影・目視。(a)骨組み高さ312.3px・実カード高さ370.7px(差約58px、カード間余白で自然に区切られガタつき軽微)(b)灰色グラデーションのスケルトンと白背景の実カードの境目は明確(c)`prefers-reduced-motion: reduce`で`getComputedStyle(el).animationName`が`none`になることを実測、既存のシマー停止実装が機能している。3点とも崩れなしのためstyle.cssは無変更で閉じた。ついでにR86(もっと見るのスクロール位置維持)も計画役の実測により実装不要と判明したため合わせてクローズ。
 - 撮影は`screenshots/`に4枚保存(mobile/desktopのスケルトン状態、mobile全体、デグレ確認用の通常状態)。`node scripts/check-all.mjs`は27本中27本PASS(1回目はcheck-nohotels.mjsが環境要因のERR_NO_BUFFER_SPACEで一過性FAIL、単体再実行と2回目の通しで全緑を確認済み)。
 - 次: ROADMAP残りはR64(GitHub Actions無料枠・朝の相談寄り)/R81(Overpass1回)/R85(英語デモページ)/R88(埋め込み高さ上限見直し)/R89(check-all高速化)/R90(iframe lazy)から計画役が選定。
+- R89 `scripts/check-hotelparam.mjs` の固定待ち(`waitFor(1500)`×17回)を条件待ちに置換。`waitRendered()`共通ヘルパ(#feed-title描画完了、5000msタイムアウト)を新設し、バッジ可視/日付/状態A(#map の leaflet-container 付与待ち)もそれぞれ専用の条件待ちに変更。タイムアウトは例外を投げず既存の`ok()`判定にFAILとして畳み込む方式にした(全体停止を避けるため)。検査項目・ok()呼び出し数・page.goto回数(17件)は無変更。
+- 実測: 変更前中央値33553ms→変更後中央値8428ms(約75%短縮)、41 pass/0 fail(変更前後で一致)、連続5回すべてPASS(フレークなし)。`?fixture=kusatsu`mobileを目視し番号ピン判読可・カード30枚・コンソールエラー0件でデグレなし。`check-all.mjs`は27本中27本PASS/合計221.2s(前回約244sから短縮)。
+- 次: ROADMAP残りはR64/R81/R85/R88/R90から計画役が選定。

@@ -33,6 +33,7 @@
 | check-sample | サンプル導線チップの表示・件数 |
 
 所要目安(R55 実測・NIGHTLOG 2026-09-16 R60+R55、当時20本時点): 合計 **162.8s**、最遅 **check-hotelparam 27.9s**、次点 **check-feednote 12.3s**、僅差で **check-attrib 12.1s**。現在は25本に増え約4分。
+R89(2026-09-16)実測: `check-hotelparam` は固定待ちを条件待ちに置換して 33.9s→8.4s(中央値、41 pass/0 fail一致)。27本(check-all.mjs)の合計は **221.2s**、最遅は `check-embedbg 18.2s` に交代(hotelparam は最遅から外れた)。
 
 ## サーバもPlaywrightも不要な4本
 

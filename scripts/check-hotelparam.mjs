@@ -60,6 +60,22 @@ function waitFor(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// R89: 固定待ちの代わりに「#feed-title の描画完了」を待つ共通ヘルパ。
+// 各検査関数はこれに加えて自分固有の条件待ちも行う。
+// タイムアウト(5000ms)時は例外を投げず false を返し、呼び出し側で FAIL として記録する
+// (waitForFunction/waitForSelector が timeout で reject するのを catch して吸収する)。
+async function waitRendered(page) {
+  try {
+    await page.waitForFunction(() => {
+      const el = document.querySelector('#feed-title');
+      return el && el.textContent.trim().length > 0;
+    }, { timeout: 5000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function checkTitle(browser, path, expectedTitle, label) {
   const context = await browser.newContext({ viewport: { width: 375, height: 812 } });
   const page = await context.newPage();
@@ -70,10 +86,10 @@ async function checkTitle(browser, path, expectedTitle, label) {
   page.on('pageerror', (err) => consoleErrors.push(String(err)));
 
   await page.goto(`${BASE}${path}`, { waitUntil: 'load' });
-  await waitFor(1500);
+  const rendered = await waitRendered(page);
 
-  const title = await page.locator('#feed-title').textContent();
-  ok(title !== null && title.trim() === expectedTitle, label + ': 見出しが「' + expectedTitle + '」', title);
+  const title = rendered ? await page.locator('#feed-title').textContent() : null;
+  ok(rendered && title !== null && title.trim() === expectedTitle, label + ': 見出しが「' + expectedTitle + '」', rendered ? title : 'timeout waiting #feed-title');
   ok(consoleErrors.length === 0, label + ': コンソールエラー0件', consoleErrors);
 
   await context.close();
@@ -89,17 +105,27 @@ async function checkBadgeVisible(browser, path, expectVisible, label) {
   page.on('pageerror', (err) => consoleErrors.push(String(err)));
 
   await page.goto(`${BASE}${path}`, { waitUntil: 'load' });
-  await waitFor(1500);
+  let timedOut = false;
+  if (expectVisible) {
+    try {
+      await page.locator('#feed-badge').waitFor({ state: 'visible', timeout: 5000 });
+    } catch { timedOut = true; }
+  } else {
+    // 不可視ケースは待つ対象が無いので #feed-title の描画完了を待つ
+    // (早すぎるタイミングで不可視判定して誤PASSしないようにする)。
+    const rendered = await waitRendered(page);
+    if (!rendered) timedOut = true;
+  }
 
   const badge = page.locator('#feed-badge');
-  const visible = await badge.evaluate((el) => {
+  const visible = timedOut ? null : await badge.evaluate((el) => {
     return el.offsetParent !== null && getComputedStyle(el).display !== 'none';
   });
-  ok(visible === expectVisible, label + ': #feed-badge が' + (expectVisible ? '可視' : '不可視'), visible);
+  ok(!timedOut && visible === expectVisible, label + ': #feed-badge が' + (expectVisible ? '可視' : '不可視'), timedOut ? 'timeout' : visible);
   if (expectVisible) {
     // R45: 生成日付が続くことがあるため「固定データ」を含むかで見る(厳密一致はしない)
-    const text = (await badge.textContent() || '').trim();
-    ok(text.indexOf('固定データ') === 0, label + ': #feed-badge の本文が「固定データ」で始まる', text);
+    const text = timedOut ? '' : (await badge.textContent() || '').trim();
+    ok(!timedOut && text.indexOf('固定データ') === 0, label + ': #feed-badge の本文が「固定データ」で始まる', timedOut ? 'timeout' : text);
   }
   ok(consoleErrors.length === 0, label + ': コンソールエラー0件', consoleErrors);
 
@@ -117,16 +143,28 @@ async function checkBadgeDate(browser, path, expectDate, label) {
   page.on('pageerror', (err) => consoleErrors.push(String(err)));
 
   await page.goto(`${BASE}${path}`, { waitUntil: 'load' });
-  await waitFor(1500);
+  let timedOut = false;
+  if (expectDate) {
+    try {
+      await page.waitForFunction(() => {
+        const el = document.querySelector('#feed-badge-date');
+        return el && el.offsetParent !== null && getComputedStyle(el).display !== 'none'
+          && /\d{4}-\d{2}-\d{2}/.test((el.textContent || '').trim());
+      }, { timeout: 5000 });
+    } catch { timedOut = true; }
+  } else {
+    const rendered = await waitRendered(page);
+    if (!rendered) timedOut = true;
+  }
 
   const dateEl = page.locator('#feed-badge-date');
-  const visible = await dateEl.evaluate((el) => {
+  const visible = timedOut ? null : await dateEl.evaluate((el) => {
     return el.offsetParent !== null && getComputedStyle(el).display !== 'none';
   });
-  ok(visible === expectDate, label + ': #feed-badge-date が' + (expectDate ? '可視' : '不可視'), visible);
+  ok(!timedOut && visible === expectDate, label + ': #feed-badge-date が' + (expectDate ? '可視' : '不可視'), timedOut ? 'timeout' : visible);
   if (expectDate) {
-    const text = (await dateEl.textContent() || '').trim();
-    ok(/\d{4}-\d{2}-\d{2}/.test(text), label + ': #feed-badge-date が日付を含む', text);
+    const text = timedOut ? '' : (await dateEl.textContent() || '').trim();
+    ok(!timedOut && /\d{4}-\d{2}-\d{2}/.test(text), label + ': #feed-badge-date が日付を含む', timedOut ? 'timeout' : text);
   }
   ok(consoleErrors.length === 0, label + ': コンソールエラー0件', consoleErrors);
 
@@ -144,14 +182,23 @@ async function checkStateA(browser, path, label) {
   page.on('pageerror', (err) => consoleErrors.push(String(err)));
 
   await page.goto(`${BASE}${path}`, { waitUntil: 'load' });
-  await waitFor(1500);
+  let timedOut = false;
+  // 状態A(範囲外座標)では #feed-title が空のまま安定するため waitRendered は使えない。
+  // 代わりに Leaflet が #map に leaflet-container クラスを付けて初期化完了する
+  // タイミング(ensureMap() の同期処理)を待つ。
+  try {
+    await page.waitForFunction(() => {
+      const el = document.querySelector('#map');
+      return el && el.classList.contains('leaflet-container');
+    }, { timeout: 5000 });
+  } catch { timedOut = true; }
 
-  const mapVisible = await page.locator('#map').evaluate((el) => {
+  const mapVisible = timedOut ? false : await page.locator('#map').evaluate((el) => {
     return el.offsetParent !== null && getComputedStyle(el).display !== 'none';
   });
-  ok(mapVisible, label + ': #map が可視(状態A)', mapVisible);
-  const title = (await page.locator('#feed-title').textContent() || '').trim();
-  ok(title !== 'この宿の周辺', label + ': #feed-title が「この宿の周辺」になっていない(状態Bに遷移していない)', title);
+  ok(!timedOut && mapVisible, label + ': #map が可視(状態A)', timedOut ? 'timeout' : mapVisible);
+  const title = timedOut ? '' : (await page.locator('#feed-title').textContent() || '').trim();
+  ok(!timedOut && title !== 'この宿の周辺', label + ': #feed-title が「この宿の周辺」になっていない(状態Bに遷移していない)', timedOut ? 'timeout' : title);
   ok(consoleErrors.length === 0, label + ': コンソールエラー0件', consoleErrors);
 
   await context.close();
@@ -196,9 +243,9 @@ async function main() {
       const context = await browser.newContext({ viewport: { width: 375, height: 812 } });
       const page = await context.newPage();
       await page.goto(`${BASE}/?fixture=kusatsu`, { waitUntil: 'load' });
-      await waitFor(1500);
-      const title = (await page.locator('#feed-title').textContent() || '').trim();
-      ok(!title.includes('固定データ'), 'b. #feed-title に「固定データ」を含まない', title);
+      const rendered = await waitRendered(page);
+      const title = rendered ? (await page.locator('#feed-title').textContent() || '').trim() : '';
+      ok(rendered && !title.includes('固定データ'), 'b. #feed-title に「固定データ」を含まない', rendered ? title : 'timeout');
       await context.close();
     }
 

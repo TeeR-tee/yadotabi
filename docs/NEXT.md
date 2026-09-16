@@ -1,116 +1,84 @@
-# 次の1タスク: R100 カード見出しの長いスポット名の折り返し方針を決める
+# 次のタスク: R89 `check-hotelparam.mjs` の高速化(検査を削らずに待ち方を変える)
 
-- **タスクID**: R100
+- **タスクID**: R89
 - **難易度**: sonnet
-- **所要目安**: 20〜30分(実装は数行、大半は撮影と目視)
+- **所要目安**: 20〜30分
+- **目的**: `check-all.mjs` 27本の最遅本である `check-hotelparam.mjs` の所要時間を、**検査項目を1つも減らさずに**短縮する。固定待ち(`waitForTimeout` 相当)を「待つべきものを待つ」形に置き換えるのが本題。
 
-## 目的
+## 実測で判明した前提(2026-09-16 計画役が実測)
 
-カード見出し `.feedcard__name` だけが、同じ style.css 内の他の「長い名前を扱う場所」と方針が揃っていない。
-ラテン文字の長い連続(スペースの無い語)が来たときにカード枠からはみ出さないことを保証し、
-実測で3行を超えないなら「確認した」事実だけ残して閉じる。
+計測: `node scripts/check-hotelparam.mjs` を同条件で3回連続実行(他プロセスなし)。
 
-## 実測で判明した前提(計画役が今サイクルで測った)
+| 回 | 所要 |
+|---|---|
+| 1回目 | 33917 ms |
+| 2回目 | 34332 ms |
+| 3回目 | 33432 ms |
+| **中央値** | **33917 ms** |
 
-### 1. CSS の現状(確定)
-
-- `assets/style.css:450-455` `.feedcard__name` の宣言は **`margin` / `font-size: var(--fs-lg)` / `font-weight: 700` / `line-height: var(--lh-tight)` の4つだけ**。`overflow-wrap` も `word-break` も `hyphens` も無い。
-- 対比: `.suggest__name`(`style.css:134-137`)と `.topbar__title`(`style.css:329-336`)はどちらも `overflow: hidden; text-overflow: ellipsis; white-space: nowrap;` で1行に省略している。カード見出しだけ無方針。
-- トークン実測値(`assets/tokens.css`): `--fs-lg: 1.125rem`(=18px、tokens.css:47) / `--lh-tight: 1.3`(tokens.css:51) / `--sp-4: 16px`(tokens.css:58)。よって見出し1行の高さは約23.4px。
-- カード本文の左右パディングは `.feedcard__body`(`style.css:444`)の `var(--sp-3) var(--sp-4) var(--sp-4)` = 左右16px。
-- `body { overflow-x: hidden }`(`style.css:14`)が**ページ全体の横スクロールは塞いでいる**ため、はみ出しても横スクロールバーは出ない。つまり事故が起きても「文字がカード右端で見えなくなる」形で静かに欠けるだけで、気づきにくい。**この点は今回の実装で必ず目視確認すること。**
-
-### 2. 最長スポット名の実測(4 fixture を node で直接集計・外部API 0回)
-
-OSM 側(`overpass.elements[].tags.name`)の最長名:
-
-| エリア | 名前付きOSM要素数 | 最長名 | 文字数 |
-|---|---|---|---|
-| kusatsu | 158 | 湯けむりに ふすぼりもせぬ 月の貌 小林一茶 | 22 |
-| hakone | 3324 | Shinkansen bottom view at full speed | 36 |
-| dogo | 401 | 港山城跡　みなとやまじょうあと　MinatoyamaJouato Minatoyama Castle Ruins | 56 |
-| beppu | 487 | Kyushu Yufuin Folk Craft Village | 32 |
-
-Wikipedia 側(`wiki.query.pages[].title`)の最長名:
-
-| エリア | 最長タイトル | 文字数 |
-|---|---|---|
-| kusatsu | ジェイアールバス関東長野原支店 | 15 |
-| hakone | 山崎インターチェンジ (神奈川県) | 17 |
-| dogo | 愛媛大学教育学部附属特別支援学校 | 16 |
-| beppu | 京都大学大学院理学研究科附属地球熱学研究施設 | 22 |
-
-**重要な観察**: 日本語名は最長でも22字で、日本語は任意の位置で折り返せるため崩れない。
-リスクがあるのは **dogo の `MinatoyamaJouato`(16字の途切れないラテン文字列)** と
-**hakone/beppu の英語名(スペース区切りなので語単位では折り返せる)** の2種。
-`overflow-wrap: anywhere` が効くのは前者(スペースの無い長い連続)のみで、そこが本タスクの本丸。
-
-### 3. 未確認(作業役が確かめること)
-
-- 上の最長名が **実際に上位60件のカードに載るか**は未確認(fixture の生データを数えただけで、`rank()` を通していない)。
-  `Shinkansen bottom view at full speed` や `港山城跡　…` は R79/R80 の除外ルールや rank 下位で落ちている可能性が高い。
-  **作業役は `node scripts/dump-rank.mjs <area>` を4エリアで回し、cards+more(上位60件)に載る名前の最長を実測して NIGHTLOG に書くこと。**
-- 上位60件に長名が1つも無い場合でも、fixture を作り直したり別エリアを足した瞬間に入りうるので、
-  **予防として `overflow-wrap: anywhere` を足す方針は変えない**(1行追加・副作用なし)。
+- ROADMAP R89 本文の「27秒」は R55 当時の値。**現在は約34秒**で、R99 の3ケース追加(`scripts/check-hotelparam.mjs:225-227`)などで増えている。ROADMAP の数字は事実誤認として NEXT.md のこの実測で上書きする。
+- **主因は固定待ちで確定**。検査関数は4種あり、いずれも `await waitFor(1500)` を1回持つ:
+  - `checkTitle()` … `scripts/check-hotelparam.mjs:63`、待ちは `:73`
+  - `checkBadgeVisible()` … `:82`、待ちは `:92`
+  - `checkBadgeDate()` … `:110`、待ちは `:120`
+  - `checkStateA()` … `:137`、待ちは `:147`
+  - さらに `main()` 内の直書きケース b … `:195-203`、待ちは `:199`
+- `main()`(`:160-235`)から呼ばれる検査ケースは **17件**(`:177-227`)。`page.goto` は関数側5箇所 × 呼び出し17回 = **17回のページ読み込み**。
+- したがって **固定待ちの合計は 1500ms × 17 = 25500ms**。全体 33917ms の **約75%** が固定待ち。残り約8.4秒がブラウザ起動・context 生成・goto・評価。
+- `browser.newContext()` は **17回**(`:64` `:83` `:111` `:138` `:196` の5箇所を17回通過)。`chromium.launch()` は **1回**のみ(`:174`)なのでブラウザ起動は既に共有済み。
+- 待っている対象は毎回「`#feed-title` / `#feed-badge` / `#feed-badge-date` / `#map` の描画完了」であり、fixture モードは外部APIを叩かないため実際の描画は1500msよりずっと早いはず(**未確認**: 実描画完了までの実測値は取っていない)。
+- `waitFor()` は `setTimeout` のラッパ(`:59-61`)で、Playwright の `waitForTimeout` ではないが役割は同じ。
 
 ## 対象ファイル(絶対パス)
 
-- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\style.css` (変更するのはここだけ)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md` (完了マーク)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\NIGHTLOG.md` (3行記録)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-hotelparam.mjs`(**唯一の変更対象**)
+- 参考(読むだけ・変更禁止): `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js`、`C:\workspace\claude\旅行先用サイト\yadotabi\docs\CHECKS.md`
 
-## 実装方針
+## 実装方針(行番号つき)
 
-1. `node scripts/dump-rank.mjs kusatsu|hakone|dogo|beppu` を4回回し、**cards+more の名前の最長文字数**を記録する(外部API 0回)。
-2. `assets/style.css:450` の `.feedcard__name` ブロックに **1行だけ**追加する:
-
-```css
-.feedcard__name {
-  margin: 0;
-  font-size: var(--fs-lg);
-  font-weight: 700;
-  line-height: var(--lh-tight);
-  /* 長いラテン文字の連続(例 dogo の MinatoyamaJouato)でもカード枠からはみ出さない。
-     日本語名は任意位置で折り返せるので影響なし。省略はしない(情報を隠さない方針)。 */
-  overflow-wrap: anywhere;
-}
-```
-
-3. `.feedcard__times`(`style.css:466`)の `white-space: nowrap` は **R54 の判断なので絶対に触らない**。
-4. `.suggest__name` / `.topbar__title` の省略方針も触らない(カード見出しは「省略せず折り返す」で方針が違ってよい。理由を NIGHTLOG に1行書くこと)。
-5. 撮影で3行を超えるカードが出た場合も、**行数を制限する `-webkit-line-clamp` は入れない**(名前を隠すと何の場所か分からなくなる)。3行超が出たら事実だけ NIGHTLOG に記録する。
+1. **固定待ちを条件待ちに置換**。各検査関数の `await waitFor(1500)` を、その関数が本当に必要とする条件の待機に変える。
+   - `checkTitle()` `:73` → `#feed-title` の textContent が空でなくなるまで待つ。
+     例: `await page.waitForFunction(() => { const el = document.querySelector('#feed-title'); return el && el.textContent.trim().length > 0; }, { timeout: 5000 });`
+   - `checkBadgeVisible()` `:92` → 期待が「可視」のときは `#feed-badge` が可視になるまで待つ。**期待が「不可視」のケース(`:209` d)は待つ対象が無い**ので、代わりに `#feed-title` の描画完了を待つ形にする(不可視の確認を早すぎるタイミングで行って誤PASSしないこと)。
+   - `checkBadgeDate()` `:120` → 同様。`expectDate === true` なら `#feed-badge-date` のテキストが日付正規表現にマッチするまで、`false` なら `#feed-title` の描画完了まで。
+   - `checkStateA()` `:147` → `#map` が可視になるまで(`page.waitForSelector('#map', { state: 'visible' })` + `#feed-title` の描画完了)。
+   - `main()` 内ケース b `:199` → `checkTitle()` と同じ条件待ちに揃える。
+2. **共通ヘルパを1つ作る**。同じ待機式が5箇所に散るので、`async function waitRendered(page)` のような小さな関数を `:61` の直後あたりに足して各所から呼ぶ(重複を増やさない)。
+3. **タイムアウトは必ず設ける**(5000ms 程度)。条件待ちが成立しない場合に無限待ちにならないこと。タイムアウトしたら例外ではなく **FAIL として記録**して次のケースへ進む形が望ましい(現状は例外で `main().catch` に落ちて全体が止まる)。ここは実装者判断でよいが、選んだ理由を NIGHTLOG に1行残すこと。
+4. **context の使い回しは今回やらない**。`page.on('console')` でケースごとにエラーを分離して数えているため、共有すると混線する。17回の `newContext` は残す(1回あたりのコストは goto 込みで約500ms 程度と推定、**未確認**)。もし条件待ち置換だけで目標に届かないときの次の一手として `docs/CHECKS.md` に書き残す。
+5. **検査の中身・件数・期待値は1文字も変えない**。`ok()` の呼び出し数・ラベル・アサーション内容は現状維持。
 
 ## 完了条件
 
-- `.feedcard__name` に `overflow-wrap: anywhere` が入っている(または、dump-rank 実測で不要と判断したなら**その理由を NIGHTLOG に書いたうえで**無変更で閉じる)。
-- 375px 幅の撮影で、カード見出しがカード右端(`.feedcard__body` の右パディング16px)を越えて欠けていない。
-- `git diff --stat -- assets` が `style.css` のみ(app.js / engine.js / geo.js に差分なし)。
-- `node scripts/check-all.mjs` が **27本全緑**(exit 0)。
+- [ ] `node scripts/check-hotelparam.mjs` の **PASS 件数が変更前と完全に一致**する(変更前の件数を先に記録しておくこと。現状 `==== N pass / 0 fail ====` の N をメモ)。`fail` は 0。
+- [ ] **同条件3回の中央値で比較**する。変更前の中央値は **33917 ms**(上表)。変更後も同じく3回連続実行して中央値を出し、NIGHTLOG に before/after を両方書く。
+- [ ] **検査項目数は変えない**(`ok()` の呼び出し回数・`page.goto` の回数・ケース数17件はすべて据え置き)。
+- [ ] 5秒以上縮めば成果。縮まなければ**なぜ縮まないか**(どこに時間が残っているかの実測内訳)を `docs/CHECKS.md` に1段落書いて閉じる — これも正当な完了。
+- [ ] `node scripts/check-all.mjs` が **27本全緑**(exit 0)。
 
 ## 検証手順
 
-1. `node --check assets/app.js`(無変更のはずだが念のため)
-2. dump-rank 4本: `node scripts/dump-rank.mjs kusatsu` / `hakone` / `dogo` / `beppu`
-3. 撮影(すべて fixture 経由・外部API 0回):
-   - `node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/index.html?fixture=dogo" --mobile --full`(幅375px。長名が最も出やすい dogo)
-   - `node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/index.html?fixture=hakone" --mobile`(幅375px)
-   - `node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/index.html?fixture=kusatsu" --mobile`(幅375px・デグレ確認)
-   - PC幅1枚: `node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/index.html?fixture=dogo"`(1280px相当)
-   - 撮った画像を **Read で開いて目視**し、見出しの欠け・重なり・はみ出しが無いことを確認する。
-4. `node scripts/check-all.mjs` → **27本全緑(exit 0)**を必須とする。
+1. 変更前に `node scripts/check-hotelparam.mjs` を1回流し、`N pass / 0 fail` の N を控える。
+2. 実装。
+3. `node --check scripts/check-hotelparam.mjs`。
+4. `node scripts/check-hotelparam.mjs` を **3回連続**で実行し、それぞれの所要msを記録(PowerShell なら `Measure-Command`、bash なら `date +%s%N` で挟む)。中央値を出す。PASS 件数が N と一致し fail が 0 であることを毎回確認。
+5. **`node scripts/check-all.mjs` を実行し 27本全緑(exit 0)**を確認 ← 必須。
+6. 画面に一切変更が無いので撮影は `?fixture=kusatsu` mobile 1枚のデグレ確認のみ(カード30枚・番号ピン判読可・コンソールエラー0件)。
+7. `git diff --stat -- assets fixtures index.html demo` が **空**であることを確認(scripts と docs 以外に波及していないこと)。
 
 ## 変更禁止範囲
 
-- `assets/engine.js` / `assets/geo.js` / `fixtures/*.json` は**変更不可**。
-- rank の重み・閾値・`CATEGORY_FREE_SLOTS` などスコアに関わる値は**変更不可**。
-- `git stash` / `git reset` / `git checkout` によるファイル復元は**禁止**。
-- 外部API(Overpass / Nominatim / Wikipedia)の呼び出しは**0回**。撮影はすべて `?fixture=` で行う。
-- 既存 `scripts/check-*.mjs` の検査内容を減らさない。
+- `assets/engine.js` / `assets/geo.js` / `fixtures/` / `assets/app.js` は**変更不可**。
+- rank の重み・閾値・除外ルールは**変更不可**。
+- `git stash` / `git reset` / `git checkout` でファイルを戻す操作は**禁止**。
+- 外部API(Overpass / Nominatim / Wikipedia)呼び出しは **0回**。fixture とローカルサーバのみ。
+- 他の `scripts/check-*.mjs` は編集しない(今回は hotelparam 1本だけ)。
+- `check-all.mjs` 本体も編集しない。
 
 ## 終わったら
 
-1. `docs/ROADMAP.md` の R100 の行頭を `- [x] 2026-09-16 R100 …` に更新する。
-2. `docs/NIGHTLOG.md` の「## サイクル記録」に **3行**追記(やったこと / 見た目の確認結果 / 次)。dump-rank で測った上位60件の最長名と文字数を必ず書く。
-3. **先にコミット**する(1行の日本語メッセージ)。
-4. `git push` する。
-5. 報告は簡潔に(長文の報告書を書かない)。
+1. `docs/ROADMAP.md` の R89 の行を `- [x] 2026-09-16 R89 …` に更新(実測の before/after 中央値を本文に1行足す)。
+2. `docs/NIGHTLOG.md` の「## サイクル記録」の先頭に **3行**追記(やったこと / 見た目と計測の確認結果 / 次)。
+3. **先にコミット**(1行の日本語メッセージ)。
+4. `git push`。
+5. 報告は簡潔に(長文の報告書は書かない)。
