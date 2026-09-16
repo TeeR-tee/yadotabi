@@ -1,6 +1,9 @@
 # 夜間ログ(みのるんが朝に読む)
 
 ## サイクル記録
+- R98 埋め込みiframeに`sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"`+`referrerpolicy="no-referrer"`を追加。ROADMAP本文の「sandboxは足さない方向」は計画役のPlaywright実測で誤りと判明したため訂正、実iframe・`<pre>`タグ例(`demo/hotel-page.html`)・README埋め込み例の3箇所を同じ属性で揃えた(grep確認済み)。`demo/embed-check.html`はローカル確認用(同一オリジン想定)のため意図的に未変更。
+- 属性追加後に自分でPlaywright実測: カード30枚・iframe高さが16312pxまで自動伸長・外部リンク(`.feedcard__link`)クリックで新規タブがGoogleマップ経路URLへOPENED、コンソールエラー0件。`node scripts/check-embedheight.mjs`8件PASS、`node scripts/check-all.mjs`27本中27本PASS(exit 0)。mobile/desktopの撮影も目視、文字崩れ・二重スクロールなし。
+- 次: R89(check-all.mjs高速化)またはR92〜R94から計画役が選定。
 - R96 ライトボックスにフォーカストラップを追加。実装前にPlaywrightで現状を再現したところ、開いた直後は`.lightbox__close`だが**Tab 1回目でbody・2回目で背後の`.topbar__back`・3回目以降は地図とピン**へ抜けていた(実測)。`assets/app.js:920`の`lightboxKeyHandler`に`e.key === 'Tab'`分岐を足し、フォーカス可能要素が閉じるボタン1つだけのため`e.preventDefault()`して閉じるボタンに留める形(+11行、将来要素が増えたとき用の理由コメント付き)。`tabindex`・`Escape`・暗幕クリック・`closeLightbox()`の復帰フォーカス(既に実装済みと再確認)は無変更。
 - `scripts/check-lightbox.mjs`に5ケース追加(開いた直後のフォーカス位置/Tab×5で留まる/Shift+Tab×3で留まる/Escape後に`.feedcard__imgbtn`へ戻る/embed=1でもTab×5で留まる)し26項目全PASS。Tab連打後のoverlayを撮影して目視、閉じるボタンに白いフォーカスリングが残り背後は暗幕のまま。`?fixture=kusatsu`のmobile/PC幅もデグレなし(カード30枚・番号ピン判読可・文字崩れなし・コンソールエラー0件)、`node scripts/check-all.mjs`は27本全PASS(exit 0)。
 - 次: R89(check-all.mjs高速化)またはR92〜R94から計画役が選定。

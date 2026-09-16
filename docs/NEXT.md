@@ -1,89 +1,83 @@
-# NEXT: R96 ライトボックスのフォーカストラップ
+# NEXT — R98 埋め込み iframe の堅牢性(sandbox / referrerpolicy)を実測で確定し明文化する
 
-- **タスクID**: R96
-- **難易度**: opus(フォーカス管理の実装のため)
-- **所要目安**: 20〜30分
+- タスクID: **R98**
+- 難易度: **sonnet**(実装は属性追加と文書2箇所。判断材料は下に実測済み)
+- 所要目安: 25〜35分
 
 ## 目的
+営業先(宿・予約サイト)に「うちのサイトに貼って大丈夫か」「CSSがぶつからないか」と聞かれたときに答えられる状態にする。
+ROADMAP の R98 本文は「sandbox は**足さない方向で理由だけ**残す」と書いているが、**計画役が Playwright で実測した結果この前提は誤り**で、適切な組み合わせなら無傷で足せることが分かった(下記)。本文の記述は今回訂正する。
 
-ライトボックス(カード写真の拡大表示)を開いている間に Tab を押すと、暗幕で視覚的に隠れている背後のページへフォーカスが抜ける。キーボード利用者が「今どこにいるか分からない」状態になる実害のある不具合を、数行の最小実装で塞ぐ。あわせて `scripts/check-lightbox.mjs` にキーボード検査が1件も無い「検査の穴」を埋める。
+## 実測で判明した前提(2026-09-16 計画役が Playwright で測定・外部API 0回)
+ローカル静的サーバ + `/index.html?fixture=kusatsu&embed=1&bg=fff7e6` を iframe に入れ、親側で R48 の受信スクリプトを動かして測定した。
 
-## 実測で判明した前提(2026-09-16 計画役が grep/Read で確認)
+| iframe の属性 | カード枚数 | 高さ postMessage | Leafletタイル | localStorage | `?bg=` 反映 | コンソールエラー |
+|---|---|---|---|---|---|---|
+| 属性なし(現状) | 30 | 2回 / 最大17348px | 8枚 | ok | された | 0件 |
+| `sandbox="allow-scripts"` のみ | **0** | 640pxのみ | 18枚 | **SecurityError** | されず | **CORS 2件** |
+| `sandbox="allow-scripts allow-same-origin"` | 30 | 2回 / 17348px | 8枚 | ok | された | 0件 |
+| 上記 + `allow-popups allow-popups-to-escape-sandbox` + `referrerpolicy="no-referrer"` | 30 | 2回 / 17348px | 8枚 | ok | された | 0件 |
+| `referrerpolicy="no-referrer"` のみ | 30 | 2回 / 17348px | 8枚 | ok | された | 0件 |
 
-- `assets/app.js:897` `openLightbox(img, returnFocusEl)` — overlay を `document.createElement('div')` で都度生成し、`innerHTML` で **`.lightbox__close`(`<button type="button">`)1個と `.lightbox__img`(`<img>`)1個だけ**を入れる。`tabindex` は一切付けていない。
-- `assets/app.js:917` `var closeBtn = overlay.querySelector('.lightbox__close'); if (closeBtn) closeBtn.focus();` — 開いた直後に閉じるボタンへフォーカスを移している(R69 由来)。**開く前のフォーカス元の保存・復帰は既に実装済み**(`app.js:915` で `lightboxReturnFocusEl = returnFocusEl || null`、`app.js:935-938` の `closeLightbox()` で `lightboxReturnFocusEl.focus()`)。**よって「閉じた後にフォーカスを戻す」部分は追加実装不要**。
-- `assets/app.js:920-923` `lightboxKeyHandler = function (e) { if (e.key === 'Escape') closeLightbox(); };` を `document` に `keydown` で登録。**`Tab` の分岐が無い**のがバグの本体。
-- `assets/app.js:1810-1814` 呼び出し元。`.feedcard__imgbtn`(ボタン)のクリックで `openLightbox(btnImg, imgBtn)` を呼ぶため、`returnFocusEl` は常に写真ボタン。
-- `assets/app.js:905-907` overlay 自身の `click` で `closeLightbox()`(暗幕クリックで閉じる)。
-- `scripts/check-lightbox.mjs`(212行)を grep したところ **`Tab` / `focus` / `activeElement` の語が1件も無い**。現在の検査項目は冒頭コメントの通り8件(表示・暗幕クリック・Escape・番号バッジ・リンクチップ・プレースホルダ・body overflow・embed)で、キーボード挙動は未検査。
-- フォーカス可能要素は overlay 内に **閉じるボタン1つのみ**(`<img>` はフォーカス不可)。したがって「循環」は実質「その1つに留め続ける」で足りる。
-- 未確認: 暗幕表示中に背後のカードへ実際にフォーカスが移るかを Playwright で実行して観測してはいない(コード上 Tab を止めていないことから論理的に導いた結論)。作業役は実装前に現状を1度再現し、NIGHTLOG に「修正前は N 回目の Tab で `.feedcard__link` に抜けた」と実測値を残すこと。
+外部リンク(`.feedcard__link` の `target="_blank"`)を実際にクリックして新規タブが開くかも測った:
+
+| 属性 | 結果 |
+|---|---|
+| 属性なし | OPENED(Googleマップ経路URL) |
+| `allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox` | **OPENED** |
+| `allow-scripts allow-same-origin`(popups なし) | **NO-NEW-PAGE(リンクが死ぬ)** |
+
+**結論: 採用してよい組み合わせは `sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"` + `referrerpolicy="no-referrer"` の1つだけ。**
+- `allow-same-origin` を外すと origin が `null` になり、fixture の fetch が CORS で落ち(カード0枚)、`localStorage`(受動ログ F3・地図位置 `yado.mapview.v3`)が SecurityError で throw する。
+- `allow-popups` 系を外すと、カードの「行き方/公式/Instagram」等の外部リンクが全て無反応になる。営業上これは致命的。
+- `allow-scripts allow-same-origin` の同時指定は「サンドボックスの実効性がほぼ無い」とよく批判される組み合わせだが、**同一オリジンに置く自社ページの iframe ではなく別オリジン(github.io)からの埋め込みなので、親ページから見た防御としては依然として意味がある**(親の DOM/Cookie に触れない)。この理由も文書に残すこと。
+
+その他、コードを読んで確認した事実:
+- `demo/hotel-page.html:212-213` の iframe の現在の属性は `class="embed" src loading="lazy" title style="border:0;"` の5つのみ(`sandbox`・`referrerpolicy` なし)。
+- `demo/embed-check.html:14` と `README.md:40` にも iframe タグの例がある(こちらは属性なし)。
+- `assets/app.js:1433` が `global.parent.postMessage({...}, '*')` を送る側。**送信側は今回一切触らない。**
+- 親ページの CSS が iframe の中身を壊さない件は iframe が独立文書である以上構造上自明だが、**未確認**(今回は乱暴なCSSを入れた撮影までは必須にしない。やるなら下の任意項目)。
 
 ## 対象ファイル(絶対パス)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\demo\hotel-page.html`
+- `C:\workspace\claude\旅行先用サイト\yadotabi\README.md`
+- (任意) `C:\workspace\claude\旅行先用サイト\yadotabi\demo\embed-check.html`
 
-- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js`
-- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-lightbox.mjs`
-- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md` / `docs\NIGHTLOG.md`(記録)
-
-## 実装方針(最小実装・ライブラリ追加不可)
-
-1. `app.js:920` の `lightboxKeyHandler` に `Tab` の分岐を足すだけ。
-
-```js
-lightboxKeyHandler = function (e) {
-  if (e.key === 'Escape') { closeLightbox(); return; }
-  if (e.key === 'Tab') {
-    // フォーカス可能要素は .lightbox__close 1つだけなので、
-    // Tab / Shift+Tab とも既定動作を止めて閉じるボタンに留める(背後へ抜けさせない)
-    e.preventDefault();
-    var btn = lightboxEl && lightboxEl.querySelector('.lightbox__close');
-    if (btn) btn.focus();
-  }
-};
-```
-
-2. `tabindex` は増やさない。`Escape`・暗幕クリックの既存挙動、`closeLightbox()`(`app.js:926-939`)の復帰フォーカスは**1行も変えない**。
-3. CSS(`assets/style.css`)は変更不要。
-4. 将来 overlay 内のフォーカス可能要素が増えたときのために、`e.preventDefault()` の理由コメントを必ず残す。
+## 実装方針
+1. `demo/hotel-page.html:212-213` の実 iframe に2属性を足す:
+   `sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"` と `referrerpolicy="no-referrer"`。既存5属性・`loading="lazy"` は維持。直上に「なぜこの4トークンが全部要るか」を実測値つきで2〜3行コメント。
+2. 同ファイル `:229` 付近の `<pre class="tag-example">`(営業先がコピーするタグ)にも同じ2属性を入れ、**表示用コピーと実 iframe を必ず揃える**(R88 で上限値がズレていた前例あり)。
+3. 同ファイル `.sales-notes`(`:217`〜`:223` の `<ul>`)に1〜2行追記: 「iframe は独立した文書なので、宿ページ側のCSS・JavaScriptからは干渉されません(逆にやどたび側も宿ページを書き換えません)」。
+4. `README.md:37`〜`:44` の埋め込み節の iframe 例(`:40-41`)にも同2属性を足し、直後に「`sandbox` のトークンを削ると何が壊れるか」を上の実測表から3行に要約して載せる(`allow-same-origin` を外すとデータ取得と保存が死ぬ / `allow-popups` を外すと外部リンクが死ぬ)。
+5. `demo/embed-check.html:14` はローカル確認用なので、揃えるか触らないかを実装時に決めて理由を NIGHTLOG に1行残す。
 
 ## 完了条件
-
-- ライトボックスを開いた状態で Tab を5回押しても `document.activeElement` が `.lightbox__close` のまま。
-- Shift+Tab を3回押しても同様。
-- `Escape` で閉じる、暗幕クリックで閉じる、閉じた後に元の写真ボタン(`.feedcard__imgbtn`)へフォーカスが戻る、の3点が従来どおり。
-- ライトボックスを開いていないときの Tab 遷移は一切変わらない(R69 の `scripts/check-keyboard.mjs` が引き続き緑)。
-- `node --check assets/app.js` 通過。
-- `node scripts/check-all.mjs` が **27本全緑**。
+- `demo/hotel-page.html` の実 iframe と `<pre>` のコピーで sandbox トークン4つ・referrerpolicy が完全一致している。
+- `demo/hotel-page.html` を開いてカード30枚が出て、iframe の高さが自動で伸び(二重スクロールなし)、カードの外部リンクをクリックして新規タブが開く。
+- `git diff --stat -- assets fixtures scripts index.html` が**空**(やどたび本体は無変更)。
 
 ## 検証手順
-
-1. `node --check assets/app.js`
-2. `scripts/check-lightbox.mjs` に**ケースを追加**(既存8項目は減らさない):
-   - 9. 写真クリックで開いた直後 `document.activeElement` が `.lightbox__close`
-   - 10. `page.keyboard.press('Tab')` ×5 の後も `document.activeElement.className` に `lightbox__close` を含む
-   - 11. `page.keyboard.press('Shift+Tab')` ×3 の後も同様
-   - 12. `Escape` で閉じた後 `document.activeElement` が `.feedcard__imgbtn`
-   - 13. `?fixture=kusatsu&embed=1` でも 10 が成立
-   - 冒頭コメントの「確認項目」リストにも追記すること
-3. `node scripts/check-lightbox.mjs` 単体で全項目 PASS
-4. 撮影(外部API 0回・fixture のみ):
-   - `node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/index.html?fixture=kusatsu" --mobile`(幅375) — デグレ確認1枚。画像を Read で開いて目視(カード30枚・番号ピン判読可・文字崩れなし)
-   - ライトボックス表示中の1枚は `check-lightbox.mjs` が既に撮っているのでそれを Read で目視
-5. `node scripts/check-all.mjs` → **27本全緑(fail 0)** が必須
+1. `node --check` は不要(HTML/MD のみ)。
+2. 撮影(いずれも外部API 0回):
+   - `node C:\workspace\tools\shot\shot.mjs http://127.0.0.1:3000/demo/hotel-page.html --mobile`(375px)
+   - 同URLを PC幅(1280px)でも撮影
+   - 画像を **Read で開いて目視**: カード30枚・番号ピン判読可・文字崩れ/はみ出しなし・背景色 `#fff7e6` が効いている・iframe 内に二重スクロールが出ていない。
+3. `node scripts/check-embedheight.mjs` が **8件 PASS**(sandbox 追加後も高さ通知が通ることの本命の回帰検査)。
+4. 外部リンクの生存確認: Playwright で iframe 内の `.feedcard__link` をクリックし新規タブが開くことを1回だけ機械確認する(使い捨てスクリプトは `C:\Users\rt774\AppData\Local\Temp\claude\...\scratchpad` に置き、リポジトリには残さない)。
+5. **`node scripts/check-all.mjs` が 27本全緑(exit 0)** — 必須。
+6. コンソールエラー0件を確認。
 
 ## 変更禁止範囲
-
-- `assets/engine.js` / `assets/geo.js` / `fixtures/*.json` は変更不可
-- rank の重み・閾値は変更不可
-- `git stash` / `git reset` / `git checkout` によるファイル復元は**禁止**
-- 外部API(Overpass / Nominatim / Wikipedia)呼び出しは **0回**
-- 既存の check 本の検査項目を減らさない(追加のみ)
-- `?embed=1` や `demo/hotel-page.html` の仕様変更はしない
+- `assets/engine.js` / `assets/geo.js` / `fixtures/*.json` は**変更不可**。
+- rank の重み・閾値は**変更不可**。
+- `assets/app.js`(postMessage 送信側)も今回は無変更。
+- `git stash` / `git reset` / `git checkout` でのファイル復元は**禁止**。
+- 外部API(Overpass / Wikipedia / Nominatim)呼び出し **0回**。fixture のみ。
+- `scripts/check-*.mjs` の既存検査を減らさない。
 
 ## 終わったら
-
-1. `docs/ROADMAP.md` の R96 行を `- [x] 2026-09-16 R96 ...` に更新
-2. `docs/NIGHTLOG.md` のサイクル記録に**3行**(やったこと / 見た目の確認結果 / 次)を追記
-3. **先にコミット**(1行の日本語メッセージ)
-4. `git push`
-5. 報告は簡潔に(長文の報告書を書かない)
+1. `docs/ROADMAP.md` の R98 を `[x] 2026-09-16` にする。**あわせて本文の「sandbox は足さない方向で理由だけ残す」を実測結果に合わせて訂正する**(事実誤認をそのまま残さない)。
+2. `docs/NIGHTLOG.md` の「サイクル記録」に3行(やったこと / 見た目の確認結果 / 次)。
+3. **先にコミット**(1行の日本語メッセージ)。
+4. `git push`。
+5. 報告は簡潔に(長文の報告書を書かない)。

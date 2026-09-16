@@ -209,8 +209,12 @@
       <h2>このお宿のまわり(やどたび)</h2>
       <p class="desc">宿の周辺スポットをやどたびが自動で提案します。宿ページに1行埋め込むだけで表示できます。</p>
       <div class="embed-frame-wrap">
+        <!-- sandbox は allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox の4トークン全部が必要(2026-09-16実測)。
+             allow-same-origin を外すと origin が null になり fixture の fetch が CORS で落ちてカード0枚・localStorage が SecurityError になる。
+             allow-popups 系を外すとカードの「行き方/公式」等の外部リンク(target="_blank")が無反応になる。referrerpolicy="no-referrer" は上記と組み合わせても挙動に影響なし。 -->
         <iframe class="embed" src="../index.html?fixture=kusatsu&embed=1&bg=fff7e6"
-          title="やどたび - このお宿のまわり" loading="lazy" style="border:0;"></iframe>
+          title="やどたび - このお宿のまわり" loading="lazy" style="border:0;"
+          sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer"></iframe>
       </div>
     </section>
 
@@ -220,8 +224,10 @@
         <li>宿の位置情報から周辺スポットを自動生成、手入力は一切不要です。</li>
         <li>APIキー不要・利用料無料でご利用いただけます。</li>
         <li><code>&amp;bg=fff7e6</code> で背景色を宿ページに合わせられます(6桁の16進のみ)。</li>
+        <li>iframe は独立した文書なので、宿ページ側のCSS・JavaScriptからは干渉されません(逆にやどたび側も宿ページを書き換えません)。</li>
+        <li><code>sandbox</code> は貼り先とやどたびが<strong>別オリジン</strong>のときに効く保護です。同じオリジンに置くと <code>allow-same-origin</code> により実質無効になります(無害ですが保護にもなりません)。</li>
       </ul>
-      <pre class="tag-example">&lt;iframe src="https://teer-tee.github.io/yadotabi/?hotel=36.6226,138.5960,草津 湯けむり荘&amp;embed=1&amp;bg=fff7e6" width="100%" height="720" style="border:0;border-radius:10px;"&gt;&lt;/iframe&gt;</pre>
+      <pre class="tag-example">&lt;iframe src="https://teer-tee.github.io/yadotabi/?hotel=36.6226,138.5960,草津 湯けむり荘&amp;embed=1&amp;bg=fff7e6" width="100%" height="720" style="border:0;border-radius:10px;" sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer"&gt;&lt;/iframe&gt;</pre>
       <p class="sales-note-extra">
         ・<code>width</code> / <code>height</code> は初期値(720程度)のままで構いません。下記の受信スクリプトを一緒に設置すると、中身の高さに合わせて自動で伸びます(設置しない場合は固定高のままになり、宿の紹介が長いと中に二重スクロールが出ます)。<br>
         ・<code>?hotel=</code> の宿名部分は日本語や空白を含むため、URLエンコードが必要です(例: 「草津 湯けむり荘」→ <code>%E8%8D%89%E6%B4%A5%20%E6%B9%AF%E3%81%91%E3%82%80%E3%82%8A%E8%8D%98</code>)。<br>
