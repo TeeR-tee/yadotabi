@@ -397,3 +397,8 @@
 - やったこと: 実欠陥「カード写真がTabで到達不可・ライトボックスを開く手段が無い」を修正。`cardHtml()`の写真`<img>`2箇所を`<button class="feedcard__imgbtn">`で包み(`tabindex`は不使用)、click委譲を`closest('.feedcard__imgbtn')`基準に変更、`openLightbox()`に開いたら閉じるボタンへ・閉じたら元の写真ボタンへ`focus()`する処理を追加。`scripts/check-keyboard.mjs`を新規作成(状態B/Aの到達順・写真ボタンのEnter/Escape/フォーカス復帰・番号バッジのEnter・もっと見るのEnter・focus-visibleのoutlineWidthを検査)し`check-all.mjs`に追加(24→25本)。
 - 見た目の確認結果: check-keyboard.mjs 19項目全PASS、check-all.mjs 25本全緑(check-imgfail/check-lightbox/check-a11y/check-passive含めデグレなし)。撮影4枚をRead目視: 写真ボタン・もっと見るボタンともフォーカスリングが枠にはっきり見え、`?fixture=kusatsu`(mobile)はカード30枚・番号ピン判読可・写真16:9のまま、`&demo=imgfail`も先頭3枚のプレースホルダ差し替えが従来どおり。engine.js/geo.js/fixturesの差分は空。
 - 次: R14/R19/R40が残候補。
+
+### 2026-09-16 R73+R71 README に用語ミニ辞典と写真あり割合の表を追加
+- やったこと: README「仕組み(かんたん解説)」直前に用語ミニ辞典(fixture/Overpass/geosearch/OSM/embed/rank/collect/present/Wikipedia/Nominatimの10語、grepで全語がREADME本文に実在することを確認済み)、「判断待ちの設計課題」直後にfixture上位30件の写真あり割合表を追加。コード変更0行(assets/fixtures/scripts/index.html/demo/.githubのdiffは空)。
+- 確認結果: dump-rank.mjsで3エリア計測、分母は各30件で確認済み。草津20/30=67%、箱根18/30=60%、道後12/30=40%。画面変更なしのため撮影省略。node docs/check.mjs全OK、scripts/check-all.mjs 25本全PASS。
+- 次: R14/R19/R40が残候補(いずれもOverpass利用または課金確認が必要)。
