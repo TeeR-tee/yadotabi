@@ -14,6 +14,7 @@ const SCRIPTS = [
   'scripts/check-attrib.mjs',
   'scripts/check-autozoom.mjs',
   'scripts/check-chipcurrent.mjs',
+  'scripts/check-distance.mjs',
   'scripts/check-embedheight.mjs',
   'scripts/check-engine.mjs',
   'scripts/check-feednote.mjs',

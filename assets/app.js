@@ -762,6 +762,18 @@
       '<span aria-hidden="true">' + escapeHtml(emoji) + '</span></div>';
   }
 
+  // R54: 距離(m)を表示用テキストに整形する。
+  // 1000m未満は整数m(例 850m)、1000m以上は小数第1位でkm(例 1.2km)、
+  // ちょうど整数kmになる場合は小数点を出さない(例 2km)。
+  function distanceText(m) {
+    if (!isFinite(m) || m < 0) return '';
+    if (m < 1000) return Math.round(m) + 'm';
+    if (m >= 10000) return Math.round(m / 1000) + 'km';
+    var km = Math.round(m / 100) / 10;
+    if (Math.round(km) === km) return Math.round(km) + 'km';
+    return km.toFixed(1) + 'km';
+  }
+
   function cardHtml(card, index) {
     var emoji = emojiFor(card.categoryLabel);
     var imgSrc = demoImgFail && index < 3 ? './__imgfail_test__.png' : card.imageUrl;
@@ -783,7 +795,9 @@
         '<p class="feedcard__meta">' +
           '<span class="feedcard__cat">' + escapeHtml(emoji) + ' ' + escapeHtml(card.categoryLabel || '') + '</span>' +
           '<span class="feedcard__times">🚶徒歩' + escapeHtml(String(card.walkMin)) + '分 · 🚗車' +
-            escapeHtml(String(card.driveMin)) + '分</span>' +
+            escapeHtml(String(card.driveMin)) + '分' +
+            (distanceText(card.distanceM) ? ' · ' + escapeHtml(distanceText(card.distanceM)) : '') +
+            '</span>' +
         '</p>' +
         summary +
         linkRowHtml(card) +
