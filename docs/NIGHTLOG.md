@@ -1,46 +1,5 @@
 # 夜間ログ(みのるんが朝に読む)
 
-## サイクル記録
-- R94 状態Aの0件文言A/Bを統一。`app.js:401`直前に定数`NO_HOTEL_TEXT`(「この範囲には宿のデータがありません。エリアチップか検索から選べます。」)を新設し、`app.js:407`と`:444`の重複リテラルを`setMapNote(NO_HOTEL_TEXT)`に置換。`?demo=nohotels`と`?demo=autozoom`の撮影2枚を見てA/Bを同一文言のままとした(自動ズームアウト後も違和感なし)。`scripts/check-nohotels.mjs`(コメント+1箇所)・`scripts/check-autozoom.mjs`(2箇所)の期待文字列も同時更新、混雑文言(C)は無変更。
-- `node --check assets/app.js`通過、mobileで`?demo=nohotels`・`?demo=autozoom`・desktopで`?demo=nohotels`を目視し新文言「この範囲には宿のデータがありません。エリアチップか検索から選べます。」が3行に収まり地図・チップ行と重ならないことを確認、`?fixture=kusatsu`mobileもカード30枚・番号ピン判読可・コンソールエラー0件でデグレなし。`node scripts/check-nohotels.mjs`5件PASS・`node scripts/check-autozoom.mjs`16件PASS・`node scripts/check-all.mjs`27本中27本PASS(exit 0)。
-- 次: R89(check-all.mjs高速化)またはR101(タイルエラー通知)から計画役が選定。
-- R98 埋め込みiframeに`sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"`+`referrerpolicy="no-referrer"`を追加。ROADMAP本文の「sandboxは足さない方向」は計画役のPlaywright実測で誤りと判明したため訂正、実iframe・`<pre>`タグ例(`demo/hotel-page.html`)・README埋め込み例の3箇所を同じ属性で揃えた(grep確認済み)。`demo/embed-check.html`はローカル確認用(同一オリジン想定)のため意図的に未変更。
-- 属性追加後に自分でPlaywright実測: カード30枚・iframe高さが16312pxまで自動伸長・外部リンク(`.feedcard__link`)クリックで新規タブがGoogleマップ経路URLへOPENED、コンソールエラー0件。`node scripts/check-embedheight.mjs`8件PASS、`node scripts/check-all.mjs`27本中27本PASS(exit 0)。mobile/desktopの撮影も目視、文字崩れ・二重スクロールなし。
-- 次: R89(check-all.mjs高速化)またはR92〜R94から計画役が選定。
-- R96 ライトボックスにフォーカストラップを追加。実装前にPlaywrightで現状を再現したところ、開いた直後は`.lightbox__close`だが**Tab 1回目でbody・2回目で背後の`.topbar__back`・3回目以降は地図とピン**へ抜けていた(実測)。`assets/app.js:920`の`lightboxKeyHandler`に`e.key === 'Tab'`分岐を足し、フォーカス可能要素が閉じるボタン1つだけのため`e.preventDefault()`して閉じるボタンに留める形(+11行、将来要素が増えたとき用の理由コメント付き)。`tabindex`・`Escape`・暗幕クリック・`closeLightbox()`の復帰フォーカス(既に実装済みと再確認)は無変更。
-- `scripts/check-lightbox.mjs`に5ケース追加(開いた直後のフォーカス位置/Tab×5で留まる/Shift+Tab×3で留まる/Escape後に`.feedcard__imgbtn`へ戻る/embed=1でもTab×5で留まる)し26項目全PASS。Tab連打後のoverlayを撮影して目視、閉じるボタンに白いフォーカスリングが残り背後は暗幕のまま。`?fixture=kusatsu`のmobile/PC幅もデグレなし(カード30枚・番号ピン判読可・文字崩れなし・コンソールエラー0件)、`node scripts/check-all.mjs`は27本全PASS(exit 0)。
-- 次: R89(check-all.mjs高速化)またはR92〜R94から計画役が選定。
-- R95 `docs/FIXTURES.md` の「既存 fixture は原則再生成しない方針」節の直前に「鮮度の目安と再取得の手順(R95)」節を新設。(a)半年を目安(統計的根拠は無く運用上の目安と明記)・`buildOverpassQuery()`変更時は期間問わず例外・次の見直しは2027-03頃、(b)Overpassマナー節への相互リンク、(c)dump-rank前後比較→撮影→check-all→NIGHTLOG記録の順序リスト、(d)keep-listはmake-fixture.mjs:14のimportで自動適用済みで手動実行不要、を記載。「保存されるmeta」節からも新節へリンクを追加。
-- `git diff --stat -- assets fixtures scripts index.html demo`が空(文書のみ)を確認、`?fixture=kusatsu`をmobileで目視しカード30枚・番号ピン判読可・文字崩れなし・コンソールエラー0件、`node scripts/check-all.mjs`は27本全てPASS(fail語0件)。
-- 次: R89(check-all.mjs高速化)またはR92〜R94から計画役が選定。
-- R91 README の `?demo=` 値一覧を実装に合わせて修正。app.jsをgrepで再実測し12値(far/zoomout/initpos/suggest/recent/recentmix/passive/imgfail/portrait/nohotels/autozoom/hoteltip)を確認、README.mdの「10個すべて」を「12個すべて」に直し表を3列(値/何が再現されるか/使っている検査)・12行に拡張。portraitの縦長ダミー画像サイズ(400×800)もapp.js:801で実測確認。
-- デグレ確認撮影(`?fixture=kusatsu` mobile)でカード30枚・番号ピン判読可・文字崩れなし・コンソールエラー0件を目視。`node docs/check.mjs`(README画像リンク含む)と`node scripts/check-all.mjs`は27本中27本PASS、`git diff --stat -- assets fixtures scripts index.html demo`は空でREADME.md以外への波及なしを確認。
-- 次: R89(check-all.mjs高速化・hotelparam分割)または朝の相談待ちのR2-1以外の未着手項目(R92・R93・R94・R95)から計画役が選定。
-- R88 埋め込み高さ通知の受信側上限を暫定100000pxから実測ベースの60000pxへ変更。計画役が4エリア×2幅×2状態(30枚/60枚展開後)を実測し、最大値は kusatsu desktop 60枚展開後の34075px(ROADMAP旧文言「例20000px」は事実誤認・R48当時と同じ罠だった)。実測最大の約1.8倍を採用し `demo/hotel-page.html` の表示用コピーと実スクリプトの2箇所を60000で揃え、根拠コメントを追加。`assets/app.js`(送信側)は無変更(`git diff --stat -- assets` 空)。
-- `?fixture=kusatsu&embed=1` のデモページを mobile/desktop で目視、iframe内に二重スクロールなくカードが最後まで表示。`node scripts/check-embedheight.mjs` 8件PASS(「もっと見る」展開後も高さがさらに増える検査が上限60000pxで引き続きPASS)、`node scripts/check-all.mjs` 27本中27本PASS。ついでにR90(`loading="lazy"`)が`demo/hotel-page.html:213`に既に実装済みであることを実測確認しROADMAPを[x]に。
-- 次: R89(check-all.mjs高速化・hotelparam分割)または朝の相談待ちのR2-1以外の未着手項目(R91〜R95)から計画役が選定。
-- R42 カード要約の `truncate()` を、上限(120字)手前で最後の「。」があればそこで完結させる方式に変更(句点が上限の60%より手前/無いときだけ従来どおり120字+「…」)。engine.js:289付近と定数SUMMARY_SENTENCE_MIN_RATIOを追加、check-engine.mjsに9ケース追加、既存の120字+…ケースは句点なしテキストのため変化なしと確認。
-- kusatsu/hakone/dogoをmobileで目視。1位カード(光泉寺「山号は草津山。」/早雲寺「山号は金湯山。」/伊佐爾波神社「旧社格は県社。」)がすべて句点で終わり文の途中切れ無し、地図ピン30個判読可、コンソールエラー0件。
-- 次: R2-1(朝の相談待ち)またはfixture再生成不要な軽量タスクを計画役が選定。
-- R43 状態Aの宿ピンに宿名ツールチップを追加。app.js:459付近の`renderHotelPins()`で`marker.on('click',...)`直前に`marker.bindTooltip(h.name,{direction:'top',offset:[0,-14],className:'hoteltip'})`を追加し、二重表示を避けるため`L.marker`の`title`オプションを削除(`aria-label`は維持)。タップ即遷移するため開閉はLeaflet既定のhoverのまま(ROADMAP本文の「タップで開く」は不採用、理由をNEXT.mdに明記済み)。撮影用に`?demo=hoteltip`(app.js:1204付近、外部API0回・密集宿6件+長い宿名1件)とscripts/check-hoteltip.mjs(10項目)を新設、check-all.mjsに登録(16本目)。
-- `?demo=hoteltip`をmobile/desktopで目視。長い宿名「草津温泉 ホテル紅葉亭」も地図右端で切れず、密集ペアのツールチップも重ならずピン絵文字も隠れていない。check-all.mjsは16本中16本PASS、`?fixture=kusatsu`のカード30枚・番号ピン判読可・コンソールエラー0件でデグレなしを確認。
-- 次: R2-1(朝の相談待ち)または残候補(R14/R19/R40/R45/R46)から計画役が選定。
-- R45 固定データバッジに生成日付を追加(app.jsにformatFixtureDate()を新設しローカルYYYY-MM-DDで表示、index.htmlに#feed-badge-date、style.cssに.topbar__badge__date)。R46 docs/check.mjsに実バイト数のKB列を追加(content-lengthはgzip圧縮後のためcheckTargetで読んだ本文実体のバイト数で上書き)、末尾に合計サイズ行を追加。
-- kusatsu/embed/hakoneをmobileで目視、「固定データ 2026-09-16 取得」が1行に収まり見出しと重ならない・カード30枚判読可・コンソールエラー0件。docs/check.mjsのKB上位3件: fixtures/hakone.json 900.1KB / fixtures/dogo.json 117.1KB / fixtures/kusatsu.json 65.3KB。check-all.mjs 16本全PASS。
-- 次: R2-1(朝の相談待ち)または残候補(R14/R19/R40)から計画役が選定。
-- R49+R50 文書2本を追加(コード変更なし)。README に「## 判断待ちの設計課題」節(4件・結論なし・NIGHTLOGへの参照付き)と `docs/FIXTURES.md`(新規)を追加。`docs/FIXTURES.md` はエリア表3行・実行コマンド・meta一覧・Overpassのマナー・再生成しない方針・buildOverpassQuery同期注意を記載、README の `fixtures/` 行から相対リンクを追加。
-- 画面変更が無いため撮影は省略。`ls docs/FIXTURES.md` で実在確認、`node docs/check.mjs` OK(README画像3本含む既存検査もPASS)、`node scripts/check-all.mjs` 17本中17本PASS・exit 0、`git diff --stat -- assets fixtures scripts index.html demo` は空を確認。
-- 次: ROADMAP残りはR14/R19/R23/R28/R31/R32/R33/R34/R40/R42/R43/R51。R49で公開した4件の判断待ちのうち検索候補とチップの重なり(R2-1)含め依然未決。
-- R84 `?fixture=` 併用時のみ効く `?debug=1` を追加し、rank のスコア内訳をカード下端に淡色表示。engine.js は baseScore を `scoreBreakdown()`(image/summary/official/both/distance/season/base)に切り出し、加算順を1行も変えずに `rank()` の最後で `entry.item._debug`(rank・source・category・distanceM・total・categoryPenalty・categoryIndex)を後付け、`toCard()` に `_debug` を1行追加。app.js は `fixtureNameFromUrl()` が null なら絶対にフラグを立てず、fixture 読み込み失敗の catch でも `debugRank=false` に戻す。WEIGHT・CATEGORY_FREE_SLOTS は無変更。
-- `?fixture=kusatsu&debug=1` mobile を目視: 1位カードに「#1 · both · place_of_worship · 108m · 合計 71.4 写真+25 要約+15 公式+12 両ソース+20 距離-0.6」が375pxで2行に収まり、リンクチップともカード枠とも重ならず本文より確実に淡い。`?fixture=kusatsu`(debug無し)mobile は内訳行が1つも出ずカード30枚のままでデグレなし。埋め込み(`?embed=1`)でも出す判断にした(埋め込みは `?fixture=` 併用時しか有効にならず、一般公開URLに内訳が漏れる経路が無いため。分岐を足すと debugRank の条件が二重になり漏れの検証が難しくなる)。
-- 検証: `node scripts/dump-rank.mjs` の kusatsu/hakone/dogo/beppu 4エリアが実装前後で差分ゼロ(計算結果は不変)。check-engine.mjs に (r84) 10ケース追加(_debug を落とせば元の JSON に戻る・2回呼んでも順序同一・total === base + categoryPenalty)で226 pass/0 fail、新規 scripts/check-debugflag.mjs(11項目、`?debug=1` 単独で `.dbg` 0件を含む・外部API 0回)を check-all.mjs に登録し27本中27本PASS。次: R64(GitHub Actions 無料枠・朝の相談寄り)/R77(表示可否の判断)/R81(Overpass を叩く fixture 追加)/R82(aria-label 1行)/R85(英語デモページ)から計画役が選定。
-- R82 実測したら `index.html:56` に `aria-label="地図に戻る"` は既に実装済み(ROADMAP本文は事実誤認)だったため、`scripts/check-a11y.mjs` に別立ての `LABEL_TARGETS` ループを追加し戻るボタンの aria-label 検査のみ新設。既存の44px計測ループは無編集。
-- R77 `?fixture=kusatsu` mobile で `#feed-note` を撮り比べ。現状(出さない)と「上位30件を表示中（全60件）」を足したB案の2枚を目視した結果、「残り30件」は `moreHtml()` が既に表示しておりB案は情報の二重化かつ行数増で間延びするだけ、かつ正確な総数はengine.js改修なしには出せない(R77はengine不可)ため**不採用**。app.jsは変更なし(撮影用の一時差し込みは撮影後に必ず元へ戻し済み・`git diff --stat -- assets` 空を確認)。
-- 次: ROADMAP残りはR64(GitHub Actions無料枠・朝の相談寄り)/R81(Overpass1回・同僚検証前は4エリアで十分)/R85(国内予約サイト想定で優先度低)。すべて判断寄りのため計画役が朝の相談経由で選定。
-- R87 状態Bのスケルトン(読み込み中の骨組み)を`?fixture=kusatsu&slow=osm3000,wiki9000`のmobile/desktopで撮影・目視。(a)骨組み高さ312.3px・実カード高さ370.7px(差約58px、カード間余白で自然に区切られガタつき軽微)(b)灰色グラデーションのスケルトンと白背景の実カードの境目は明確(c)`prefers-reduced-motion: reduce`で`getComputedStyle(el).animationName`が`none`になることを実測、既存のシマー停止実装が機能している。3点とも崩れなしのためstyle.cssは無変更で閉じた。ついでにR86(もっと見るのスクロール位置維持)も計画役の実測により実装不要と判明したため合わせてクローズ。
-- 撮影は`screenshots/`に4枚保存(mobile/desktopのスケルトン状態、mobile全体、デグレ確認用の通常状態)。`node scripts/check-all.mjs`は27本中27本PASS(1回目はcheck-nohotels.mjsが環境要因のERR_NO_BUFFER_SPACEで一過性FAIL、単体再実行と2回目の通しで全緑を確認済み)。
-- 次: ROADMAP残りはR64(GitHub Actions無料枠・朝の相談寄り)/R81(Overpass1回)/R85(英語デモページ)/R88(埋め込み高さ上限見直し)/R89(check-all高速化)/R90(iframe lazy)から計画役が選定。
-
 ## 朝のまとめ(2026-09-16 06:10 司令塔が記入)
 
 **朝まで82サイクル・115コミット(17:05時点、ループ継続中)。すべて本番 https://teer-tee.github.io/yadotabi/ に反映済み。コスト0円。**
@@ -525,3 +484,44 @@
 - やったこと: `docs/check.mjs` の該当行を読み、node で `new URL(raw, url)` を自分で再現(計画役の結論を鵜呑みにせず二重確認)。`demo/hotel-page.html` の相対iframeも `<pre>` 内絶対URLも `pathname` でクエリが落ち `index.html` に解決されることを確認、`docs/CHECKS.md` に新節として記録。
 - 見た目の確認結果: `node docs/check.mjs` 実行で `[OK] リンク demo/hotel-page.html → index.html - HTTP 200` を2件確認、exit 0。`?fixture=kusatsu` mobile撮影しカード30枚・番号ピン判読可・文字崩れなしを目視。`node scripts/check-all.mjs` 27本中27本PASS(243.8s)。
 - 次: ROADMAP残りはR64/R77/R81/R82/R84/R85。
+
+<!-- 以下は誤ってファイル先頭に積まれていたサイクル記録(R42〜R100)。司令塔が 2026-09-16 17:10 に末尾へ移動 -->
+- R94 状態Aの0件文言A/Bを統一。`app.js:401`直前に定数`NO_HOTEL_TEXT`(「この範囲には宿のデータがありません。エリアチップか検索から選べます。」)を新設し、`app.js:407`と`:444`の重複リテラルを`setMapNote(NO_HOTEL_TEXT)`に置換。`?demo=nohotels`と`?demo=autozoom`の撮影2枚を見てA/Bを同一文言のままとした(自動ズームアウト後も違和感なし)。`scripts/check-nohotels.mjs`(コメント+1箇所)・`scripts/check-autozoom.mjs`(2箇所)の期待文字列も同時更新、混雑文言(C)は無変更。
+- `node --check assets/app.js`通過、mobileで`?demo=nohotels`・`?demo=autozoom`・desktopで`?demo=nohotels`を目視し新文言「この範囲には宿のデータがありません。エリアチップか検索から選べます。」が3行に収まり地図・チップ行と重ならないことを確認、`?fixture=kusatsu`mobileもカード30枚・番号ピン判読可・コンソールエラー0件でデグレなし。`node scripts/check-nohotels.mjs`5件PASS・`node scripts/check-autozoom.mjs`16件PASS・`node scripts/check-all.mjs`27本中27本PASS(exit 0)。
+- 次: R89(check-all.mjs高速化)またはR101(タイルエラー通知)から計画役が選定。
+- R98 埋め込みiframeに`sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"`+`referrerpolicy="no-referrer"`を追加。ROADMAP本文の「sandboxは足さない方向」は計画役のPlaywright実測で誤りと判明したため訂正、実iframe・`<pre>`タグ例(`demo/hotel-page.html`)・README埋め込み例の3箇所を同じ属性で揃えた(grep確認済み)。`demo/embed-check.html`はローカル確認用(同一オリジン想定)のため意図的に未変更。
+- 属性追加後に自分でPlaywright実測: カード30枚・iframe高さが16312pxまで自動伸長・外部リンク(`.feedcard__link`)クリックで新規タブがGoogleマップ経路URLへOPENED、コンソールエラー0件。`node scripts/check-embedheight.mjs`8件PASS、`node scripts/check-all.mjs`27本中27本PASS(exit 0)。mobile/desktopの撮影も目視、文字崩れ・二重スクロールなし。
+- 次: R89(check-all.mjs高速化)またはR92〜R94から計画役が選定。
+- R96 ライトボックスにフォーカストラップを追加。実装前にPlaywrightで現状を再現したところ、開いた直後は`.lightbox__close`だが**Tab 1回目でbody・2回目で背後の`.topbar__back`・3回目以降は地図とピン**へ抜けていた(実測)。`assets/app.js:920`の`lightboxKeyHandler`に`e.key === 'Tab'`分岐を足し、フォーカス可能要素が閉じるボタン1つだけのため`e.preventDefault()`して閉じるボタンに留める形(+11行、将来要素が増えたとき用の理由コメント付き)。`tabindex`・`Escape`・暗幕クリック・`closeLightbox()`の復帰フォーカス(既に実装済みと再確認)は無変更。
+- `scripts/check-lightbox.mjs`に5ケース追加(開いた直後のフォーカス位置/Tab×5で留まる/Shift+Tab×3で留まる/Escape後に`.feedcard__imgbtn`へ戻る/embed=1でもTab×5で留まる)し26項目全PASS。Tab連打後のoverlayを撮影して目視、閉じるボタンに白いフォーカスリングが残り背後は暗幕のまま。`?fixture=kusatsu`のmobile/PC幅もデグレなし(カード30枚・番号ピン判読可・文字崩れなし・コンソールエラー0件)、`node scripts/check-all.mjs`は27本全PASS(exit 0)。
+- 次: R89(check-all.mjs高速化)またはR92〜R94から計画役が選定。
+- R95 `docs/FIXTURES.md` の「既存 fixture は原則再生成しない方針」節の直前に「鮮度の目安と再取得の手順(R95)」節を新設。(a)半年を目安(統計的根拠は無く運用上の目安と明記)・`buildOverpassQuery()`変更時は期間問わず例外・次の見直しは2027-03頃、(b)Overpassマナー節への相互リンク、(c)dump-rank前後比較→撮影→check-all→NIGHTLOG記録の順序リスト、(d)keep-listはmake-fixture.mjs:14のimportで自動適用済みで手動実行不要、を記載。「保存されるmeta」節からも新節へリンクを追加。
+- `git diff --stat -- assets fixtures scripts index.html demo`が空(文書のみ)を確認、`?fixture=kusatsu`をmobileで目視しカード30枚・番号ピン判読可・文字崩れなし・コンソールエラー0件、`node scripts/check-all.mjs`は27本全てPASS(fail語0件)。
+- 次: R89(check-all.mjs高速化)またはR92〜R94から計画役が選定。
+- R91 README の `?demo=` 値一覧を実装に合わせて修正。app.jsをgrepで再実測し12値(far/zoomout/initpos/suggest/recent/recentmix/passive/imgfail/portrait/nohotels/autozoom/hoteltip)を確認、README.mdの「10個すべて」を「12個すべて」に直し表を3列(値/何が再現されるか/使っている検査)・12行に拡張。portraitの縦長ダミー画像サイズ(400×800)もapp.js:801で実測確認。
+- デグレ確認撮影(`?fixture=kusatsu` mobile)でカード30枚・番号ピン判読可・文字崩れなし・コンソールエラー0件を目視。`node docs/check.mjs`(README画像リンク含む)と`node scripts/check-all.mjs`は27本中27本PASS、`git diff --stat -- assets fixtures scripts index.html demo`は空でREADME.md以外への波及なしを確認。
+- 次: R89(check-all.mjs高速化・hotelparam分割)または朝の相談待ちのR2-1以外の未着手項目(R92・R93・R94・R95)から計画役が選定。
+- R88 埋め込み高さ通知の受信側上限を暫定100000pxから実測ベースの60000pxへ変更。計画役が4エリア×2幅×2状態(30枚/60枚展開後)を実測し、最大値は kusatsu desktop 60枚展開後の34075px(ROADMAP旧文言「例20000px」は事実誤認・R48当時と同じ罠だった)。実測最大の約1.8倍を採用し `demo/hotel-page.html` の表示用コピーと実スクリプトの2箇所を60000で揃え、根拠コメントを追加。`assets/app.js`(送信側)は無変更(`git diff --stat -- assets` 空)。
+- `?fixture=kusatsu&embed=1` のデモページを mobile/desktop で目視、iframe内に二重スクロールなくカードが最後まで表示。`node scripts/check-embedheight.mjs` 8件PASS(「もっと見る」展開後も高さがさらに増える検査が上限60000pxで引き続きPASS)、`node scripts/check-all.mjs` 27本中27本PASS。ついでにR90(`loading="lazy"`)が`demo/hotel-page.html:213`に既に実装済みであることを実測確認しROADMAPを[x]に。
+- 次: R89(check-all.mjs高速化・hotelparam分割)または朝の相談待ちのR2-1以外の未着手項目(R91〜R95)から計画役が選定。
+- R42 カード要約の `truncate()` を、上限(120字)手前で最後の「。」があればそこで完結させる方式に変更(句点が上限の60%より手前/無いときだけ従来どおり120字+「…」)。engine.js:289付近と定数SUMMARY_SENTENCE_MIN_RATIOを追加、check-engine.mjsに9ケース追加、既存の120字+…ケースは句点なしテキストのため変化なしと確認。
+- kusatsu/hakone/dogoをmobileで目視。1位カード(光泉寺「山号は草津山。」/早雲寺「山号は金湯山。」/伊佐爾波神社「旧社格は県社。」)がすべて句点で終わり文の途中切れ無し、地図ピン30個判読可、コンソールエラー0件。
+- 次: R2-1(朝の相談待ち)またはfixture再生成不要な軽量タスクを計画役が選定。
+- R43 状態Aの宿ピンに宿名ツールチップを追加。app.js:459付近の`renderHotelPins()`で`marker.on('click',...)`直前に`marker.bindTooltip(h.name,{direction:'top',offset:[0,-14],className:'hoteltip'})`を追加し、二重表示を避けるため`L.marker`の`title`オプションを削除(`aria-label`は維持)。タップ即遷移するため開閉はLeaflet既定のhoverのまま(ROADMAP本文の「タップで開く」は不採用、理由をNEXT.mdに明記済み)。撮影用に`?demo=hoteltip`(app.js:1204付近、外部API0回・密集宿6件+長い宿名1件)とscripts/check-hoteltip.mjs(10項目)を新設、check-all.mjsに登録(16本目)。
+- `?demo=hoteltip`をmobile/desktopで目視。長い宿名「草津温泉 ホテル紅葉亭」も地図右端で切れず、密集ペアのツールチップも重ならずピン絵文字も隠れていない。check-all.mjsは16本中16本PASS、`?fixture=kusatsu`のカード30枚・番号ピン判読可・コンソールエラー0件でデグレなしを確認。
+- 次: R2-1(朝の相談待ち)または残候補(R14/R19/R40/R45/R46)から計画役が選定。
+- R45 固定データバッジに生成日付を追加(app.jsにformatFixtureDate()を新設しローカルYYYY-MM-DDで表示、index.htmlに#feed-badge-date、style.cssに.topbar__badge__date)。R46 docs/check.mjsに実バイト数のKB列を追加(content-lengthはgzip圧縮後のためcheckTargetで読んだ本文実体のバイト数で上書き)、末尾に合計サイズ行を追加。
+- kusatsu/embed/hakoneをmobileで目視、「固定データ 2026-09-16 取得」が1行に収まり見出しと重ならない・カード30枚判読可・コンソールエラー0件。docs/check.mjsのKB上位3件: fixtures/hakone.json 900.1KB / fixtures/dogo.json 117.1KB / fixtures/kusatsu.json 65.3KB。check-all.mjs 16本全PASS。
+- 次: R2-1(朝の相談待ち)または残候補(R14/R19/R40)から計画役が選定。
+- R49+R50 文書2本を追加(コード変更なし)。README に「## 判断待ちの設計課題」節(4件・結論なし・NIGHTLOGへの参照付き)と `docs/FIXTURES.md`(新規)を追加。`docs/FIXTURES.md` はエリア表3行・実行コマンド・meta一覧・Overpassのマナー・再生成しない方針・buildOverpassQuery同期注意を記載、README の `fixtures/` 行から相対リンクを追加。
+- 画面変更が無いため撮影は省略。`ls docs/FIXTURES.md` で実在確認、`node docs/check.mjs` OK(README画像3本含む既存検査もPASS)、`node scripts/check-all.mjs` 17本中17本PASS・exit 0、`git diff --stat -- assets fixtures scripts index.html demo` は空を確認。
+- 次: ROADMAP残りはR14/R19/R23/R28/R31/R32/R33/R34/R40/R42/R43/R51。R49で公開した4件の判断待ちのうち検索候補とチップの重なり(R2-1)含め依然未決。
+- R84 `?fixture=` 併用時のみ効く `?debug=1` を追加し、rank のスコア内訳をカード下端に淡色表示。engine.js は baseScore を `scoreBreakdown()`(image/summary/official/both/distance/season/base)に切り出し、加算順を1行も変えずに `rank()` の最後で `entry.item._debug`(rank・source・category・distanceM・total・categoryPenalty・categoryIndex)を後付け、`toCard()` に `_debug` を1行追加。app.js は `fixtureNameFromUrl()` が null なら絶対にフラグを立てず、fixture 読み込み失敗の catch でも `debugRank=false` に戻す。WEIGHT・CATEGORY_FREE_SLOTS は無変更。
+- `?fixture=kusatsu&debug=1` mobile を目視: 1位カードに「#1 · both · place_of_worship · 108m · 合計 71.4 写真+25 要約+15 公式+12 両ソース+20 距離-0.6」が375pxで2行に収まり、リンクチップともカード枠とも重ならず本文より確実に淡い。`?fixture=kusatsu`(debug無し)mobile は内訳行が1つも出ずカード30枚のままでデグレなし。埋め込み(`?embed=1`)でも出す判断にした(埋め込みは `?fixture=` 併用時しか有効にならず、一般公開URLに内訳が漏れる経路が無いため。分岐を足すと debugRank の条件が二重になり漏れの検証が難しくなる)。
+- 検証: `node scripts/dump-rank.mjs` の kusatsu/hakone/dogo/beppu 4エリアが実装前後で差分ゼロ(計算結果は不変)。check-engine.mjs に (r84) 10ケース追加(_debug を落とせば元の JSON に戻る・2回呼んでも順序同一・total === base + categoryPenalty)で226 pass/0 fail、新規 scripts/check-debugflag.mjs(11項目、`?debug=1` 単独で `.dbg` 0件を含む・外部API 0回)を check-all.mjs に登録し27本中27本PASS。次: R64(GitHub Actions 無料枠・朝の相談寄り)/R77(表示可否の判断)/R81(Overpass を叩く fixture 追加)/R82(aria-label 1行)/R85(英語デモページ)から計画役が選定。
+- R82 実測したら `index.html:56` に `aria-label="地図に戻る"` は既に実装済み(ROADMAP本文は事実誤認)だったため、`scripts/check-a11y.mjs` に別立ての `LABEL_TARGETS` ループを追加し戻るボタンの aria-label 検査のみ新設。既存の44px計測ループは無編集。
+- R77 `?fixture=kusatsu` mobile で `#feed-note` を撮り比べ。現状(出さない)と「上位30件を表示中（全60件）」を足したB案の2枚を目視した結果、「残り30件」は `moreHtml()` が既に表示しておりB案は情報の二重化かつ行数増で間延びするだけ、かつ正確な総数はengine.js改修なしには出せない(R77はengine不可)ため**不採用**。app.jsは変更なし(撮影用の一時差し込みは撮影後に必ず元へ戻し済み・`git diff --stat -- assets` 空を確認)。
+- 次: ROADMAP残りはR64(GitHub Actions無料枠・朝の相談寄り)/R81(Overpass1回・同僚検証前は4エリアで十分)/R85(国内予約サイト想定で優先度低)。すべて判断寄りのため計画役が朝の相談経由で選定。
+- R87 状態Bのスケルトン(読み込み中の骨組み)を`?fixture=kusatsu&slow=osm3000,wiki9000`のmobile/desktopで撮影・目視。(a)骨組み高さ312.3px・実カード高さ370.7px(差約58px、カード間余白で自然に区切られガタつき軽微)(b)灰色グラデーションのスケルトンと白背景の実カードの境目は明確(c)`prefers-reduced-motion: reduce`で`getComputedStyle(el).animationName`が`none`になることを実測、既存のシマー停止実装が機能している。3点とも崩れなしのためstyle.cssは無変更で閉じた。ついでにR86(もっと見るのスクロール位置維持)も計画役の実測により実装不要と判明したため合わせてクローズ。
+- 撮影は`screenshots/`に4枚保存(mobile/desktopのスケルトン状態、mobile全体、デグレ確認用の通常状態)。`node scripts/check-all.mjs`は27本中27本PASS(1回目はcheck-nohotels.mjsが環境要因のERR_NO_BUFFER_SPACEで一過性FAIL、単体再実行と2回目の通しで全緑を確認済み)。
+- 次: ROADMAP残りはR64(GitHub Actions無料枠・朝の相談寄り)/R81(Overpass1回)/R85(英語デモページ)/R88(埋め込み高さ上限見直し)/R89(check-all高速化)/R90(iframe lazy)から計画役が選定。
