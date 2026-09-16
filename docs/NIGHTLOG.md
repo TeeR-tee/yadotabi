@@ -338,3 +338,8 @@
 - やったこと: README の `?demo=` が7値→10値に是正された(`nohotels`/`autozoom`/`hoteltip`が未記載だった)。`assets/app.js`を再grepし、URLパラメータ一覧を4列(パラメータ/値の例/何が起きるか/外部APIを叩くか)に作り直し、`?demo=`は値が10個あるため専用の小見出し+別表に切り出した。README↔`docs/FIXTURES.md`の相互リンクを追加。`demo/hotel-page.html`の`.sales-notes`に高さ自動調整・URLエンコード必須・受信スクリプトの所在の3点を追記し、受信スクリプトの実物も`<pre class="tag-example">`で可視化した。
 - 見た目の確認結果: `demo/hotel-page.html`をローカルサーバー(port 3000)でmobile撮影しRead目視。追記した説明文は折り返しで読め、追加した`pre.tag-example`もmobile幅で横はみ出しなし(既存のoverflow-x:auto/word-break:break-allが適用)。既存のiframe埋め込み表示・上部の宿情報も従来どおりでデグレなし。
 - 次: `node docs/check.mjs`・`scripts/check-all.mjs`18本全PASS・`git diff --stat -- assets fixtures scripts index.html`空を確認済み。次候補はR14/R19/R40/R54/R55。
+
+### 2026-09-16 R58 ブラウザの戻るで状態Aに戻る(history.pushState)
+- やったこと: `selectHotel()`で状態Bに入る際`historyPushed`フラグ付きで`history.pushState`(embed時・二重push時はスキップ)、`goBack()`末尾でフラグを戻し、`goBackFromUi()`(戻るボタン用)と`popstate`購読(`bindEvents()`末尾)を追加。`?hotel=`/`?fixture=`直行でもpushStateが1回走るためこの分の戻るで状態Aに出られる仕様を採用(URLは書き換えない)。新規`scripts/check-history.mjs`(18項目)を`check-all.mjs`に追加、20本全PASS。
+- 見た目の確認結果: `?fixture=kusatsu`mobileでカード30枚・番号ピン判読可・デグレなし。check-history内で撮影したgoBack後の状態A(検索欄・エリアチップ・地図)も崩れなし。コンソールエラー0件。
+- 次: R14/R19/R40/R55/R57/R59が残候補。

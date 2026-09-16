@@ -116,6 +116,9 @@
   /** 提案リクエストの世代番号。戻る→別の宿、の取り違えを防ぐ。 */
   var requestSeq = 0;
 
+  /** 状態Bへの pushState を済ませたか。二重 push 防止のためのフラグ。 */
+  var historyPushed = false;
+
   var els = {};
   var map = null;            // 状態Aの地図(1回だけ生成して使い回す)
   var hotelLayer = null;     // 宿ピンのレイヤ
@@ -671,6 +674,11 @@
     maxSeenIndex = -1;
     pushRecent(hotel);
     render();
+    // 状態Bへ入ったことを履歴に積む(埋め込み時と二重push時は何もしない)
+    if (!state.embed && !historyPushed) {
+      global.history.pushState({ yado: 'feed' }, '', global.location.href);
+      historyPushed = true;
+    }
     // 状態Bに入った瞬間を計測の起点にする
     perfReset();
 
@@ -714,6 +722,17 @@
     state.stage = null;
     state.osmFailed = false;
     render();
+    historyPushed = false;
+  }
+
+  /** UI(戻るボタン)からの戻る操作。history の辻褄を合わせるための入口を分ける。 */
+  function goBackFromUi() {
+    if (historyPushed) {
+      // 実際の画面遷移は popstate ハンドラに任せる
+      global.history.back();
+    } else {
+      goBack();
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -1570,7 +1589,7 @@
     });
 
     // --- 状態B ---
-    els.backBtn.addEventListener('click', goBack);
+    els.backBtn.addEventListener('click', goBackFromUi);
 
     // 画像読み込み失敗時は画像なしカードと同じプレースホルダに差し替える。
     // error イベントは <img> からバブリングしないため、capture=true が必須。
@@ -1649,6 +1668,13 @@
         postHeightToParent();
       });
     }
+
+    // --- ブラウザの「戻る」 ---
+    global.addEventListener('popstate', function () {
+      if (state.embed) return;
+      if (state.view === 'feed') goBack();
+      // 既に状態Aならブラウザが勝手に離脱するのが正しい挙動
+    });
   }
 
   function init() {
