@@ -381,3 +381,8 @@
 - やったこと: `bgFromUrl(params)`を新設し`?bg=`の値を`/^[0-9a-fA-F]{6}$/`(先頭`#`は1つだけ剥がす)で厳格検証、`setEmbed(on, bg)`に第2引数を足しembed時のみ`--c-bg`をCSS変数経由でセット(文字列連結でCSSに流すのはここだけ)。ROADMAP本文は3桁も許容と書いてあったが今回は6桁のみとした(3桁許容は`red`等の色名や中途半端な値との区別を複雑にし、営業用途では宿サイトの正確な色コードをそのまま渡す想定のため6桁固定の方が安全と判断、3桁対応は別タスク)。文字色・カード背景は変更していない。
 - 見た目の確認結果: `?fixture=kusatsu&embed=1&bg=fff7e6`mobileで地色が淡いクリーム色になりカード(白)・文字・リンクチップの可読性は保たれている、`?fixture=kusatsu&embed=1`(bgなし)mobileは従来どおりの白系でデグレなし、`demo/hotel-page.html`mobileも親子の地色が馴染み二重スクロールなし。新規`scripts/check-embedbg.mjs`(有効値/#付き/無効値4種/embedなし/カード30枚維持の11項目)を追加し`check-all.mjs`23本全PASS。
 - 次: R14/R19/R40が残候補。
+
+### 2026-09-16 R65 selectHotel直前の地図位置を明示保存(未保存の初期位置ズレを修正)
+- やったこと: 計画役の実測どおり`goBack()`は地図に触れず同一セッション内では既にズレないことを確認、当初仮説(`goBack()`への`setView()`追加)は否定して不採用。真因である「`saveMapView()`が`moveend`のdebounce(250ms)経由でしか呼ばれずドラッグ直後の宿選択で保存が漏れる」点に対処し、`selectHotel()`冒頭に`saveMapView()`を1回追加。回帰テスト`checkMapViewSavedOnSelect`(panBy→40ms→selectHotel→300ms後のlocalStorage一致検査)を`check-history.mjs`に追加し、修正前にFAIL(savedAfterがpanBy前の古い位置)することを確認済み。
+- 見た目の確認結果: `?fixture=kusatsu`mobileでカード30枚・番号ピン1〜30判読可・コンソールエラー0件、画面変更なしでデグレなし。`check-history.mjs`21本全PASS、`check-all.mjs`23本全PASS。
+- 次: R14/R19/R40が残候補。

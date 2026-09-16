@@ -184,6 +184,56 @@ async function checkEmbedNoHistoryChange(browser) {
   await context.close();
 }
 
+async function checkMapViewSavedOnSelect(browser) {
+  const { context, page, consoleErrors } = await newPage(browser);
+
+  await page.goto(`${BASE}/?fixture=kusatsu`, { waitUntil: 'load' });
+  await waitFor(1000);
+  await page.evaluate(() => { window.YadoApp.goBack(); });
+  // 初回訪問直後はまだ moveend の debounce による保存が一度も走っていないため、
+  // 前提を成立させるための最小限の地図操作(panBy)をここで1回行う。
+  await page.evaluate(() => { window.YadoApp.getMap().panBy([1, 1], { animate: false }); });
+  await waitFor(800);
+
+  // 前提確認: 状態Aの localStorage が地図と一致している
+  const preCheck = await page.evaluate(() => {
+    const map = window.YadoApp.getMap();
+    const c = map.getCenter();
+    const saved = JSON.parse(localStorage.getItem('yado.mapview.v3'));
+    return { mapLat: c.lat, mapLon: c.lng, mapZoom: map.getZoom(), saved };
+  });
+  const preClose = preCheck.saved
+    && Math.abs(preCheck.saved.lat - preCheck.mapLat) < 1e-6
+    && Math.abs(preCheck.saved.lon - preCheck.mapLon) < 1e-6
+    && preCheck.saved.zoom === preCheck.mapZoom;
+  ok(preClose, '前提: 状態Aのlocalstorageが地図と一致', preCheck);
+
+  // 地図をpanBy -> debounce(250ms)より短い40msだけ待ってから宿を選ぶ
+  const viewAfterPan = await page.evaluate(() => {
+    const map = window.YadoApp.getMap();
+    map.panBy([150, -120], { animate: false });
+    const c = map.getCenter();
+    return { lat: c.lat, lon: c.lng, zoom: map.getZoom() };
+  });
+  await waitFor(40);
+
+  await page.evaluate(() => {
+    window.YadoApp.selectHotel({ name: 'テスト宿E', lat: 36.62, lon: 138.60 });
+  });
+  await waitFor(300);
+
+  const savedAfter = await page.evaluate(() => JSON.parse(localStorage.getItem('yado.mapview.v3')));
+  const matched = savedAfter
+    && Math.abs(savedAfter.lat - viewAfterPan.lat) < 1e-6
+    && Math.abs(savedAfter.lon - viewAfterPan.lon) < 1e-6
+    && savedAfter.zoom === viewAfterPan.zoom;
+  ok(matched, 'selectHotel直後にpanBy直後の地図位置がlocalstorageへ保存される', { viewAfterPan, savedAfter });
+
+  ok(consoleErrors.length === 0, '地図位置保存検証: コンソールエラー0件', consoleErrors);
+
+  await context.close();
+}
+
 async function main() {
   let serverProc = null;
   const alreadyRunning = await isPortOpen(PORT);
@@ -203,6 +253,7 @@ async function main() {
     await checkBasicHistoryFlow(browser);
     await checkBackButtonFlow(browser);
     await checkEmbedNoHistoryChange(browser);
+    await checkMapViewSavedOnSelect(browser);
   } finally {
     await browser.close();
     if (serverProc) serverProc.kill();

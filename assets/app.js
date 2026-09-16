@@ -672,6 +672,10 @@
   function selectHotel(hotel) {
     if (!hotel || !isFinite(hotel.lat) || !isFinite(hotel.lon)) return;
 
+    // ドラッグ直後にピンをタップすると moveend の debounce が間に合わないので、
+    // 宿を選ぶ瞬間の位置を確実に残す。
+    saveMapView();
+
     hideSuggest();
     if (els.searchInput) els.searchInput.blur();
 
