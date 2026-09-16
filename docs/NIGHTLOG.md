@@ -1,6 +1,9 @@
 # 夜間ログ(みのるんが朝に読む)
 
 ## サイクル記録
+- R94 状態Aの0件文言A/Bを統一。`app.js:401`直前に定数`NO_HOTEL_TEXT`(「この範囲には宿のデータがありません。エリアチップか検索から選べます。」)を新設し、`app.js:407`と`:444`の重複リテラルを`setMapNote(NO_HOTEL_TEXT)`に置換。`?demo=nohotels`と`?demo=autozoom`の撮影2枚を見てA/Bを同一文言のままとした(自動ズームアウト後も違和感なし)。`scripts/check-nohotels.mjs`(コメント+1箇所)・`scripts/check-autozoom.mjs`(2箇所)の期待文字列も同時更新、混雑文言(C)は無変更。
+- `node --check assets/app.js`通過、mobileで`?demo=nohotels`・`?demo=autozoom`・desktopで`?demo=nohotels`を目視し新文言「この範囲には宿のデータがありません。エリアチップか検索から選べます。」が3行に収まり地図・チップ行と重ならないことを確認、`?fixture=kusatsu`mobileもカード30枚・番号ピン判読可・コンソールエラー0件でデグレなし。`node scripts/check-nohotels.mjs`5件PASS・`node scripts/check-autozoom.mjs`16件PASS・`node scripts/check-all.mjs`27本中27本PASS(exit 0)。
+- 次: R89(check-all.mjs高速化)またはR101(タイルエラー通知)から計画役が選定。
 - R98 埋め込みiframeに`sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"`+`referrerpolicy="no-referrer"`を追加。ROADMAP本文の「sandboxは足さない方向」は計画役のPlaywright実測で誤りと判明したため訂正、実iframe・`<pre>`タグ例(`demo/hotel-page.html`)・README埋め込み例の3箇所を同じ属性で揃えた(grep確認済み)。`demo/embed-check.html`はローカル確認用(同一オリジン想定)のため意図的に未変更。
 - 属性追加後に自分でPlaywright実測: カード30枚・iframe高さが16312pxまで自動伸長・外部リンク(`.feedcard__link`)クリックで新規タブがGoogleマップ経路URLへOPENED、コンソールエラー0件。`node scripts/check-embedheight.mjs`8件PASS、`node scripts/check-all.mjs`27本中27本PASS(exit 0)。mobile/desktopの撮影も目視、文字崩れ・二重スクロールなし。
 - 次: R89(check-all.mjs高速化)またはR92〜R94から計画役が選定。

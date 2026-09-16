@@ -116,7 +116,7 @@ async function main() {
 
       const mapNote = page.locator('.mapnote');
       const text = (await mapNote.textContent() || '').trim();
-      ok(text === 'この範囲には宿が見つかりませんでした', '3. ?demo=nohotels のバナー文言が維持', text);
+      ok(text === 'この範囲には宿のデータがありません。エリアチップか検索から選べます。', '3. ?demo=nohotels のバナー文言が維持', text);
 
       await context.close();
     }
@@ -147,7 +147,7 @@ async function main() {
 
       const mapNote = page.locator('.mapnote');
       const text = (await mapNote.textContent() || '').trim();
-      ok(text === 'この範囲には宿が見つかりませんでした', '4. ドラッグ後は通常の0件バナーになる', text);
+      ok(text === 'この範囲には宿のデータがありません。エリアチップか検索から選べます。', '4. ドラッグ後は通常の0件バナーになる', text);
 
       ok(consoleErrors.length === 0, '4. コンソールエラー0件(ドラッグ)', consoleErrors);
 

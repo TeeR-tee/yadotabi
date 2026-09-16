@@ -7,7 +7,7 @@
 // (このプロジェクトに npm install はしない)。check-chipcurrent.mjs の作りを踏襲する。
 //
 // 確認項目:
-//   1. ?demo=nohotels で .mapnote が可視かつ本文が「この範囲には宿が見つかりませんでした」と一致
+//   1. ?demo=nohotels で .mapnote が可視かつ本文が「この範囲には宿のデータがありません。エリアチップか検索から選べます。」と一致
 //   2. 宿ピンが0個(.leaflet-marker-icon 等のマーカーが無い)
 //   3. 外部APIへの fetch が0回(overpass/wikipedia ドメインへの発火が無い)
 //   4. コンソールエラー0件
@@ -78,7 +78,7 @@ async function main() {
     });
     ok(visible, '1. .mapnote が可視', visible);
     const text = (await mapNote.textContent() || '').trim();
-    ok(text === 'この範囲には宿が見つかりませんでした', '1. .mapnote の本文が一致', text);
+    ok(text === 'この範囲には宿のデータがありません。エリアチップか検索から選べます。', '1. .mapnote の本文が一致', text);
 
     const markerCount = await page.locator('.leaflet-marker-icon').count();
     ok(markerCount === 0, '2. 宿ピンが0個', markerCount);

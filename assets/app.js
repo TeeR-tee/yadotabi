@@ -398,13 +398,16 @@
     loadHotelsInView();
   }, DEBOUNCE_MOVE_MS);
 
+  // A/Bで共有する0件文言(二重管理を避けるため定数化)
+  var NO_HOTEL_TEXT = 'この範囲には宿のデータがありません。エリアチップか検索から選べます。';
+
   function loadHotelsInView() {
     if (!map) return;
     // 状態Aの撮影中は宿ピンを取りに行かない(外部APIを叩かずに素の画面を撮るため)
     if (demoStateA) {
       hotelLayer.clearLayers();
       if (demoNoHotels) {
-        setMapNote('この範囲には宿が見つかりませんでした');
+        setMapNote(NO_HOTEL_TEXT);
         return;
       }
       if (map.getZoom() < MIN_HOTEL_ZOOM) setMapNote('ズームすると宿が出ます');
@@ -441,7 +444,7 @@
           return;
         }
         autoZoomArmed = false;
-        setMapNote('この範囲には宿が見つかりませんでした');
+        setMapNote(NO_HOTEL_TEXT);
       })
       .catch(function (err) {
         if (state.view !== 'select') return;
