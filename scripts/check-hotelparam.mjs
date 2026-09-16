@@ -171,6 +171,51 @@ async function checkBadgeDate(browser, path, expectDate, label) {
   await context.close();
 }
 
+// R105: ?q= が0件のとき .mapnote に案内文が出ることの検査
+// Nominatim を page.route() で空配列に差し替えて再現する(外部APIは叩かない)。
+async function checkQueryNoHit(browser, q, label) {
+  const context = await browser.newContext({ viewport: { width: 375, height: 812 } });
+  const page = await context.newPage();
+  const consoleErrors = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') consoleErrors.push(msg.text());
+  });
+  page.on('pageerror', (err) => consoleErrors.push(String(err)));
+
+  await page.route('**nominatim.openstreetmap.org**', (route) => {
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+  });
+
+  await page.goto(`${BASE}/?q=${encodeURIComponent(q)}`, { waitUntil: 'load' });
+
+  const expectedText = '「' + q + '」は見つかりませんでした。エリアチップか検索から選べます。';
+  let timedOut = false;
+  try {
+    await page.waitForFunction((text) => {
+      const el = document.querySelector('.mapnote');
+      return el && !el.hidden && el.textContent.trim() === text;
+    }, expectedText, { timeout: 8000 });
+  } catch { timedOut = true; }
+
+  const note = page.locator('.mapnote');
+  const visible = timedOut ? null : await note.evaluate((el) => !el.hidden);
+  const text = timedOut ? '' : (await note.textContent() || '').trim();
+  ok(!timedOut && visible === true, label + ': .mapnoteが可視', timedOut ? 'timeout' : visible);
+  ok(!timedOut && text === expectedText, label + ': 本文が一致', timedOut ? 'timeout' : text);
+
+  const mapVisible = await page.locator('#map').evaluate((el) => {
+    return el.offsetParent !== null && getComputedStyle(el).display !== 'none';
+  });
+  ok(mapVisible, label + ': #mapが可視(状態Aのまま)', mapVisible);
+  const feedTitle = (await page.locator('#feed-title').textContent() || '').trim();
+  ok(feedTitle !== 'この宿の周辺', label + ': #feed-titleが「この宿の周辺」になっていない(状態Bに遷移していない)', feedTitle);
+  ok(consoleErrors.length === 0, label + ': コンソールエラー0件', consoleErrors);
+
+  await page.screenshot({ path: `${PROJECT_ROOT}screenshots/r105-q-nohit-mobile.png` });
+
+  await context.close();
+}
+
 // R99: 範囲外座標(?hotel=999,999 など)が状態Aへ黙って落ちることの検査
 async function checkStateA(browser, path, label) {
   const context = await browser.newContext({ viewport: { width: 375, height: 812 } });
@@ -272,6 +317,9 @@ async function main() {
     await checkStateA(browser, '/?hotel=999,138.5960,テスト', 'i.緯度999は状態A');
     await checkStateA(browser, '/?hotel=36.6226,999,テスト', 'j.経度999は状態A');
     await checkStateA(browser, '/?hotel=abc,def,テスト', 'k.非数値は状態A(回帰)');
+
+    // R105: ?q= が0件のとき .mapnote に案内文が出る
+    await checkQueryNoHit(browser, 'そんちょうざいしないちめい', 'l.q0件でmapnote表示');
   } finally {
     await browser.close();
     if (serverProc) serverProc.kill();

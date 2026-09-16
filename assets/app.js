@@ -423,6 +423,11 @@
   // A/Bで共有する0件文言(二重管理を避けるため定数化)
   var NO_HOTEL_TEXT = 'この範囲には宿のデータがありません。エリアチップか検索から選べます。';
 
+  // R105: ?q= の地名が1件も見つからないときの案内(R94 の「状況。次にできること。」形式)
+  function noQueryHitText(q) {
+    return '「' + q + '」は見つかりませんでした。エリアチップか検索から選べます。';
+  }
+
   function loadHotelsInView() {
     if (!map) return;
     // 状態Aの撮影中は宿ピンを取りに行かない(外部APIを叩かずに素の画面を撮るため)
@@ -1675,7 +1680,8 @@
       syncSearchClear();
       setCurrentChip(currentAreaIndex(q));
       YadoGeo.suggestHotels(q).then(function (results) {
-        if (!results.length || state.view !== 'select') return;
+        if (state.view !== 'select') return;
+        if (!results.length) { setMapNote(noQueryHitText(q)); return; }
         flyTo(results[0].lat, results[0].lon, DEFAULT_VIEW.zoom);
       }).catch(function () { /* 失敗しても初期位置のままでよい */ });
       return;

@@ -537,3 +537,6 @@
 - R104 README.md:3の英語段落(3文)を4文に拡張。fixtureがkusatsu/hakone/dogo/beppuの4エリア+randomであること、`?debug=1`はfixture併用時のみ有効なこと、`?embed=1`を`?hotel=`と併用するとiframe埋め込み(高さ自動)ができることを追記し、日本語表を案内する1文で締めた。用語は翻訳せずそのまま使用。
 - `git diff README.md`で日本語行の差分ゼロ・英語段落1行のみの変更を確認。画面変更なしのため撮影省略、`node docs/check.mjs`OK、`node scripts/check-all.mjs`は27本中27本PASS。
 - 次: ROADMAP残りはR64/R81/R85/R88/R90から計画役が選定。
+- R105 `?q=`が0件のとき無言で草津のまま止まる非対称を解消。`app.js:1676`の早期returnを分岐に変え、0件時のみ`setMapNote()`で「『<入力値>』は見つかりませんでした。エリアチップか検索から選べます。」(`NO_HOTEL_TEXT`後半と同一文言・textContent経由のためescapeHtmlは付けず)を表示。検索欄側(`app.js:641`)の文言は表示先が違う(ドロップダウン)ため今回は統一対象外とし変更なし。
+- `scripts/check-hotelparam.mjs`にPlaywright `page.route()`でNominatimを`[]`応答に差し替えるケースを1件追加(l.q0件でmapnote表示、5項目)し46 pass/0 fail(既存17件のgotoは無削減)。`?q=そんちょうざいしないちめい`0件時の`.mapnote`表示をスクリーンショットで目視し文字崩れ・はみ出しなし、`?fixture=kusatsu`mobileの通常表示もデグレなし。`node scripts/check-all.mjs`は27本中27本PASS。
+- 次: ROADMAP残りはR64/R81/R85/R88/R90から計画役が選定。本番URLでの`?q=`実API確認1回はpush後に実施予定。
