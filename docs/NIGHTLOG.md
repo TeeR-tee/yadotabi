@@ -1,6 +1,9 @@
 # 夜間ログ(みのるんが朝に読む)
 
 ## サイクル記録
+- R88 埋め込み高さ通知の受信側上限を暫定100000pxから実測ベースの60000pxへ変更。計画役が4エリア×2幅×2状態(30枚/60枚展開後)を実測し、最大値は kusatsu desktop 60枚展開後の34075px(ROADMAP旧文言「例20000px」は事実誤認・R48当時と同じ罠だった)。実測最大の約1.8倍を採用し `demo/hotel-page.html` の表示用コピーと実スクリプトの2箇所を60000で揃え、根拠コメントを追加。`assets/app.js`(送信側)は無変更(`git diff --stat -- assets` 空)。
+- `?fixture=kusatsu&embed=1` のデモページを mobile/desktop で目視、iframe内に二重スクロールなくカードが最後まで表示。`node scripts/check-embedheight.mjs` 8件PASS(「もっと見る」展開後も高さがさらに増える検査が上限60000pxで引き続きPASS)、`node scripts/check-all.mjs` 27本中27本PASS。ついでにR90(`loading="lazy"`)が`demo/hotel-page.html:213`に既に実装済みであることを実測確認しROADMAPを[x]に。
+- 次: R89(check-all.mjs高速化・hotelparam分割)または朝の相談待ちのR2-1以外の未着手項目(R91〜R95)から計画役が選定。
 - R42 カード要約の `truncate()` を、上限(120字)手前で最後の「。」があればそこで完結させる方式に変更(句点が上限の60%より手前/無いときだけ従来どおり120字+「…」)。engine.js:289付近と定数SUMMARY_SENTENCE_MIN_RATIOを追加、check-engine.mjsに9ケース追加、既存の120字+…ケースは句点なしテキストのため変化なしと確認。
 - kusatsu/hakone/dogoをmobileで目視。1位カード(光泉寺「山号は草津山。」/早雲寺「山号は金湯山。」/伊佐爾波神社「旧社格は県社。」)がすべて句点で終わり文の途中切れ無し、地図ピン30個判読可、コンソールエラー0件。
 - 次: R2-1(朝の相談待ち)またはfixture再生成不要な軽量タスクを計画役が選定。

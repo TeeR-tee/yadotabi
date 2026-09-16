@@ -225,7 +225,8 @@
       <p class="sales-note-extra">
         ・<code>width</code> / <code>height</code> は初期値(720程度)のままで構いません。下記の受信スクリプトを一緒に設置すると、中身の高さに合わせて自動で伸びます(設置しない場合は固定高のままになり、宿の紹介が長いと中に二重スクロールが出ます)。<br>
         ・<code>?hotel=</code> の宿名部分は日本語や空白を含むため、URLエンコードが必要です(例: 「草津 湯けむり荘」→ <code>%E8%8D%89%E6%B4%A5%20%E6%B9%AF%E3%81%91%E3%82%80%E3%82%8A%E8%8D%98</code>)。<br>
-        ・受信スクリプトの実物はこのページの <code>&lt;/body&gt;</code> 直前(下記)にあります。このページのソースをそのままコピーしてお使いいただけます。
+        ・受信スクリプトの実物はこのページの <code>&lt;/body&gt;</code> 直前(下記)にあります。このページのソースをそのままコピーしてお使いいただけます。<br>
+        ・受信スクリプトは 60000px を超える高さは無視します(異常値で親ページが壊れるのを防ぐため)。
       </p>
       <pre class="tag-example">&lt;script&gt;
 window.addEventListener('message', function (e) {
@@ -233,7 +234,8 @@ window.addEventListener('message', function (e) {
   var data = e.data;
   if (!data || typeof data !== 'object' || data.type !== 'yadotabi:height') return;
   var height = data.height;
-  if (typeof height !== 'number' || !isFinite(height) || height &lt; 100 || height &gt; 100000) return;
+  // 上限60000px: 実測の最大は kusatsu desktop の60枚展開後で34075px(2026-09-16)。その約1.8倍を保険の上限にする。
+  if (typeof height !== 'number' || !isFinite(height) || height &lt; 100 || height &gt; 60000) return;
   var iframe = document.querySelector('iframe.embed');
   if (!iframe) return;
   iframe.style.height = height + 'px';
@@ -247,7 +249,8 @@ window.addEventListener('message', function (e) {
       var data = e.data;
       if (!data || typeof data !== 'object' || data.type !== 'yadotabi:height') return;
       var height = data.height;
-      if (typeof height !== 'number' || !isFinite(height) || height < 100 || height > 100000) return;
+      // 上限60000px: 実測の最大は kusatsu desktop の60枚展開後で34075px(2026-09-16)。その約1.8倍を保険の上限にする。
+      if (typeof height !== 'number' || !isFinite(height) || height < 100 || height > 60000) return;
       var iframe = document.querySelector('iframe.embed');
       if (!iframe) return;
       iframe.style.height = height + 'px';
