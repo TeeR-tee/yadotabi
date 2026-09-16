@@ -18,6 +18,10 @@
 //   5. コンソールエラー0件
 //   6. R123: 記事が実在する8枚(10位松山城 等)は HAS_ARTICLE_NO_SUMMARY_TEXT を含み、
 //      真に記事が無い12枚は NO_SUMMARY_TEXT ちょうどに一致すること(誤爆0件を1枚ずつ確認)
+//   7. R124: wikipediaTitle が無く wikidataId しか無い候補(?fixture=beppu 18位「うみたまご」)でも
+//      要約行にリンクが出ること(Wikidata転送URL経由。行き止まり修正の不変条件)
+//   8. R124: 4エリア全カードで、HAS_ARTICLE_NO_SUMMARY_TEXT を含む .feedcard__summary--none には
+//      必ず a[href] が1本以上あること(「記事はあります」と言っておいてリンクが無い行き止まりが無い)
 
 import { chromium } from 'file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs';
 import { spawn } from 'node:child_process';
@@ -135,6 +139,63 @@ async function main() {
     );
 
     ok(consoleErrors.length === 0, '5. コンソールエラー0件', consoleErrors);
+
+    // R124: wikidataId しか無い候補でもリンクが出ること(?fixture=beppu 18位「うみたまご」)
+    const beppuPage = await context.newPage();
+    const beppuConsoleErrors = [];
+    beppuPage.on('console', (msg) => { if (msg.type() === 'error') beppuConsoleErrors.push(msg.text()); });
+    beppuPage.on('pageerror', (err) => beppuConsoleErrors.push(String(err)));
+    await beppuPage.goto(`${BASE}/?fixture=beppu`, { waitUntil: 'load' });
+    await waitFor(1500);
+
+    const umitamagoRow = await beppuPage.locator('.feedcard').evaluateAll((cards) => {
+      const card = cards.find((c) => {
+        const nameEl = c.querySelector('.feedcard__name');
+        return nameEl && nameEl.textContent.indexOf('うみたまご') !== -1;
+      });
+      if (!card) return null;
+      const noneEl = card.querySelector('.feedcard__summary--none');
+      const link = noneEl ? noneEl.querySelector('a[href]') : null;
+      return {
+        found: true,
+        noneText: noneEl ? noneEl.textContent : null,
+        href: link ? link.getAttribute('href') : null,
+        target: link ? link.getAttribute('target') : null,
+        rel: link ? link.getAttribute('rel') : null,
+      };
+    });
+    ok(
+      !!umitamagoRow && !!umitamagoRow.href && /^https:\/\/www\.wikidata\.org\/wiki\/Special:GoToLinkedPage\/jawiki\/Q[1-9][0-9]*$/.test(umitamagoRow.href) &&
+        umitamagoRow.target === '_blank' && umitamagoRow.rel === 'noopener',
+      '7. wikidataId のみの候補(うみたまご)にWikidata転送リンクが出る',
+      umitamagoRow
+    );
+
+    // R124: 4エリア全カードで、HAS_ARTICLE_NO_SUMMARY_TEXT を含む --none には必ずリンクが1本以上あること
+    const AREAS = ['kusatsu', 'hakone', 'dogo', 'beppu'];
+    const deadEnds = [];
+    for (const area of AREAS) {
+      const areaPage = area === 'beppu' ? beppuPage : (area === 'dogo' ? page : await context.newPage());
+      if (area !== 'beppu' && area !== 'dogo') {
+        await areaPage.goto(`${BASE}/?fixture=${area}`, { waitUntil: 'load' });
+        await waitFor(1500);
+      }
+      const rows = await areaPage.locator('.feedcard__summary--none').evaluateAll((els) =>
+        els.map((el) => ({
+          text: el.textContent,
+          linkCount: el.querySelectorAll('a[href]').length,
+        }))
+      );
+      rows.forEach((r) => {
+        if (r.text.indexOf(HAS_ARTICLE_NO_SUMMARY_TEXT) === 0 && r.linkCount < 1) {
+          deadEnds.push({ area, text: r.text });
+        }
+      });
+      if (area !== 'beppu' && area !== 'dogo') await areaPage.close();
+    }
+    ok(deadEnds.length === 0, '8. 4エリアで「記事はあります」文言なのにリンクが0本のカードが無い', deadEnds);
+
+    await beppuPage.close();
 
     await context.close();
   } finally {

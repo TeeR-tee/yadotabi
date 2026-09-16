@@ -913,10 +913,17 @@
 
     // R123: 要約が無い場合、記事の存在(wikipedia/wikidataタグ)の有無で文言を分ける
     // (記事はあるのに「記事がありません」と嘘をつかない。card.wikipediaTitle 自体は画面に出さない)
-    var hasArticle = !card.summary && (card.wikipediaTitle || card.wikidataId);
+    // R124: wikipediaTitle が無く wikidataId しか無い候補は、従来 wikipediaUrl が null のまま
+    // 「記事はあります」とだけ言ってリンクが1本も出ない行き止まりになっていた。
+    // wikidataId からは Wikidata公式の転送URL(Special:GoToLinkedPage)で日本語版記事へ辿れるため、
+    // それを2段目のフォールバックにする。URLが作れなかった場合は「記事がありません」側に倒す
+    // (「記事はあります」と言った以上は必ず辿れることを不変条件にする)。
     var wikipediaUrl = card.wikipediaTitle
       ? safeUrl('https://ja.wikipedia.org/wiki/' + encodeURIComponent(card.wikipediaTitle.replace(/ /g, '_')))
+      : (card.wikidataId && /^Q[1-9][0-9]*$/.test(card.wikidataId))
+      ? safeUrl('https://www.wikidata.org/wiki/Special:GoToLinkedPage/jawiki/' + encodeURIComponent(card.wikidataId))
       : null;
+    var hasArticle = !card.summary && !!wikipediaUrl;
     var summary = card.summary
       ? '<p class="feedcard__summary">' + escapeHtml(card.summary) + '</p>'
       : hasArticle
