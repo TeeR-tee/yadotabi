@@ -19,28 +19,15 @@
 //       どの並びでも帰属表示とピンの矩形が1pxも重ならないことを4エリア全部で確認する。
 //       rank の重み・閾値には触れない(YadoApp.reorderCardsForTest は並べ替えのみ)。
 import { chromium } from 'file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs';
-import { spawn } from 'node:child_process';
-import net from 'node:net';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { ensureServer } from './lib/server.mjs';
 
-const PORT = 3000;
-const BASE = `http://127.0.0.1:${PORT}`;
-const PROJECT_ROOT = fileURLToPath(new URL('..', import.meta.url));
+let BASE;
 
 let pass = 0;
 let fail = 0;
 function ok(cond, label, extra) {
   if (cond) { pass++; console.log('  PASS ' + label); }
   else { fail++; console.log('  FAIL ' + label + (extra !== undefined ? ' -> ' + JSON.stringify(extra) : '')); }
-}
-
-function isPortOpen(port) {
-  return new Promise((resolve) => {
-    const socket = net.createConnection({ port, host: '127.0.0.1' });
-    socket.once('connect', () => { socket.destroy(); resolve(true); });
-    socket.once('error', () => resolve(false));
-  });
 }
 
 function waitFor(ms) {
@@ -189,18 +176,8 @@ async function checkUrl(browser, url, label) {
 }
 
 async function main() {
-  let serverProc = null;
-  const alreadyRunning = await isPortOpen(PORT);
-  if (!alreadyRunning) {
-    serverProc = spawn('python', ['-m', 'http.server', String(PORT), '--bind', '127.0.0.1'], {
-      cwd: PROJECT_ROOT,
-      stdio: 'ignore',
-    });
-    for (let i = 0; i < 25; i++) {
-      if (await isPortOpen(PORT)) break;
-      await waitFor(200);
-    }
-  }
+  const { base, stop } = await ensureServer();
+  BASE = base;
 
   const browser = await chromium.launch();
   try {
@@ -211,7 +188,7 @@ async function main() {
     await checkUrl(browser, `${BASE}/?fixture=kusatsu&embed=1`, 'kusatsu-embed');
   } finally {
     await browser.close();
-    if (serverProc) serverProc.kill();
+    await stop();
   }
 
   console.log('\n==== ' + pass + ' pass / ' + fail + ' fail ====');

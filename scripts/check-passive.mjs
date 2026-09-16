@@ -7,21 +7,10 @@
 // (このプロジェクトに npm install はしない)。check-a11y.mjs の作りを踏襲する。
 
 import { chromium } from 'file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs';
-import { spawn } from 'node:child_process';
-import net from 'node:net';
-import { fileURLToPath } from 'node:url';
+import { ensureServer } from './lib/server.mjs';
 
-const PORT = 3000;
-const BASE = `http://127.0.0.1:${PORT}`;
+let BASE;
 const PASSIVE_KEY = 'yado.passive.v1';
-
-function isPortOpen(port) {
-  return new Promise((resolve) => {
-    const socket = net.createConnection({ port, host: '127.0.0.1' });
-    socket.once('connect', () => { socket.destroy(); resolve(true); });
-    socket.once('error', () => resolve(false));
-  });
-}
 
 function waitFor(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -39,19 +28,8 @@ async function readPassive(page) {
 }
 
 async function main() {
-  let serverProc = null;
-  const alreadyRunning = await isPortOpen(PORT);
-  if (!alreadyRunning) {
-    const projectRoot = fileURLToPath(new URL('..', import.meta.url));
-    serverProc = spawn('python', ['-m', 'http.server', String(PORT), '--bind', '127.0.0.1'], {
-      cwd: projectRoot,
-      stdio: 'ignore',
-    });
-    for (let i = 0; i < 25; i++) {
-      if (await isPortOpen(PORT)) break;
-      await waitFor(200);
-    }
-  }
+  const { base, stop } = await ensureServer();
+  BASE = base;
 
   let hasFailure = false;
   const check = (label, ok, detail) => {
@@ -213,7 +191,7 @@ async function main() {
     }
   } finally {
     await browser.close();
-    if (serverProc) serverProc.kill();
+    await stop();
   }
 
   process.exitCode = hasFailure ? 1 : 0;

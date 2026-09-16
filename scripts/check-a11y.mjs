@@ -9,12 +9,9 @@
 // 対象セレクタの当たり判定の高さを測る。44px 未満が1件でもあれば NG。
 
 import { chromium } from 'file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs';
-import { spawn } from 'node:child_process';
-import net from 'node:net';
-import { fileURLToPath } from 'node:url';
+import { ensureServer } from './lib/server.mjs';
 
-const PORT = 3000;
-const BASE = `http://127.0.0.1:${PORT}`;
+let BASE;
 const MIN_HEIGHT = 44;
 
 // セレクタごとに「当たり判定の高さ」を測る方法を分ける。
@@ -39,12 +36,13 @@ const LABEL_TARGETS = [
   { selector: '.topbar__back', label: '戻るボタン' },
 ];
 
-const PAGES = [
-  { url: `${BASE}/?fixture=kusatsu`, label: '?fixture=kusatsu(状態B)' },
-  { url: `${BASE}/?demo=zoomout`, label: '?demo=zoomout(状態A)' },
-  { url: `${BASE}/?demo=suggest`, label: '?demo=suggest(検索候補)' },
-  { url: `${BASE}/?demo=recentmix`, label: '?demo=recentmix(最近+候補の統合)' },
-  { url: `${BASE}/?fixture=hakone&demo=far`, label: '?fixture=hakone&demo=far(もっと遠く)' },
+// BASE は ensureServer() で決まるので、モジュール読み込み時ではなく main() 内で組み立てる
+const PAGE_QUERIES = [
+  { query: '?fixture=kusatsu', label: '?fixture=kusatsu(状態B)' },
+  { query: '?demo=zoomout', label: '?demo=zoomout(状態A)' },
+  { query: '?demo=suggest', label: '?demo=suggest(検索候補)' },
+  { query: '?demo=recentmix', label: '?demo=recentmix(最近+候補の統合)' },
+  { query: '?fixture=hakone&demo=far', label: '?fixture=hakone&demo=far(もっと遠く)' },
 ];
 
 // R129: 横向きスマホで1枚目カードが読める高さになっているかの機械検査。
@@ -58,33 +56,14 @@ const LANDSCAPE_CASES = [
   { width: 375, height: 812, label: '375x812(縦・デグレ確認)', kind: 'portrait' },
 ];
 
-function isPortOpen(port) {
-  return new Promise((resolve) => {
-    const socket = net.createConnection({ port, host: '127.0.0.1' });
-    socket.once('connect', () => { socket.destroy(); resolve(true); });
-    socket.once('error', () => resolve(false));
-  });
-}
-
 function waitFor(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function main() {
-  let serverProc = null;
-  const alreadyRunning = await isPortOpen(PORT);
-  if (!alreadyRunning) {
-    const projectRoot = fileURLToPath(new URL('..', import.meta.url));
-    serverProc = spawn('python', ['-m', 'http.server', String(PORT), '--bind', '127.0.0.1'], {
-      cwd: projectRoot,
-      stdio: 'ignore',
-    });
-    // 起動待ち(最大5秒)
-    for (let i = 0; i < 25; i++) {
-      if (await isPortOpen(PORT)) break;
-      await waitFor(200);
-    }
-  }
+  const { base, stop } = await ensureServer();
+  BASE = base;
+  const PAGES = PAGE_QUERIES.map((p) => ({ url: `${BASE}/${p.query}`, label: p.label }));
 
   let hasFailure = false;
   const browser = await chromium.launch();
@@ -177,7 +156,7 @@ async function main() {
     }
   } finally {
     await browser.close();
-    if (serverProc) serverProc.kill();
+    await stop();
   }
 
   process.exitCode = hasFailure ? 1 : 0;

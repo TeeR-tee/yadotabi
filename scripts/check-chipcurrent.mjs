@@ -20,28 +20,16 @@
 //   7. コンソールエラー0件
 
 import { chromium } from 'file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs';
-import { spawn } from 'node:child_process';
-import net from 'node:net';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { ensureServer, PROJECT_ROOT } from './lib/server.mjs';
 
-const PORT = 3000;
-const BASE = `http://127.0.0.1:${PORT}`;
-const PROJECT_ROOT = fileURLToPath(new URL('..', import.meta.url));
+let BASE;
 
 let pass = 0;
 let fail = 0;
 function ok(cond, label, extra) {
   if (cond) { pass++; console.log('  PASS ' + label); }
   else { fail++; console.log('  FAIL ' + label + (extra !== undefined ? ' -> ' + JSON.stringify(extra) : '')); }
-}
-
-function isPortOpen(port) {
-  return new Promise((resolve) => {
-    const socket = net.createConnection({ port, host: '127.0.0.1' });
-    socket.once('connect', () => { socket.destroy(); resolve(true); });
-    socket.once('error', () => resolve(false));
-  });
 }
 
 function waitFor(ms) {
@@ -71,18 +59,8 @@ async function newPage(context) {
 }
 
 async function main() {
-  let serverProc = null;
-  const alreadyRunning = await isPortOpen(PORT);
-  if (!alreadyRunning) {
-    serverProc = spawn('python', ['-m', 'http.server', String(PORT), '--bind', '127.0.0.1'], {
-      cwd: PROJECT_ROOT,
-      stdio: 'ignore',
-    });
-    for (let i = 0; i < 25; i++) {
-      if (await isPortOpen(PORT)) break;
-      await waitFor(200);
-    }
-  }
+  const { base, stop } = await ensureServer();
+  BASE = base;
 
   const browser = await chromium.launch();
   try {
@@ -182,7 +160,7 @@ async function main() {
 
   } finally {
     await browser.close();
-    if (serverProc) serverProc.kill();
+    await stop();
   }
 
   console.log('\n==== ' + pass + ' pass / ' + fail + ' fail ====');

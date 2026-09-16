@@ -1,10 +1,14 @@
 // scripts/check-all.mjs
 // check-*.mjs 28本 + docs/check.mjs の計29本を直列実行し、pass/fail と所要時間を表で出す。
-// 1本でも失敗なら exit 1。共有サーバ化はしない(各テストが自前でポート3000を spawn/kill するため)。
+// 1本でも失敗なら exit 1。
+// R130: 共有サーバ方式。ここで ensureServer() を1回だけ呼び、空きポートのサーバを立てて
+// 各子プロセスに環境変数 YADOTABI_BASE で渡す。子は自分でサーバを起動しないので、
+// 以前のようにポート3000を奪い合って毎回違う1本が ERR_CONNECTION_REFUSED で落ちることがなくなる。
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ensureServer } from './lib/server.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -78,21 +82,29 @@ function saveFailLog(script, res, ms) {
 
 const results = [];
 
-for (const script of SCRIPTS) {
-  const scriptPath = path.join(ROOT, script);
-  const start = Date.now();
-  const res = spawnSync(process.execPath, [scriptPath], {
-    stdio: ['ignore', 'pipe', 'pipe'],
-    encoding: 'utf8',
-    cwd: ROOT,
-  });
-  const ms = Date.now() - start;
-  if (res.stdout) process.stdout.write(res.stdout);
-  if (res.stderr) process.stderr.write(res.stderr);
-  const pass = res.status === 0;
-  let failLog = null;
-  if (!pass) failLog = saveFailLog(script, res, ms);
-  results.push({ script, pass, ms, failLog });
+// 親サーバを1本だけ立て、全29本に YADOTABI_BASE で渡す(読まない4本は無視するだけ)
+const { base, stop } = await ensureServer();
+console.log(`共有サーバ: ${base}`);
+try {
+  for (const script of SCRIPTS) {
+    const scriptPath = path.join(ROOT, script);
+    const start = Date.now();
+    const res = spawnSync(process.execPath, [scriptPath], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      encoding: 'utf8',
+      cwd: ROOT,
+      env: { ...process.env, YADOTABI_BASE: base },
+    });
+    const ms = Date.now() - start;
+    if (res.stdout) process.stdout.write(res.stdout);
+    if (res.stderr) process.stderr.write(res.stderr);
+    const pass = res.status === 0;
+    let failLog = null;
+    if (!pass) failLog = saveFailLog(script, res, ms);
+    results.push({ script, pass, ms, failLog });
+  }
+} finally {
+  await stop();
 }
 
 const anyFail = results.some((r) => !r.pass);

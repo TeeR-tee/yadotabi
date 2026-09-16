@@ -1,6 +1,6 @@
 // R107: first-card-painted の実測msをログに残し、明らかな劣化に気づける緩いしきい値検査
 // 使い方: node scripts/check-firstcard.mjs
-// check-sample.mjs のヘッダ(playwright import・PORT/BASE・ok()・isPortOpen())を踏襲する。
+// check-sample.mjs のヘッダ(playwright import・BASE・ok()・ensureServer())を踏襲する。
 //
 // しきい値 FIRST_CARD_MAX_MS = 200 について:
 // 実測中央値は24ms(2026-09-16 計画役実測、fixture=kusatsu, mobile 375x812, 3回)。
@@ -17,13 +17,9 @@
 //   5. 各ケースでコンソールエラー0件。
 
 import { chromium } from 'file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs';
-import { spawn } from 'node:child_process';
-import net from 'node:net';
-import { fileURLToPath } from 'node:url';
+import { ensureServer } from './lib/server.mjs';
 
-const PORT = 3000;
-const BASE = `http://127.0.0.1:${PORT}`;
-const PROJECT_ROOT = fileURLToPath(new URL('..', import.meta.url));
+let BASE;
 
 const FIRST_CARD_MAX_MS = 200;
 
@@ -32,14 +28,6 @@ let fail = 0;
 function ok(cond, label, extra) {
   if (cond) { pass++; console.log('  PASS ' + label); }
   else { fail++; console.log('  FAIL ' + label + (extra !== undefined ? ' -> ' + JSON.stringify(extra) : '')); }
-}
-
-function isPortOpen(port) {
-  return new Promise((resolve) => {
-    const socket = net.createConnection({ port, host: '127.0.0.1' });
-    socket.once('connect', () => { socket.destroy(); resolve(true); });
-    socket.once('error', () => resolve(false));
-  });
 }
 
 function waitFor(ms) {
@@ -110,18 +98,8 @@ async function checkNoPerfBoxWithoutFlag(browser) {
 }
 
 async function main() {
-  let serverProc = null;
-  const alreadyRunning = await isPortOpen(PORT);
-  if (!alreadyRunning) {
-    serverProc = spawn('python', ['-m', 'http.server', String(PORT), '--bind', '127.0.0.1'], {
-      cwd: PROJECT_ROOT,
-      stdio: 'ignore',
-    });
-    for (let i = 0; i < 25; i++) {
-      if (await isPortOpen(PORT)) break;
-      await waitFor(200);
-    }
-  }
+  const { base, stop } = await ensureServer();
+  BASE = base;
 
   const browser = await chromium.launch();
   try {
@@ -129,7 +107,7 @@ async function main() {
     await checkNoPerfBoxWithoutFlag(browser);
   } finally {
     await browser.close();
-    if (serverProc) serverProc.kill();
+    await stop();
   }
 
   console.log('\n==== ' + pass + ' pass / ' + fail + ' fail ====');
