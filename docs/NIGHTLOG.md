@@ -501,3 +501,8 @@
 - やったこと: `cardHtml()` の `summary` 三項の `: ''` を `NO_SUMMARY_TEXT`(「Wikipediaに記事がありません。地図の情報だけで表示しています。」)に差し替え、既存 `.feedcard__summary` に `.feedcard__summary--none`(色のみ `--c-text-faint`)を2枚がけ。文言は断定を避けたい方(「地図の情報だけで表示しています」)を採用。撮影は実測で要約なしが最多だった dogo(19/30件、ROADMAP本文のbeppuから差し替え)。`scripts/check-nosummary.mjs` を新設し check-all.mjs に登録(26本目)。
 - 見た目の確認結果: `?fixture=dogo` mobile --full と `?fixture=kusatsu` mobile を撮影・目視、代替文が本文より明らかに薄いグレーで表示され1行の途中折り返しなし、リンクチップ行の位置も要約ありカードと揃い高さの崩れなし。`node scripts/check-all.mjs` 26本中26本PASS、`node --check assets/app.js` 通過、コンソールエラー0件。
 - 次: ROADMAP残りはR64/R77/R81/R82/R84/R85。
+
+### 2026-09-16 R93 iframeのクエリ付きリンク検査は既に対象内と実測確認(コード変更なし)
+- やったこと: `docs/check.mjs` の該当行を読み、node で `new URL(raw, url)` を自分で再現(計画役の結論を鵜呑みにせず二重確認)。`demo/hotel-page.html` の相対iframeも `<pre>` 内絶対URLも `pathname` でクエリが落ち `index.html` に解決されることを確認、`docs/CHECKS.md` に新節として記録。
+- 見た目の確認結果: `node docs/check.mjs` 実行で `[OK] リンク demo/hotel-page.html → index.html - HTTP 200` を2件確認、exit 0。`?fixture=kusatsu` mobile撮影しカード30枚・番号ピン判読可・文字崩れなしを目視。`node scripts/check-all.mjs` 27本中27本PASS(243.8s)。
+- 次: ROADMAP残りはR64/R77/R81/R82/R84/R85。

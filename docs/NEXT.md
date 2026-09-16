@@ -1,93 +1,76 @@
-# NEXT — R95 fixture の鮮度の目安と再取得手順を docs/FIXTURES.md に明文化
+# NEXT: R93 `docs/check.mjs` のリンク切れ検査が iframe のクエリ付きURLを見ているかの確認
 
-- **タスクID**: R95
-- **難易度**: sonnet(文書のみ・コード変更なし・外部API 0回)
-- **所要目安**: 20〜30分
+- タスクID: **R93**
+- 難易度: **sonnet**(文書1本+検査1行。ロジック変更なし)
+- 所要目安: 20〜30分
 
 ## 目的
 
-4 fixture の `meta.generatedAt` は R45 でヘッダーバッジに表示されるようになったが、「**何日経ったら古いと見なすか・そのとき何をするか**」が誰にも決まっていない。将来 fixture が古くなったとき、慌てて Overpass を連打してレート事故を起こさないための運用手順を先に文書化しておく。
+`demo/hotel-page.html:212` の iframe(本番URLを `?fixture=...&embed=1&bg=...` 付きで指す)が、R22 のリンク切れ検査の対象に入っているのかどうかが、コードを読まないと誰にも分からない状態だった。これを**実測で確定**させ、`docs/CHECKS.md` に1行残して閉じる。
 
-## 実測で判明した前提(このサイクルで確認済み)
+## 実測で判明した前提(計画役が確認済み)
 
-1. **`docs/FIXTURES.md` は85行・10見出しで、「鮮度」に触れた節は1つも無い**。見出しは `目的 / 対象エリア表 / far 実測表 / 実行方法 / エリアを増やす手順 / 保存される meta / Overpass のマナー / 既存 fixture は原則再生成しない方針 / buildOverpassQuery の同期注意 / タグの軽量化`(`grep -n '^##'` で実測)。「エリアを**増やす**手順」はあるが「既存を**取り直す**手順」が無い、という非対称が本件の正体。
-2. **4 fixture の `meta.generatedAt` 実測値**(`node -e` で各 JSON を読んで確認):
+**結論: iframe は既に検査対象に入っている。ROADMAP 本文が想定した (b) の実装は不要。**
 
-   | area | generatedAt (UTC) | osmRadiusM | overpass.elements 件数 |
-   |---|---|---|---|
-   | kusatsu | 2026-09-15T18:05:50.632Z | 15000 | 189 |
-   | hakone | 2026-09-15T19:15:17.398Z | 30000 | 4186 |
-   | dogo | 2026-09-15T22:10:54.623Z | 15000 | 463 |
-   | beppu | 2026-09-16T03:53:36.731Z | 15000 | 667 |
-
-   4件とも 2026-09-15〜16 の**同一日生成**で、現時点(2026-09-16)では全く古くない。よって**今回は再取得の必要が実際には無い**(= 手順だけ先に書いておく純粋な予防タスク)。
-3. **`generatedAt` の生成元は `scripts/make-fixture.mjs:205`** の `generatedAt: new Date().toISOString()`。表示側は `assets/app.js:1525` が `json.meta.generatedAt` を読み、`assets/app.js:995` の `formatFixtureDate()` でローカル `YYYY-MM-DD` に変換して `app.js:151` の `fixtureGeneratedAt` に入れる。バッジ表示は撮影でも確認済み(「固定データ 2026-09-16 取得」)。
-4. **keep-list は自動適用される**。`scripts/make-fixture.mjs:14` が `import { slimOverpassElements } from './slim-fixtures.mjs';` しており保存直前に通す。よって**再取得後に `slim-fixtures.mjs` を手動実行する必要は無い**(ROADMAP R95 の (d) は実測どおり正しい)。
-5. `scripts/dump-rank.mjs` は `node scripts/dump-rank.mjs <area>` で、fixture 経由のみ・外部API 0回(冒頭コメント1-10行目に明記)。before/after 比較の道具として使える。
-6. `scripts/` には check-*.mjs が27本存在し、`node scripts/check-all.mjs` が27本全緑なのが現在の完了条件。
-
-**未確認**: 「OSM の観光施設が実際にどの程度の頻度で変化するか」は統計を取っていない。よって下記の「半年」は**根拠のある推定値ではなく運用上の目安**であり、その旨を文書にも正直に書くこと(このプロジェクトの正直さ方針)。
+1. `demo/hotel-page.html:212` の iframe の src は `"../index.html?fixture=kusatsu&embed=1&bg=fff7e6"` で、**絶対URLではなく相対パス**。ROADMAP 本文の「本番URLを指している」は不正確。
+2. `docs/check.mjs:131` の `attrRe = /(?:src|href)\s*=\s*"([^"]+)"/g` は `src` も拾うので、この iframe の値は `rawValues` に入る。
+3. `docs/check.mjs:150` の `/^https?:\/\//` に相対パスは当たらないため、`docs/check.mjs:160` の相対パス分岐 `new URL(raw, url)` に進む。
+4. 計画役が同じ式を node で実行した実測値:
+   - `resolved.href` = `https://teer-tee.github.io/yadotabi/index.html?fixture=kusatsu&embed=1&bg=fff7e6`
+   - `resolved.href.startsWith(BASE)` = `true`(`docs/check.mjs:161` を通過)
+   - `resolved.pathname` = `/yadotabi/index.html`
+   - `docs/check.mjs:165` の `.replace(/^\/yadotabi\//, '')` 後 = **`index.html`**
+5. つまり **`URL.pathname` を使っているおかげでクエリ文字列は自動的に落ちており**、`checkLink()`(`docs/check.mjs:175`)は `index.html` を HEAD で叩く。ROADMAP が心配した「`?hotel=` 付きで叩いて Overpass を誘発する」事故は**構造上すでに起きない**。
+6. `internalPaths` は `Set`(`docs/check.mjs:143`)なので、同じ `index.html` を複数回登録しても GET は1回に畳まれる。
+7. 同じ経路を通る他の相対 iframe: `demo/embed-check.html:14` の `src="../index.html?embed=1&fixture=kusatsu"` も同様に `index.html` へ解決される。
+8. **検査の穴として実在するもの(こちらが本題)**: `demo/hotel-page.html:224` の `<pre class="tag-example">` 内にある**絶対URL**
+   `https://teer-tee.github.io/yadotabi/?hotel=36.6226,138.5960,草津 湯けむり荘&amp;embed=1&amp;bg=fff7e6`
+   は `docs/check.mjs:151` の `raw.startsWith(BASE)` に**当たってしまい**、`resolved.pathname` = `/yadotabi/` → `''` → `checkLink(page, '' || 'index.html')`(`docs/check.mjs:200`)で `index.html` として叩かれる。結果は無害(クエリは落ちるので Overpass は誘発されない)が、**HTML エスケープされた見本テキストがリンクとして抽出されている**という事実は誰も記録していない。これも1行として残す価値がある。
+9. 未確認: `docs/check.mjs` は本番URLへ GET するため、実行すると GitHub Pages に数十リクエストが飛ぶ。ローカルのファイル内容と本番の内容が一致しているかは push 済みかどうかに依存する(今回は変更が docs のみなので影響なし)。
 
 ## 対象ファイル(絶対パス)
 
-- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\FIXTURES.md` ← **これ1本のみを編集**
+- 書き換える: `C:\workspace\claude\旅行先用サイト\yadotabi\docs\CHECKS.md`
+- 読むだけ(変更禁止): `C:\workspace\claude\旅行先用サイト\yadotabi\docs\check.mjs`
+- 読むだけ(変更禁止): `C:\workspace\claude\旅行先用サイト\yadotabi\demo\hotel-page.html`
 
 ## 実装方針
 
-`docs/FIXTURES.md` の **`## 既存 fixture は原則再生成しない方針`(64行目)の直前**に、新しい節 `## 鮮度の目安と再取得の手順(R95)` を挿入する。既存の「原則再生成しない方針」節と自然につながる位置なので、64行目より後ろに置かないこと。
+ROADMAP の分岐 (a)(入っている)を採る。**`docs/check.mjs` は1行も変更しない**。
 
-節に書く内容は次の4点(ROADMAP R95 の (a)〜(d) に対応):
-
-- **(a) 判断基準**: 目安は**半年**。理由は「OSM の観光施設(神社・寺・美術館・展望台等)は年単位でしか動かず、短くしすぎると Overpass を無駄に叩くだけになる」。ただし半年は統計ではなく運用上の目安である旨を1行添える。**半年未満でも再取得してよい例外**を明記する: `assets/geo.js` の `buildOverpassQuery()` を変更したとき(fixture と本番で候補が食い違うため。既存の「`buildOverpassQuery` の同期注意」節と相互参照する)。現在の4 fixture の `generatedAt` は上表のとおり全て 2026-09-15〜16 なので、**次の見直し目安は 2027-03 頃**と具体的に書く。
-- **(b) 再取得のマナー**: Overpass は**各エリア1回まで・1サイクル1エリアまで**(既存の「Overpass のマナー」節と同じ制約なので、重複して書かずにその節へのリンクで済ませる)。429/504 が出たら待たずに日を改める。半径が `FALLBACK_RADIUS_M` に落ちて成功した場合は採用しない。
-- **(c) 再取得後に必須の確認**(順序つきリスト):
-  1. `node scripts/dump-rank.mjs <area>` を**再取得の前後**で取り、カード枚数・上位の並びの差分を全件目視する(差分が出るのは正常。消えた観光スポットが無いかを見る)
-  2. `?fixture=<area>` を mobile で撮影して目視(カード30枚・番号ピン判読可)
-  3. `node scripts/check-all.mjs` が**27本全緑**
-  4. 差分の要点を `docs/NIGHTLOG.md` に記録する
-- **(d) keep-list は手動実行不要**: 上記の実測4のとおり `make-fixture.mjs:14` が `slim-fixtures.mjs` を import して保存直前に自動適用するため、`node scripts/slim-fixtures.mjs` を別途走らせる必要は無い(既存の「タグの軽量化」節への相互リンクを置く)。
-
-あわせて `## 保存される meta`(53行目)の `generatedAt` の説明に、「鮮度の目安と再取得の手順」節への相対リンクを1行足す(取得日を見て古いと気づいた人が手順へ辿れるようにするため)。
-
-**このサイクルでは Overpass を叩かない**。fixture ファイルは1バイトも変更しない。
+1. `docs/CHECKS.md` の末尾(「並列化する場合に必要になる改修」節の後)に **「## リンク切れ検査(R22/R34)が何を見ているか」** 節を新設し、次の4点を書く。
+   - `docs/check.mjs:131` の正規表現が `src`/`href` の両方を拾うため、**iframe の src も検査対象に入っている**。
+   - `docs/check.mjs:165` が `URL.pathname` を使うため、**クエリ文字列は自動的に落ちて叩かれる**。`demo/hotel-page.html:212` の `../index.html?fixture=kusatsu&embed=1&bg=fff7e6` は `index.html` として HEAD される(上の実測値をそのまま貼る)。よって `?hotel=` 付きで叩いて Overpass を誘発する事故は構造上起きない。
+   - `docs/check.mjs:143` の `Set` により、同じパスへの重複リクエストは1回に畳まれる。
+   - **穴として残っている点**: `demo/hotel-page.html:224` の `<pre>` 内の見本コード(実際のリンクではない文字列)も `docs/check.mjs:151` の絶対URL分岐で抽出され、`index.html` として叩かれている。無害なので今は直さないが、将来 `<pre>` に存在しないパスの見本を書くと**偽の NG が出る**ことを注記する。
+2. `docs/check.mjs` の `HTML_PAGES` 定数(`docs/check.mjs:113`)の直前に、**コメントを2〜3行だけ**足してよい(「相対 iframe の src はここで pathname に畳まれるのでクエリは叩かない」旨)。**コードの実行結果を変えないこと**。迷うなら CHECKS.md だけで済ませてよい。
 
 ## 完了条件
 
-- `docs/FIXTURES.md` に `## 鮮度の目安と再取得の手順(R95)` 節が64行目より前に存在し、(a)〜(d) の4点が全て書かれている
-- `## 保存される meta` から新節への相対リンクが1本ある
-- `git diff --stat -- assets fixtures scripts index.html demo` が**空**(文書のみの変更であることの機械確認)
-- `git status -sb` で変更が `docs/FIXTURES.md` / `docs/ROADMAP.md` / `docs/NIGHTLOG.md` の3本のみ
-- `node scripts/check-all.mjs` が **27本全緑**
+- `docs/CHECKS.md` に上記4点の節がある。行番号と実測値(`index.html` に畳まれること)が本文に書かれている。
+- `docs/check.mjs` の**挙動**が変わっていない(コメント以外の差分ゼロ)。`git diff -- docs/check.mjs` がコメント行のみ、または空。
+- `git diff --stat -- assets fixtures scripts index.html demo` が**空**(やどたび本体・デモページは無変更)。
 
 ## 検証手順
 
-```
-cd "C:\workspace\claude\旅行先用サイト\yadotabi"
-
-# 1) 文書のみであることの機械確認
-git diff --stat -- assets fixtures scripts index.html demo   # 空であること
-grep -n '^##' docs/FIXTURES.md                                # 新節の位置を確認
-
-# 2) デグレ確認撮影(fixture のみ・外部API 0回)
-node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/index.html?fixture=kusatsu" --mobile
-```
-
-- 撮影URL: `http://127.0.0.1:3000/index.html?fixture=kusatsu`、幅 **mobile(375px)1枚のみ**(画面変更が無いためデグレ確認のみ)。撮った PNG は必ず Read で開いて目視し、カード30枚・番号ピン判読可・文字崩れなし・コンソールエラー0件を確認する。
-- 最後に **`node scripts/check-all.mjs` が27本全緑**(必須)。`check-nohotels.mjs` / `check-history.mjs` は過去に `ERR_NO_BUFFER_SPACE` で一過性 FAIL した前例があるので、落ちたら単体で再実行して緑なら通しでもう1度回す。
+1. `node docs/check.mjs` を **1回だけ**実行し、出力に `リンク demo/hotel-page.html → index.html` の行が **OK** で出ていることを目視で確認する(= iframe が検査対象に入っている証拠。この行そのものを NIGHTLOG に貼ること)。全体が exit 0 であること。
+2. `node scripts/check-all.mjs` → **27本全緑**(必須)。
+3. デグレ確認の撮影1枚のみ:
+   - `node C:\workspace\tools\shot\shot.mjs "https://teer-tee.github.io/yadotabi/?fixture=kusatsu" --mobile`(375px)
+   - 撮った画像を Read で開き、カード30枚・番号ピン判読可・文字崩れなしを目視。
+4. `node --check` は JS を触らないので不要(コメントを足した場合のみ `node --check docs/check.mjs`)。
 
 ## 変更禁止範囲
 
-- `assets/engine.js` / `assets/geo.js` / `fixtures/*.json` は**変更不可**
-- rank の重み・閾値は**変更不可**
-- `git stash` / `git reset` / `git checkout` によるファイルの巻き戻しは**禁止**
-- **外部API 0回**(Overpass / Wikipedia / Nominatim を一切叩かない)
-- `scripts/check-*.mjs` の既存の検査内容は減らさない
-- `.gitignore` は変更しない
+- `assets/engine.js` / `assets/geo.js` / `fixtures/*.json` は**変更不可**。
+- rank の重み・閾値は**変更不可**。
+- `git stash` / `git reset` / `git checkout` でファイルを戻す操作は**禁止**。
+- 外部API(Overpass / Nominatim / Wikipedia)の呼び出しは**0回**。ただし `docs/check.mjs` は本番URL(同一オリジン)への GET なので**実行1〜2回は可**。
+- `docs/check.mjs` のロジック(正規表現・分岐・リクエスト先)は変更しない。コメント追記のみ可。
 
 ## 終わったら
 
-1. `docs/ROADMAP.md` の R95 の行を `- [x] 2026-09-16 R95 …` に変更
-2. `docs/NIGHTLOG.md` の「## サイクル記録」に**3行**追記(やったこと / 見た目の確認結果 / 次)
-3. **先にコミット**(1行の日本語メッセージ)
-4. `git push`
-5. 報告は簡潔に(長文の報告書を書かない)
+1. `docs/ROADMAP.md` の R93 行を `- [x] 2026-09-16 R93 ...` に更新し、末尾に「(実測の結果 iframe は既に検査対象。pathname でクエリが落ちるため対処不要。CHECKS.md に記録)」と1行足す。
+2. `docs/NIGHTLOG.md` の「## サイクル記録」に**3行**追記(やったこと / 見た目の確認結果 / 次)。
+3. **先にコミット**してから `git push`。
+4. 報告は簡潔に(長文の報告書を書かない)。

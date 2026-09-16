@@ -54,3 +54,10 @@
 2. `check-all.mjs` が本ごとに空きポートを割り当てて環境変数で渡す。
 3. Playwright の Chromium を同時に何個立てるかの上限を決める(Windows のメモリ次第。`check-history` が過去に `ERR_NO_BUFFER_SPACE` でフレークした実績あり)。
 4. 見返りは最大で 4分→1分程度だが、フレークの切り分けが難しくなるコストと引き換えになる。
+
+## リンク切れ検査(R22/R34)が何を見ているか
+
+- `docs/check.mjs:131` の正規表現 `attrRe = /(?:src|href)\s*=\s*"([^"]+)"/g` は `src` も `href` も拾うため、**iframe の src も検査対象に入っている**(`demo/hotel-page.html:212` の埋め込みiframeも含む)。
+- `docs/check.mjs:165` が `resolved.pathname` を使ってパスを取り出すため、**クエリ文字列は自動的に落ちて叩かれる**。実測: `demo/hotel-page.html:212` の相対src `../index.html?fixture=kusatsu&embed=1&bg=fff7e6` を `new URL(raw, url)` で解決すると `href` = `https://teer-tee.github.io/yadotabi/index.html?fixture=kusatsu&embed=1&bg=fff7e6`、`startsWith(BASE)` = `true`、`pathname` = `/yadotabi/index.html`、`.replace(/^\/yadotabi\//, '')` 後 = `index.html`。よって実際に HEAD される先は常に `index.html` であり、`?hotel=` 付きで叩いて Overpass を誘発する事故は構造上起きない(自分で node 実行して再現確認済み)。
+- `docs/check.mjs:143` の `internalPaths` は `Set` のため、同じパス(`index.html`)への重複登録は1回のリクエストに畳まれる。
+- **穴として残っている点(無害・今は直さない)**: `demo/hotel-page.html:224` の `<pre class="tag-example">` 内にある見本コード用の**絶対URL**(`https://teer-tee.github.io/yadotabi/?hotel=...`)も、`docs/check.mjs:151` の絶対URL分岐 `raw.startsWith(BASE)` に該当してしまい抽出される。実測: このURLを `new URL()` で解決すると `pathname` = `/yadotabi/`、置換後は空文字列になり `checkLink(page, '' || 'index.html')`(`docs/check.mjs:200`)で `index.html` として叩かれる。クエリは落ちるため今回のケースは無害だが、`<pre>` に実在しないパスの見本URLを書くと将来**偽のNGが出る**可能性がある。`docs/check.mjs` のロジックは変更していない(注記のみ)。
