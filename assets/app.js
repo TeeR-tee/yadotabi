@@ -824,6 +824,9 @@
     return km.toFixed(1) + 'km';
   }
 
+  // R83: Wikipedia記事が紐づかないカードに出す代替文(事実のみ・推測や謝罪を書かない)
+  var NO_SUMMARY_TEXT = 'Wikipediaに記事がありません。地図の情報だけで表示しています。';
+
   function cardHtml(card, index) {
     var emoji = emojiFor(card.categoryLabel);
     var isPortraitDemo = demoPortrait && index < 3;
@@ -840,7 +843,7 @@
 
     var summary = card.summary
       ? '<p class="feedcard__summary">' + escapeHtml(card.summary) + '</p>'
-      : '';
+      : '<p class="feedcard__summary feedcard__summary--none">' + escapeHtml(NO_SUMMARY_TEXT) + '</p>';
 
     return '<article class="card feedcard" data-index="' + index + '">' +
       '<div class="feedcard__media">' + media +

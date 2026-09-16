@@ -476,4 +476,9 @@
 ### 2026-09-16 R75+R78+R72 文書3件まとめ(コード変更なし)
 - やったこと: README にfixturesサイズ表(4エリア×6列、hakoneが大きい理由の説明)を追加しdocs/FIXTURES.mdと相互リンク。`docs/AUTOPILOT.md`に「NEXT.mdの履歴はgit logで追えるためnext-archiveは作らない」旨を追記。`docs/CHECKS.md`を新規作成し25本(サーバを立てる21本/不要な4本)の表・所要目安・並列化不可の理由・必要な改修4点を記載。ROADMAPのR72本文にあった事実誤認(23本→25本、7本以上→21本)も訂正。
 - 見た目の確認結果: 文書のみのためデグレ確認1枚(`?fixture=kusatsu` mobile)を撮影・目視、地図ピン30個判読可・カード表示正常・コンソールエラーなし。`git diff --stat -- assets fixtures scripts index.html demo`は空、`node scripts/check-all.mjs`25本全PASS(222.7s)。
-- 次: ROADMAP残りはR64/R77/R81〜R85。R64はGitHub Actions無料枠確認で判断寄りのため朝の相談向き。
+- 次: ROADMAP残りはR64/R77/R81/R82/R84/R85。R64はGitHub Actions無料枠確認で判断寄りのため朝の相談向き。
+
+### 2026-09-16 R83 カード要約なしの代替文を淡色1行で表示
+- やったこと: `cardHtml()` の `summary` 三項の `: ''` を `NO_SUMMARY_TEXT`(「Wikipediaに記事がありません。地図の情報だけで表示しています。」)に差し替え、既存 `.feedcard__summary` に `.feedcard__summary--none`(色のみ `--c-text-faint`)を2枚がけ。文言は断定を避けたい方(「地図の情報だけで表示しています」)を採用。撮影は実測で要約なしが最多だった dogo(19/30件、ROADMAP本文のbeppuから差し替え)。`scripts/check-nosummary.mjs` を新設し check-all.mjs に登録(26本目)。
+- 見た目の確認結果: `?fixture=dogo` mobile --full と `?fixture=kusatsu` mobile を撮影・目視、代替文が本文より明らかに薄いグレーで表示され1行の途中折り返しなし、リンクチップ行の位置も要約ありカードと揃い高さの崩れなし。`node scripts/check-all.mjs` 26本中26本PASS、`node --check assets/app.js` 通過、コンソールエラー0件。
+- 次: ROADMAP残りはR64/R77/R81/R82/R84/R85。

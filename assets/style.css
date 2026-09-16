@@ -477,6 +477,8 @@ body {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+/* R83: 要約が無いカードの代替文(事実のみの1行)を淡色にして本文と区別する */
+.feedcard__summary--none { color: var(--c-text-faint); }
 
 .feedcard__links {
   display: flex;
