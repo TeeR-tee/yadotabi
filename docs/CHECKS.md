@@ -47,7 +47,7 @@ R89(2026-09-16)実測: `check-hotelparam` は固定待ちを条件待ちに置�
 | check-engine | `engine.js` の除外・併合・要約ロジックの単体テスト |
 | check-geo | `geo.js` の同心円リング収集ロジック(fetchをスタブ) |
 | check-r5 | 段階描画の発火順 |
-| docs/check.mjs | 本番URLへのGET・応答時間・ファイルKB・リンク切れ検査(他3本と違い、ローカルではなく本番URLへのHTTPアクセスのためサーバ不要) |
+| docs/check.mjs | 本番URLへのGET・応答時間・ファイルKB・リンク切れ検査(他3本と違い、ローカルではなく本番URLへのHTTPアクセスのためサーバ不要)。R109: 埋め込みタグの sandbox/referrerpolicy が3箇所で一致しているか |
 
 ## 並列化できない理由
 

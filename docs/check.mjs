@@ -271,6 +271,72 @@ for (const page of MARKDOWN_PAGES) {
 }
 // --- ここまで R34 ---
 
+// --- R109: iframe の sandbox / referrerpolicy の一貫性検査 ---
+// 営業資料としてコピーされるタグが3箇所(demo/hotel-page.html の実iframeとタグ例コピー、README.md
+// のタグ例)に手書きされている。どれか1箇所だけ直しても誰も気づけないため、3箇所の sandbox トークン
+// 集合(順序は問わない)と referrerpolicy が互いに一致することを機械検査で止める。
+// ローカルファイルを直接読むだけで、追加のネットワークアクセスは行わない。
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = join(__dirname, '..');
+
+const EXPECTED_SANDBOX = new Set(['allow-scripts', 'allow-same-origin', 'allow-popups', 'allow-popups-to-escape-sandbox']);
+const EXPECTED_REFERRERPOLICY = 'no-referrer';
+
+function checkIframeAttrs(label, tagText) {
+  if (!tagText) {
+    report(`iframe属性 ${label}`, false, 'iframeタグが見つからない');
+    return;
+  }
+  const sandboxMatch = /sandbox\s*=\s*"([^"]*)"/.exec(tagText);
+  const referrerMatch = /referrerpolicy\s*=\s*"([^"]*)"/.exec(tagText);
+  if (!sandboxMatch || !referrerMatch) {
+    report(`iframe属性 ${label}`, false, 'sandbox または referrerpolicy が見つからない');
+    return;
+  }
+  const actualSandbox = new Set(sandboxMatch[1].split(/\s+/).filter(Boolean));
+  const sandboxOk =
+    actualSandbox.size === EXPECTED_SANDBOX.size &&
+    [...EXPECTED_SANDBOX].every((t) => actualSandbox.has(t));
+  const referrerOk = referrerMatch[1] === EXPECTED_REFERRERPOLICY;
+  report(
+    `iframe属性 ${label}`,
+    sandboxOk && referrerOk,
+    `sandbox=[${[...actualSandbox].join(' ')}] referrerpolicy="${referrerMatch[1]}"`
+  );
+}
+
+function decodeHtmlEntities(str) {
+  return str
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&');
+}
+
+{
+  const hotelPageBody = readFileSync(join(REPO_ROOT, 'demo/hotel-page.html'), 'utf8');
+
+  // 実iframe(生HTML)
+  const realIframeMatch = /<iframe\b[^>]*>/.exec(hotelPageBody);
+  checkIframeAttrs('demo/hotel-page.html(実iframe)', realIframeMatch?.[0]);
+
+  // <pre class="tag-example"> 内のコピー用タグ(HTMLエスケープ済み)
+  const preMatch = /<pre class="tag-example">([\s\S]*?)<\/pre>/.exec(hotelPageBody);
+  const decodedPre = preMatch ? decodeHtmlEntities(preMatch[1]) : '';
+  const preIframeMatch = /<iframe\b[^>]*>/.exec(decodedPre);
+  checkIframeAttrs('demo/hotel-page.html(タグ例)', preIframeMatch?.[0]);
+
+  // README.md のタグ例
+  const readmeBody = readFileSync(join(REPO_ROOT, 'README.md'), 'utf8');
+  const readmeIframeMatch = /<iframe\b[^>]*>/.exec(readmeBody);
+  checkIframeAttrs('README.md(タグ例)', readmeIframeMatch?.[0]);
+}
+// --- ここまで R109 ---
+
 // --- R33: 集計行 ---
 if (timings.length > 0) {
   const total = timings.reduce((sum, t) => sum + t.ms, 0);
