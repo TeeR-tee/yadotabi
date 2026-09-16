@@ -142,9 +142,9 @@ console.log('\n(a) 統合・除外・far分離・Cardのフィールド・リン
   ok(!res.cards.some(c => c.name === '遠方の城'), 'far のものは cards に無い');
   ok(res.cards.every(c => c.driveMin <= 60), 'cards は全て driveMin<=60');
 
-  // Card の全フィールド
+  // Card の全フィールド(R84: _debug は ?debug=1 の描画元。通常動作では読まれない)
   eq(Object.keys(saino).sort(),
-    ['categoryLabel','distanceM','driveMin','id','imageUrl','lat','links','lon','name','source','summary','walkMin'],
+    ['_debug','categoryLabel','distanceM','driveMin','id','imageUrl','lat','links','lon','name','source','summary','walkMin'],
     'Card のフィールドが仕様どおり');
   eq(Object.keys(saino.links).sort(), ['gmap','instagram','official','tiktok','youtube'], 'links のキー');
 
@@ -741,6 +741,71 @@ console.log('\n(r42) 要約(summary)は句点優先で切る');
   const sentE = 'あ'.repeat(119) + '。' + 'い'.repeat(30);
   const resE = summaryOf(sentE);
   eq(resE, 'あ'.repeat(119) + '。', '句点が上限直前(120字目)でも句点優先');
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n(r84) _debug の有無で cards/more/far が不変(内訳は並びに影響しない)');
+{
+  // カテゴリ減点・季節ヒント・裏付け・far分離が全部混ざる入力にして、
+  // 「_debug を取り除いたら R84 実装前とまったく同じ」を見る。
+  const spots = Array.from({ length: 40 }, (_, i) => ({
+    id: 'node/dbg' + i, name: 'デバッグ候補' + i, lat: at(300 + i * 400), lon: HOTEL.lon,
+    category: i % 3 === 0 ? 'shrine' : (i % 3 === 1 ? 'hot_spring' : 'other'),
+    categoryLabel: 'スポット', distanceM: 300 + i * 400,
+    website: i % 4 === 0 ? 'https://example.com/' + i : null,
+    summary: i % 2 === 0 ? '説明' + i : null,
+    imageUrl: i % 5 === 0 ? 'https://example.com/' + i + '.jpg' : null,
+    source: i % 6 === 0 ? 'both' : 'osm'
+  }));
+  const E = loadEngine({
+    ...geoMock(),
+    fetchSpots: () => Promise.resolve(spots),
+    fetchWikiNearby: () => Promise.resolve([])
+  });
+
+  const ranked = E.rank ? E.rank(spots, HOTEL, CTX) : null;
+  const res = await E.suggest(HOTEL, CTX);
+
+  // 1. Card に _debug がぶら下がっている(?debug=1 の描画元)
+  ok(res.cards.length > 0 && res.cards[0]._debug && typeof res.cards[0]._debug.rank === 'number',
+    '1位カードに _debug.rank がある', res.cards[0] && res.cards[0]._debug);
+  ok(res.cards[0]._debug.rank === 1, '1位カードの _debug.rank は 1', res.cards[0]._debug.rank);
+  ok(typeof res.cards[0]._debug.total === 'number' && typeof res.cards[0]._debug.base === 'number',
+    '_debug に total と base(基礎スコア)がある', res.cards[0]._debug);
+
+  // 2. _debug を除いた cards/more/far が「_debug が無かった頃」と完全一致する
+  //    (= _debug キーを落とすだけで元の JSON に戻る＝内容を1つも書き換えていない)
+  const strip = (list) => list.map((c) => {
+    const copy = { ...c };
+    delete copy._debug;
+    return copy;
+  });
+  const stripped = { cards: strip(res.cards), more: strip(res.more), far: strip(res.far) };
+  const raw = JSON.stringify(res);
+  ok(raw.includes('"_debug"'), '素の JSON には _debug が含まれる(付いていることの確認)');
+  ok(!JSON.stringify(stripped).includes('"_debug"'), '_debug を落とした JSON には _debug が残らない');
+  eq(stripped.cards.length, 30, '_debug があっても cards は30件');
+  eq(stripped.more.length, 10, '_debug があっても more は10件');
+
+  // 3. rank() を2回呼んでも順序が同じ(_debug の後付けが次回の入力を汚していない)
+  if (ranked) {
+    const again = E.rank(spots, HOTEL, CTX);
+    eq(again.map((x) => x.id), ranked.map((x) => x.id),
+      'rank() を2回呼んでも順序が同じ(_debug 後付けが次回を汚さない)');
+  }
+
+  // 4. 並びが _debug.rank の昇順と一致する(内訳が実際の順位と食い違わない)
+  const rankSeq = res.cards.map((c) => c._debug.rank);
+  eq(rankSeq, rankSeq.map((_, i) => i + 1), 'cards の _debug.rank は 1..30 の昇順');
+
+  // 5. カテゴリ減点が入ったカードでは total < base、入っていないカードでは total === base
+  let penaltyConsistent = true;
+  res.cards.concat(res.more).forEach((c) => {
+    const d = c._debug;
+    const expected = d.base + (d.categoryPenalty || 0);
+    if (Math.abs(d.total - expected) > 1e-9) penaltyConsistent = false;
+  });
+  ok(penaltyConsistent, 'total === base + categoryPenalty(内訳の合計が合っている)');
 }
 
 console.log('\n==== ' + pass + ' pass / ' + fail + ' fail ====');

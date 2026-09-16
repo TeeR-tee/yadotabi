@@ -480,6 +480,17 @@ body {
 /* R83: 要約が無いカードの代替文(事実のみの1行)を淡色にして本文と区別する */
 .feedcard__summary--none { color: var(--c-text-faint); }
 
+/* R84: ?fixture=…&debug=1 のときだけ出る rank の内訳行(開発者・研究向け)。
+   本文より一段小さく淡くして、通常の読み筋を邪魔しない。375px で2行に収める */
+.dbg {
+  font-size: 10px;
+  color: var(--c-text-faint);
+  margin-top: 6px;
+  line-height: 1.5;
+  word-break: break-all;
+}
+.dbg__b { opacity: 0.85; }
+
 .feedcard__links {
   display: flex;
   flex-wrap: wrap;

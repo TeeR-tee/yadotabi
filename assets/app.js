@@ -146,6 +146,7 @@
   var demoImgFail = false;    // ?demo=imgfail     … 先頭3枚のカード画像を強制的に読み込み失敗させる
   var demoPortrait = false;   // ?demo=portrait    … 先頭3枚を縦長ダミー画像に差し替える
   var demoNoHotels = false;   // ?demo=nohotels    … 宿が0件の画面を外部APIなしで再現する
+  var debugRank = false;      // ?debug=1          … rank のスコア内訳をカードに淡色表示(fixture 必須)
   var isFixtureMode = false;  // ?fixture=…        … 固定データ読み込み成功時のバッジ表示フラグ
   var fixtureGeneratedAt = ''; // fixture の meta.generatedAt をローカル日付(YYYY-MM-DD)にした文字列
 
@@ -827,6 +828,26 @@
   // R83: Wikipedia記事が紐づかないカードに出す代替文(事実のみ・推測や謝罪を書かない)
   var NO_SUMMARY_TEXT = 'Wikipediaに記事がありません。地図の情報だけで表示しています。';
 
+  /**
+   * R84: rank のスコア内訳を1行にする(`?fixture=…&debug=1` のときだけ呼ばれる)。
+   * 09_研究ノートの「なぜこの順位か」を dump-rank.mjs を回さずに画面で追うためのもの。
+   * 0 の項目は出さない(行が伸びるだけで読みにくくなる)。
+   */
+  function debugHtml(d) {
+    var head = '#' + d.rank + ' · ' + (d.source || 'osm') + ' · ' + (d.category || 'other') +
+      ' · ' + Math.round(d.distanceM || 0) + 'm · 合計 ' + (d.total || 0).toFixed(1);
+    var parts = [];
+    if (d.image) parts.push('写真+' + d.image);
+    if (d.summary) parts.push('要約+' + d.summary);
+    if (d.official) parts.push('公式+' + d.official);
+    if (d.both) parts.push('両ソース+' + d.both);
+    if (d.distance) parts.push('距離' + d.distance.toFixed(1));
+    if (d.season) parts.push('季節+' + d.season);
+    if (d.categoryPenalty) parts.push('カテゴリ' + d.categoryPenalty);
+    return '<p class="dbg">' + escapeHtml(head) +
+      ' <span class="dbg__b">' + escapeHtml(parts.join(' ')) + '</span></p>';
+  }
+
   function cardHtml(card, index) {
     var emoji = emojiFor(card.categoryLabel);
     var isPortraitDemo = demoPortrait && index < 3;
@@ -860,6 +881,7 @@
         '</p>' +
         summary +
         linkRowHtml(card) +
+        (debugRank && card._debug ? debugHtml(card._debug) : '') +
       '</div>' +
     '</article>';
   }
@@ -1434,6 +1456,9 @@
     if (demo === 'passive') demoPassive = true;
     if (demo === 'imgfail') demoImgFail = true;
     if (demo === 'portrait') demoPortrait = true;
+    // R84: rank の内訳表示。開発者・研究向けなので `?fixture=` 併用時のみ立てる。
+    // 本番URL(実データ)で一般の人に内訳が見えてはいけない。
+    if (params.get('debug') === '1' && fixtureNameFromUrl(params)) debugRank = true;
     if (demo === 'nohotels') { demoStateA = true; demoNoHotels = true; }
     // ?demo=autozoom: demoStateA は立てず、fetchHotelsInBbox を回数で差し替える
     // (外部APIを叩かずに「0件→自動で1段引く→2回目で宿が出る」経路を再現する)。
@@ -1509,6 +1534,8 @@
         })
         .catch(function () {
           // 読めなければ黙って通常動作へ。画面は絶対に空白にしない。
+          // R84: fixture が読めなかった＝本番データを見ている状態なので、内訳表示は必ず降ろす。
+          debugRank = false;
           // ?hotel= も無いなら状態Aに戻るので、埋め込みの隠しも解除する。
           if (state.embed && !hotelFromUrl(params)) {
             setEmbed(false);

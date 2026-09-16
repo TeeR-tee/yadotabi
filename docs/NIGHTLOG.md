@@ -13,6 +13,9 @@
 - R49+R50 文書2本を追加(コード変更なし)。README に「## 判断待ちの設計課題」節(4件・結論なし・NIGHTLOGへの参照付き)と `docs/FIXTURES.md`(新規)を追加。`docs/FIXTURES.md` はエリア表3行・実行コマンド・meta一覧・Overpassのマナー・再生成しない方針・buildOverpassQuery同期注意を記載、README の `fixtures/` 行から相対リンクを追加。
 - 画面変更が無いため撮影は省略。`ls docs/FIXTURES.md` で実在確認、`node docs/check.mjs` OK(README画像3本含む既存検査もPASS)、`node scripts/check-all.mjs` 17本中17本PASS・exit 0、`git diff --stat -- assets fixtures scripts index.html demo` は空を確認。
 - 次: ROADMAP残りはR14/R19/R23/R28/R31/R32/R33/R34/R40/R42/R43/R51。R49で公開した4件の判断待ちのうち検索候補とチップの重なり(R2-1)含め依然未決。
+- R84 `?fixture=` 併用時のみ効く `?debug=1` を追加し、rank のスコア内訳をカード下端に淡色表示。engine.js は baseScore を `scoreBreakdown()`(image/summary/official/both/distance/season/base)に切り出し、加算順を1行も変えずに `rank()` の最後で `entry.item._debug`(rank・source・category・distanceM・total・categoryPenalty・categoryIndex)を後付け、`toCard()` に `_debug` を1行追加。app.js は `fixtureNameFromUrl()` が null なら絶対にフラグを立てず、fixture 読み込み失敗の catch でも `debugRank=false` に戻す。WEIGHT・CATEGORY_FREE_SLOTS は無変更。
+- `?fixture=kusatsu&debug=1` mobile を目視: 1位カードに「#1 · both · place_of_worship · 108m · 合計 71.4 写真+25 要約+15 公式+12 両ソース+20 距離-0.6」が375pxで2行に収まり、リンクチップともカード枠とも重ならず本文より確実に淡い。`?fixture=kusatsu`(debug無し)mobile は内訳行が1つも出ずカード30枚のままでデグレなし。埋め込み(`?embed=1`)でも出す判断にした(埋め込みは `?fixture=` 併用時しか有効にならず、一般公開URLに内訳が漏れる経路が無いため。分岐を足すと debugRank の条件が二重になり漏れの検証が難しくなる)。
+- 検証: `node scripts/dump-rank.mjs` の kusatsu/hakone/dogo/beppu 4エリアが実装前後で差分ゼロ(計算結果は不変)。check-engine.mjs に (r84) 10ケース追加(_debug を落とせば元の JSON に戻る・2回呼んでも順序同一・total === base + categoryPenalty)で226 pass/0 fail、新規 scripts/check-debugflag.mjs(11項目、`?debug=1` 単独で `.dbg` 0件を含む・外部API 0回)を check-all.mjs に登録し27本中27本PASS。次: R64(GitHub Actions 無料枠・朝の相談寄り)/R77(表示可否の判断)/R81(Overpass を叩く fixture 追加)/R82(aria-label 1行)/R85(英語デモページ)から計画役が選定。
 
 ## 朝のまとめ(2026-09-16 06:10 司令塔が記入)
 

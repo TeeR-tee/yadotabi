@@ -843,16 +843,39 @@
     return bonus;
   }
 
+  /**
+   * R84: 基礎スコアの内訳。`?debug=1` で「なぜこの順位か」を画面上で追うための純粋関数。
+   * 加算の順序は baseScore と完全に同じにすること(浮動小数の加算順が変われば
+   * 同点判定がぶれて並びが変わりうるため)。重み・閾値は一切変えない。
+   */
+  function scoreBreakdown(item, now) {
+    var score = 0;
+    var image = item.imageUrl ? WEIGHT.WIKI_IMAGE : 0;
+    if (image) score += image;
+    var summary = item.summary ? WEIGHT.WIKI_SUMMARY : 0;
+    if (summary) score += summary;
+    var official = safeUrl(item.website) ? WEIGHT.OFFICIAL_SITE : 0;
+    if (official) score += official;
+    var both = item.source === 'both' ? WEIGHT.SOURCE_BOTH : 0;
+    if (both) score += both;
+    var distance = -((item.distanceM || 0) / 1000 * WEIGHT.DISTANCE_PER_KM);
+    score -= (item.distanceM || 0) / 1000 * WEIGHT.DISTANCE_PER_KM;
+    var season = seasonBonus(item, now);
+    score += season;
+    return {
+      image: image,
+      summary: summary,
+      official: official,
+      both: both,
+      distance: distance,
+      season: season,
+      base: score
+    };
+  }
+
   /** 裏付け + 距離減衰 + 季節ヒントの基礎スコア。カテゴリ多様性は後段で引く。 */
   function baseScore(item, now) {
-    var score = 0;
-    if (item.imageUrl) score += WEIGHT.WIKI_IMAGE;
-    if (item.summary) score += WEIGHT.WIKI_SUMMARY;
-    if (safeUrl(item.website)) score += WEIGHT.OFFICIAL_SITE;
-    if (item.source === 'both') score += WEIGHT.SOURCE_BOTH;
-    score -= (item.distanceM || 0) / 1000 * WEIGHT.DISTANCE_PER_KM;
-    score += seasonBonus(item, now);
-    return score;
+    return scoreBreakdown(item, now).base;
   }
 
   /**
@@ -877,7 +900,8 @@
     // まず基礎スコアで仮並べし、その順にカテゴリの出現数を数えながら減点する。
     // (先に多様性を計算しないと「何件目か」が決まらないため2段階にする)
     var scored = list.map(function (item) {
-      return { item: item, score: baseScore(item, ctx.now) };
+      var breakdown = scoreBreakdown(item, ctx.now);
+      return { item: item, score: breakdown.base, breakdown: breakdown };
     });
     scored.sort(function (a, b) {
       if (b.score !== a.score) return b.score - a.score;
@@ -893,9 +917,11 @@
       if (cat === 'other') return;
       var seen = categoryCount[cat] || 0;
       categoryCount[cat] = seen + 1;
+      entry.breakdown.categoryIndex = seen;
       if (seen >= CATEGORY_FREE_SLOTS) {
         // 3件目以降は出るほど重く減点し、同じカテゴリが延々と続くのを防ぐ
         entry.score -= WEIGHT.CATEGORY_PENALTY * (seen - CATEGORY_FREE_SLOTS + 1);
+        entry.breakdown.categoryPenalty = -(WEIGHT.CATEGORY_PENALTY * (seen - CATEGORY_FREE_SLOTS + 1));
       }
     });
 
@@ -904,7 +930,17 @@
       return (a.item.distanceM || 0) - (b.item.distanceM || 0);
     });
 
-    return scored.map(function (entry) { return entry.item; });
+    // R84: `?debug=1` 用の内訳を item にぶら下げるだけ。並び順・スコアには一切影響しない
+    // (常に付ける。engine 側にフラグ分岐を作らない方が「有無で不変」をテストで比べられて安全)。
+    return scored.map(function (entry, i) {
+      var d = { rank: i + 1, source: entry.item.source, category: entry.item.category,
+                distanceM: entry.item.distanceM, total: entry.score,
+                categoryPenalty: 0, categoryIndex: -1 };
+      var keys = Object.keys(entry.breakdown);
+      for (var k = 0; k < keys.length; k++) d[keys[k]] = entry.breakdown[keys[k]];
+      entry.item._debug = d;
+      return entry.item;
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -928,7 +964,8 @@
       walkMin: minutesFor(distanceM, WALK_M_PER_MIN),
       driveMin: minutesFor(distanceM, DRIVE_M_PER_MIN),
       links: buildLinks(item, hotel),
-      source: item.source || 'osm'
+      source: item.source || 'osm',
+      _debug: item._debug || null // R84: ?debug=1 のときだけ描画する。通常動作では読まれない
     };
   }
 
