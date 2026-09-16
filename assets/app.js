@@ -831,11 +831,11 @@
     // R62: data: URI は safeUrl() の対象外(https? のみ許可)なので、
     // safeUrl の許可スキームは広げずに portrait 専用の分岐で直接 img を組む。
     var media = isPortraitDemo
-      ? '<img class="feedcard__img" src="' + PORTRAIT_DATA_URI + '" alt="' + escapeHtml(card.name || 'スポット') + 'の写真(縦長ダミー)" loading="lazy" ' +
-          'data-cat="' + escapeHtml(card.categoryLabel || '') + '" data-emoji="' + escapeHtml(emoji) + '">'
+      ? '<button type="button" class="feedcard__imgbtn"><img class="feedcard__img" src="' + PORTRAIT_DATA_URI + '" alt="' + escapeHtml(card.name || 'スポット') + 'の写真(縦長ダミー)" loading="lazy" ' +
+          'data-cat="' + escapeHtml(card.categoryLabel || '') + '" data-emoji="' + escapeHtml(emoji) + '"></button>'
       : (imgSrc && safeUrl(imgSrc)
-        ? '<img class="feedcard__img" src="' + escapeHtml(imgSrc) + '" alt="' + escapeHtml(card.name || 'スポット') + 'の写真" loading="lazy" ' +
-            'data-cat="' + escapeHtml(card.categoryLabel || '') + '" data-emoji="' + escapeHtml(emoji) + '">'
+        ? '<button type="button" class="feedcard__imgbtn"><img class="feedcard__img" src="' + escapeHtml(imgSrc) + '" alt="' + escapeHtml(card.name || 'スポット') + 'の写真" loading="lazy" ' +
+            'data-cat="' + escapeHtml(card.categoryLabel || '') + '" data-emoji="' + escapeHtml(emoji) + '"></button>'
         : placeholderHtml(card, emoji));
 
     var summary = card.summary
@@ -865,8 +865,11 @@
   // overlay はJSで都度生成し、閉じたら DOM から除去する。
   var lightboxEl = null;
   var lightboxKeyHandler = null;
+  var lightboxReturnFocusEl = null;
 
-  function openLightbox(img) {
+  // R69: 開いたときはR13のフォーカスリングが当たる閉じるボタンへ、
+  // 閉じたときは元の写真ボタンへフォーカスを戻す(キーボード利用者が迷子にならないため)。
+  function openLightbox(img, returnFocusEl) {
     closeLightbox();
     var overlay = document.createElement('div');
     overlay.className = 'lightbox';
@@ -884,6 +887,10 @@
       overlay.classList.add('is-open');
     });
     lightboxEl = overlay;
+    lightboxReturnFocusEl = returnFocusEl || null;
+
+    var closeBtn = overlay.querySelector('.lightbox__close');
+    if (closeBtn) closeBtn.focus();
 
     lightboxKeyHandler = function (e) {
       if (e.key === 'Escape') closeLightbox();
@@ -899,6 +906,10 @@
     if (lightboxKeyHandler) {
       document.removeEventListener('keydown', lightboxKeyHandler);
       lightboxKeyHandler = null;
+    }
+    if (lightboxReturnFocusEl) {
+      lightboxReturnFocusEl.focus();
+      lightboxReturnFocusEl = null;
     }
   }
 
@@ -1753,8 +1764,12 @@
         }
         return;
       }
-      var img = e.target.closest('.feedcard__img');
-      if (img) { openLightbox(img); return; }
+      var imgBtn = e.target.closest('.feedcard__imgbtn');
+      if (imgBtn) {
+        var btnImg = imgBtn.querySelector('.feedcard__img');
+        if (btnImg) openLightbox(btnImg, imgBtn);
+        return;
+      }
       var a = e.target.closest('a');
       if (a) {
         var art = a.closest('.feedcard');

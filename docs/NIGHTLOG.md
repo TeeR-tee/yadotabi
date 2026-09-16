@@ -392,3 +392,8 @@
 - やったこと: `els.feedList`のclick委譲に(a)番号バッジの直後・(b)`a`リンクの前で`.feedcard__img`判定を挿入し、`openLightbox()`/`closeLightbox()`を新設(overlayはJS生成・historyは一切不使用、閉じるはoverlayタップとEscapeキーのみ)。表示画像は元の`<img>`のsrc/altをそのまま使い(Wikipediaの480pxサムネイルのため拡大しても解像度は上がらない、仕様でありバグではない)、CSSは`max-width/height:100%; object-fit:contain`で原寸以下に収める。画像タップでは`passivePush`を呼ばない(既存`tap`は「カード全体→地図pan」の意味なので混ぜると意味が変わるため)、新しいtypeも追加しない判断とした。
 - 見た目の確認結果: 新規`scripts/check-lightbox.mjs`(overlay開閉・Escape・番号バッジ/リンクチップ/プレースホルダで非発火・body overflow固定/解除・embed=1・デグレ用kusatsu30枚の21項目)全PASS、`check-all.mjs`24本全PASS。`?fixture=kusatsu`mobile/desktopのoverlay表示中スクリーンショットをRead目視し、暗幕が全面を覆い画像が中央、閉じるボタン(44px)も右上に収まっていることを確認。デグレ用kusatsu mobileもカード30枚・番号ピン判読可・コンソールエラー0件。
 - 次: R14/R19/R40が残候補。
+
+### 2026-09-16 R69 キーボード操作の検査(check-keyboard.mjs 新規)
+- やったこと: 実欠陥「カード写真がTabで到達不可・ライトボックスを開く手段が無い」を修正。`cardHtml()`の写真`<img>`2箇所を`<button class="feedcard__imgbtn">`で包み(`tabindex`は不使用)、click委譲を`closest('.feedcard__imgbtn')`基準に変更、`openLightbox()`に開いたら閉じるボタンへ・閉じたら元の写真ボタンへ`focus()`する処理を追加。`scripts/check-keyboard.mjs`を新規作成(状態B/Aの到達順・写真ボタンのEnter/Escape/フォーカス復帰・番号バッジのEnter・もっと見るのEnter・focus-visibleのoutlineWidthを検査)し`check-all.mjs`に追加(24→25本)。
+- 見た目の確認結果: check-keyboard.mjs 19項目全PASS、check-all.mjs 25本全緑(check-imgfail/check-lightbox/check-a11y/check-passive含めデグレなし)。撮影4枚をRead目視: 写真ボタン・もっと見るボタンともフォーカスリングが枠にはっきり見え、`?fixture=kusatsu`(mobile)はカード30枚・番号ピン判読可・写真16:9のまま、`&demo=imgfail`も先頭3枚のプレースホルダ差し替えが従来どおり。engine.js/geo.js/fixturesの差分は空。
+- 次: R14/R19/R40が残候補。

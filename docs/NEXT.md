@@ -1,80 +1,84 @@
-# NEXT: R66 カードの写真タップで大きく表示(簡易ライトボックス)
+# NEXT: R69 キーボード操作の検査(check-keyboard.mjs 新規)
 
-判断理由: 残る未完了(R14/R19/R40 は fixture 再生成で Overpass を叩く、R64 は GitHub Actions の課金確認=みのるんの判断が要る)の中で、R66 だけが外部API0回・ユーザー判断ゼロ・閲覧のみで完結し、R62(縦長写真の見切れ)で「切り抜かれて全体が見えない」と確認済みの課題に直接答えられるため。
+**選定理由**: 残る未完了(R14/R19/R40/R64/R69〜R73)のうち、R14/R19/R40 は fixture 再生成で Overpass を叩く必要があり夜間の無料APIマナーに触れる、R64 は GitHub Actions の課金確認という判断が要る、R71〜R73 は文書のみで小粒。R69 は外部API 0回・判断不要・実害のある欠陥(下記)が既に1件見えているため選ぶ。
+
+**難易度**: sonnet / **所要目安**: 40〜60分(実装20分・check-all 3分・撮影と目視15分)
+
+---
 
 ## 対象ファイル(絶対パス)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js`
-- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\style.css`
-- `C:\workspace\claude\旅行先用サイト\yadotabi\index.html`(overlay の器を1つ置く場合のみ。JS で生成しても可)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-lightbox.mjs`(新規)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-all.mjs`(登録1行追加。24本になる)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-a11y.mjs`(タップ領域対象に閉じるボタンを足す場合のみ)
-- `docs\ROADMAP.md` / `docs\NIGHTLOG.md`(完了記録)
 
-## 実装方針(実物を読んだうえでの指示)
+| ファイル | 変更 |
+|---|---|
+| `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-keyboard.mjs` | **新規** |
+| `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-all.mjs` | 配列に1行追加(24本→25本) |
+| `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js` | 修正1箇所のみ(下記 A) |
+| `C:\workspace\claude\旅行先用サイト\yadotabi\assets\style.css` | 上記に伴う最小の見た目維持 |
 
-### 1. どこにフックするか — `els.feedList` の click 委譲(app.js:1694〜1748)
-既存のクリック委譲は上から順に **(a) `.feedcard__no` バッジ(1696〜1713)→ (b) `a`(1715〜1733)→ (c) カード全体(1734〜1748、`feedMap.panTo`)** の3段。
-画像タップの分岐は **(a) の直後・(b) の前**に挿入する。理由: 画像は `<a>` の中に無いので (b) には当たらないが、(c) の「カード全体タップで地図を pan」に吸われてしまうため、それより先に捕まえて `return` する必要がある。
+**変更禁止**: `assets/engine.js` / `assets/geo.js` / `fixtures/*.json`。rank の重み・閾値・除外ルールにも触らない。既存 check-*.mjs 24本の中身も編集しない(check-all.mjs のリスト追加のみ可)。
 
-```
-var img = e.target.closest('.feedcard__img');
-if (img) { openLightbox(img); return; }   // ← ここ。(a) の return の直後に置く
-```
+---
 
-- `.feedcard__no`(番号バッジ)は `.feedcard__media` の中にあるが **(a) が先に return する**ので従来どおり。`.feedcard__link`(リンクチップ)は `.feedcard__body` 側なので無関係。どちらも壊れない。
-- **プレースホルダ(`.feedcard__ph`、写真が無いカード)は対象外**。`.feedcard__img` にだけ当てること。
-- 受動ログ: 画像タップでは **`passivePush` を呼ばない**。理由は (c) が現在記録している `tap` は「カードをタップ→地図が動いた」という意味の経路で、画像タップはそこに到達しなくなるため、同じ `tap` を流すとログの意味が変わってしまう。**新しい type も足さない**(`check-passive.mjs` が既存の形を検査しているため、今回は記録なしで確定)。この判断を NIGHTLOG に1行残すこと。
+## 事前調査の結果(計画役が実物を読んだ事実。仮説ではない)
 
-### 2. 表示する画像
-`cardHtml()`(app.js:827〜865)が組む `<img class="feedcard__img" src=...>` の **src をそのまま使う**。Wikipedia サムネイル(480px 相当)なので**拡大しても解像度は上がらない**。したがって overlay 側は `max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain;` で**中央に原寸以下で置くだけ**にし、無理に引き伸ばさない。この「元画像が480pxなので大きくは映らない」旨を NIGHTLOG に注記すること(仕様であってバグではない)。
-`alt` は元の img の `alt`(R57 で「<スポット名>の写真」が入っている)をコピーする。
+`index.html` と `app.js` を読んだ結果、**フォーカス可能要素はほぼ全て既に native な `<button>` / `<a href>`** で、`tabindex` は index.html・app.js のどこにも 1 個も無い。ROADMAP が心配していた「tabindex 欠落・div ボタン」はほぼ杞憂で、**実際の欠陥は1つだけ**。
 
-### 3. 閉じ方 — history は使わない
-**`history.pushState` / `popstate` には一切触らない**。R58(状態B→戻るで状態A)が `popstate` を使っており、ライトボックスが履歴を積むと「戻る」の意味が二重になって R58 の `check-history.mjs` が壊れる。
-閉じるのは次の2経路のみ:
-- overlay のどこをタップしても閉じる(画像自身のタップでも閉じてよい)
-- `Escape` キー(`document` に keydown を1つ足す。既存の Escape ハンドラは app.js:1631 の `els.searchInput` 上のもので、検索欄限定なので衝突しない)
+既存の到達可能要素(DOM 順):
+- 状態A: `#search-input`(input) → `#search-clear`(button, 入力時のみ) → `.suggest__item`(button, `app.js:520`) → `.chip`(button, `app.js:1604`) → `.samples a`(`app.js:1626`)
+- 状態B: `#back-btn`(button, `index.html:56`) → `.feedcard__no`(button, `app.js:847`) → `.feedcard__link`(a, `app.js:791`) → `#more-btn`(button, `app.js:925`) → `.far__summary`(details/summary, `app.js:938`) → `.far__item a`(`app.js:934`) → `#feed-note` 内の「くわしい仕組み」リンク(`app.js:951`)
 
-視認性のため右上に `×` の閉じるボタンを置くのは可(置くなら44px確保し `check-a11y.mjs` の対象に足す)。
+### A. 唯一の実欠陥 — カード写真がキーボードで開けない(R66 ライトボックスの取りこぼし)
 
-### 4. 背面のスクロール固定
-overlay 表示中は `document.body` に `.is-lightbox` を付け、CSS で `overflow: hidden` にする。閉じたら必ず外す。
-iOS の慣性スクロール対策で `position: fixed` まではやらない(スクロール位置が飛ぶ副作用の方が大きい)。`overflow: hidden` で止まることを撮影で確認する。
+`app.js:1756` の `var img = e.target.closest('.feedcard__img'); if (img) { openLightbox(img); return; }` により、カード写真のタップでライトボックスが開く。しかし写真は `app.js:834/837` で生成される**素の `<img>`** で、`tabindex` も `role` も無い。よって:
+- **Tab で写真に到達できない** → キーボード利用者はライトボックスを開く手段が一切無い
+- 「クリックできるのにフォーカスできない」状態で、R13 で整えたフォーカスリングも当たらない
 
-### 5. embed と reduced-motion
-- `?embed=1` でも動かす。埋め込みは iframe 内なので overlay は iframe の内側に収まる。**R48 の `postHeightToParent()` は呼ばない**(overlay は `position: fixed` で body の高さを変えないため、親への高さ通知は不要かつ余計な postMessage になる)。
-- フェードイン(0.15s 程度)を付けてよいが、`@media (prefers-reduced-motion: reduce)`(style.css:270 / 514 / 654 にある既存ブロックのいずれかに追記するか新規ブロック)で `transition: none; animation: none;` にする。
+**直し方(tabindex を増やさない範囲で、という ROADMAP の指示に沿う)**: `<img>` を `<button type="button" class="feedcard__imgbtn">` で包む。`cardHtml()`(`app.js:827`)の `media` 変数を組む2箇所(縦長デモ分岐 834行・通常分岐 837行)の `<img …>` をそれぞれこのボタンで囲むだけ。`tabindex` 属性は使わない(button は既定でフォーカス可能)。
+- クリック委譲は `closest('.feedcard__img')` のままで動く(button の中の img が e.target になるため)。**ただし Enter でボタンが押されたときは e.target が button なので `closest('.feedcard__img')` が null になる** → 委譲側を `e.target.closest('.feedcard__imgbtn')` で拾い、その中の `img` を `openLightbox()` に渡す形に直す(`app.js:1756` 付近の2行)。
+- `app.js:1726` の画像 error 委譲は `img.tagName !== 'IMG'` を見ているので、img 自体は残るため影響なし。念のため実行して確認する。
+- `style.css` に `.feedcard__imgbtn { display:block; width:100%; height:100%; padding:0; border:0; background:none; cursor:pointer; }` を追加。`.feedcard__media` は `aspect-ratio:16/9`(style.css:383)なのでボタンを 100% にすれば見た目は完全に不変。
+- プレースホルダ(写真なしカード、`placeholderHtml()`)は**元々クリックできない**ので包まない(挙動を変えない)。
 
-### 6. z-index
-Leaflet の地図コントロール(小地図)より確実に上に来る値にすること。overlay は `position: fixed; inset: 0;`。
+### B. 確認だけして直さない可能性が高いもの(検査に入れて事実を残す)
+
+- `.far__summary` は `<summary>` なのでブラウザ既定でフォーカス可能・Enter で開閉する。到達順の記録だけ取る。
+- ライトボックスを開いた後、フォーカスが `.lightbox__close`(`app.js:874`)へ移っているか。`openLightbox()` は現状 `focus()` を呼んでいないので、**開いた直後の Tab がカードの続きへ行く**はず。閉じるボタンへ `focus()` を1行足すのは範囲内(閉じたら元の写真ボタンへ戻す `focus()` も1行)。ここまでは実装してよい。Esc 閉じは `lightboxKeyHandler`(`app.js:888`)で既に動く。
+- `.suggest__item` は `role="option"` だが実体は button なので Tab で拾える。ARIA 的には listbox 内の option を Tab 対象にするのは正統ではないが、**今回は挙動を変えない**(到達できる方が実利がある)。事実だけ NIGHTLOG に残す。
+
+---
+
+## 実装方針(手順)
+
+1. `scripts/check-keyboard.mjs` を新規作成。`scripts/check-sample.mjs` の作りを踏襲する(Playwright は `file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs` から import、ポート3000に自前サーバを立てて finally で落とす、`ok()` で pass/fail 集計、fail>0 で exit 1)。
+2. 検査内容(すべて `?fixture=kusatsu` 等で外部API 0回):
+   - **状態B の到達順**: `?fixture=kusatsu` を開き `page.keyboard.press('Tab')` を 40 回程度繰り返して、毎回 `document.activeElement` の `className`/`tagName`/`textContent` を記録する。期待: `#back-btn` → 1枚目の `.feedcard__imgbtn` → `.feedcard__no`(1) → `.feedcard__link`×5 → 2枚目の `.feedcard__imgbtn` → … と**カード単位で順に進み、1枚目より先に2枚目の要素が出てこない**ことを検査する(DOM 順に依存するので index の単調増加で見る)。
+   - **写真ボタンに到達できること**(A の回帰): 1枚目の `.feedcard__imgbtn` に到達し、`Enter` で `.lightbox` が生成されること、`Escape` で消えること、閉じた後にフォーカスが元の `.feedcard__imgbtn` に戻っていること。
+   - **番号バッジ**: `.feedcard__no` にフォーカスして `Enter` で `.pin--flash` が付くこと(check-pinflash.mjs と同じ判定を流用、待ちは 200ms)。
+   - **もっと見る**: Tab を押し続けて `#more-btn` に到達でき、`Enter` で `.feedcard` が 60 枚になること。
+   - **状態A の到達順**: `?demo=zoomout` を開き、`#search-input` → `.chip` 群 → `.samples a` の順に到達できること。検索欄に 1 文字入れると `#search-clear` が Tab 対象に加わること。
+   - **フォーカスリングが見えること**: 上記のうち `.feedcard__imgbtn` と `#more-btn` にフォーカスした状態で `getComputedStyle(el).outlineWidth` が `0px` でないことを検査する(R13 で `outline:2px solid` を入れてある。**見た目バグは classList だけでなく computedStyle まで見る**というこれまでの教訓に従う)。
+   - 各ケースで**コンソールエラー 0 件**。
+   - **撮影**: 検査の中で `.feedcard__imgbtn` にフォーカスした状態と `#more-btn` にフォーカスした状態の 2 枚を `screenshots/r69-focus-img_mobile.png` / `screenshots/r69-focus-more_mobile.png` に `page.screenshot()` で保存する(375x812 の mobile 相当)。
+3. A の修正を `app.js` / `style.css` に入れる。
+4. `scripts/check-all.mjs` の配列にアルファベット順で `'scripts/check-keyboard.mjs'`(`check-initpos` と `check-lightbox` の間)を追加し、冒頭コメントの「24本」を「25本」に直す。
+
+---
 
 ## 完了条件(すべて検証可能)
-1. `?fixture=kusatsu` で1位カードの写真をクリック → overlay が表示され、その中に `img` が1枚ある
-2. overlay をクリック → overlay が消える(`hidden` か DOM から除去)
-3. overlay 表示中に `Escape` → 消える
-4. **番号バッジ(`.feedcard__no`)のクリックで overlay が出ない**、かつ従来どおりピンが光る(`check-pinflash.mjs` が緑のまま)
-5. **リンクチップ(`.feedcard__link`)のクリックで overlay が出ない**、かつ `passive` の `link` 記録が従来どおり(`check-passive.mjs` 緑)
-6. 写真が無いカード(`.feedcard__ph`)のクリックでは overlay が出ず、従来どおり地図が pan する
-7. overlay 表示中は `document.body` の `overflow` が `hidden`、閉じた後は元に戻る
-8. `?fixture=kusatsu&embed=1` でも 1〜3 が成立する
-9. `node --check assets/app.js` 通過
-10. `node scripts/check-all.mjs` が **24本全緑**(新規 `check-lightbox.mjs` を登録)
 
-## 検証手順
-- `node scripts/check-lightbox.mjs` を新規作成。既存の `scripts/check-pinflash.mjs` の作り(ポート3000に自前サーバ→Playwright)をそのまま踏襲する。上の完了条件1〜8を項目化する。
-- **`check-lightbox.mjs` の中で、overlay 表示中の mobile(375px)スクリーンショットを `screenshots/r66-lightbox-mobile.png` に保存する**(Playwright の `page.screenshot`)。あわせて desktop も1枚。
-- 保存した2枚を **Read で開いて目視**し、暗幕が全面を覆っているか・画像が中央にあるか・背面のカードが透けすぎていないか・閉じるボタンが端で切れていないかを確認する。
-- デグレ確認として `?fixture=kusatsu` mobile を1枚撮り、カード30枚・番号ピン判読可・コンソールエラー0件を確認。
-- 撮影はすべて fixture、**外部API 0回**。
+- [ ] `node scripts/check-keyboard.mjs` が全 PASS・exit 0。到達順のログが標準出力に読める形で出る。
+- [ ] `.feedcard__imgbtn` に Tab で到達でき、Enter でライトボックスが開き Escape で閉じ、フォーカスが写真ボタンへ戻る。
+- [ ] `#more-btn` に Tab で到達でき、Enter で 60 枚に展開する。
+- [ ] フォーカス時の `outlineWidth` が 2 要素とも `0px` でない。
+- [ ] `node scripts/check-all.mjs` が **25 本全緑・exit 0**(特に `check-lightbox.mjs` / `check-a11y.mjs` / `check-imgfail.mjs` / `check-pinflash.mjs` がデグレしていないこと)。
+- [ ] `node --check assets/app.js` 通過。
+- [ ] `git diff --stat -- assets/engine.js assets/geo.js fixtures` が**空**。
 
-## 変更禁止範囲
-- `assets/engine.js` / `assets/geo.js`(rank・収集ロジック一切)
-- `fixtures/*.json`
-- `history.pushState` / `popstate` まわり(R58)
-- 既存 `scripts/check-*.mjs` の**中身**(`check-all.mjs` への1行登録と、`check-a11y.mjs` への対象セレクタ追加のみ可)
-- リンクチップのラベル文字列(`check-passive.mjs:94` が `Instagram` に依存)
+## 検証手順(撮影と目視)
 
-## 難易度・所要目安
-- sonnet
-- 目安 25〜40分(実装15分・check-lightbox 作成10分・撮影と目視10分)
+1. `node scripts/check-keyboard.mjs` → 全 PASS と到達順ログを確認。
+2. 上記 2 枚の撮影画像を **Read で開いて目視**: フォーカスリングが写真枠/ボタンの周りにはっきり見えるか、カードのレイアウトが修正前と変わっていないか(写真の大きさ・番号バッジの位置)。
+3. `?fixture=kusatsu`(mobile)を 1 枚撮ってデグレ確認: カード 30 枚・番号ピン 1〜30 判読可・写真が従来どおり 16:9 で切れている・コンソールエラー 0 件。
+4. `?fixture=kusatsu&demo=imgfail`(mobile)を 1 枚: 先頭 3 枚がプレースホルダに差し替わる既存挙動が壊れていないこと。
+5. `node scripts/check-all.mjs` → 25 本全緑。
+6. ROADMAP の R69 を `[x] 2026-09-16` に、NIGHTLOG に 3 行追記 → コミット → push。
