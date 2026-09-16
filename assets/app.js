@@ -1307,10 +1307,21 @@
   /**
    * `?fixture=<名前>` を読む。使えない名前は null(=通常動作に戻す)。
    * 固定データは撮影・検証用で、外部APIを叩かずに状態Bを再現するためのもの。
+   * `random` は SAMPLE_LINKS からランダムに1つ選ぶ(R70)。呼び出しごとに結果が
+   * ぶれるとヘッダー表示とfetch対象がずれるので、1回解決した結果をキャッシュする。
    */
+  var resolvedRandomFixture;
   function fixtureNameFromUrl(params) {
     var raw = (params.get('fixture') || '').trim();
     if (!raw || !/^[a-z0-9_-]+$/.test(raw)) return null;
+    if (raw === 'random') {
+      if (resolvedRandomFixture === undefined) {
+        resolvedRandomFixture = SAMPLE_LINKS.length
+          ? SAMPLE_LINKS[Math.floor(Math.random() * SAMPLE_LINKS.length)].fixture
+          : null;
+      }
+      return resolvedRandomFixture;
+    }
     return raw;
   }
 
@@ -1635,7 +1646,8 @@
     els.samples.innerHTML = '<span class="samples__label">サンプル:</span>' +
       SAMPLE_LINKS.map(function (s) {
         return '<a href="?fixture=' + s.fixture + '">' + escapeHtml(s.label) + '</a>';
-      }).join('');
+      }).join('') +
+      '<a href="?fixture=random">おまかせ</a>';
   }
 
   /**

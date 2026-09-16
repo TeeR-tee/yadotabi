@@ -402,3 +402,8 @@
 - やったこと: README「仕組み(かんたん解説)」直前に用語ミニ辞典(fixture/Overpass/geosearch/OSM/embed/rank/collect/present/Wikipedia/Nominatimの10語、grepで全語がREADME本文に実在することを確認済み)、「判断待ちの設計課題」直後にfixture上位30件の写真あり割合表を追加。コード変更0行(assets/fixtures/scripts/index.html/demo/.githubのdiffは空)。
 - 確認結果: dump-rank.mjsで3エリア計測、分母は各30件で確認済み。草津20/30=67%、箱根18/30=60%、道後12/30=40%。画面変更なしのため撮影省略。node docs/check.mjs全OK、scripts/check-all.mjs 25本全PASS。
 - 次: R14/R19/R40が残候補(いずれもOverpass利用または課金確認が必要)。
+
+### 2026-09-16 R70 `?fixture=random` + サンプル導線に「おまかせ」
+- やったこと: `fixtureNameFromUrl()`(app.js)に`raw === 'random'`分岐を追加し、`SAMPLE_LINKS`(kusatsu/hakone/dogo)から`Math.random()`で1つ選ぶ。呼び出しごとに結果がぶれないよう`resolvedRandomFixture`にキャッシュ。`renderSampleLinks()`の末尾に`<a href="?fixture=random">おまかせ</a>`を1本追加(`SAMPLE_LINKS`配列自体には入れず自己参照を回避)。`check-sample.mjs`にケースf(random時に3エリアのいずれか・カード30枚・.samples不可視)を追加し、既存ケースaのリンク数を3→4本に修正。
+- 見た目の確認結果: `?fixture=random`mobileを3回撮影しRead目視、箱根湯本/道後温泉/草津温泉と3回とも別エリアが出てヘッダー・バッジ・カードが一致(キャッシュ有効)。`?demo=zoomout`のmobile/desktopでサンプル導線が「草津の例 箱根の例 道後の例 おまかせ」4本になり折り返しても文字切れなし、`?fixture=kusatsu`もデグレなし。`node scripts/check-all.mjs`25本全PASS。
+- 次: R14/R19/R40が残候補(いずれもOverpass利用または課金確認が必要)。
