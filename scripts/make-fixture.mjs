@@ -11,6 +11,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { slimOverpassElements } from './slim-fixtures.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -188,6 +189,10 @@ async function main() {
   const overpass = await fetchOverpass();
   const elements = (overpass.data && overpass.data.elements) || [];
   console.log('  elements: ' + elements.length + '件');
+
+  // 保存前に不要な OSM タグを keep-list で落とす(slim-fixtures.mjs と同じ判定を共有)。
+  const droppedKeys = slimOverpassElements(elements);
+  console.log('  削除タグ数: ' + droppedKeys);
 
   const fixture = {
     meta: {

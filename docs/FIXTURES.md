@@ -69,4 +69,15 @@ node scripts/make-fixture.mjs <area>
 
 ---
 
+## タグの軽量化(R14・keep-list)
+
+Overpass は `out center tags;` で全タグを返すため、生の fixture には `assets/geo.js` が読まないキーが大量に混じる(hakone.json は元々838KB中444KBがタグ)。`scripts/slim-fixtures.mjs` が `KEEP_TAG_KEYS`(`export`)を単一の定義元として持ち、`scripts/make-fixture.mjs` はそれを `import` して保存直前に同じ処理を通す(keep-listの二重管理はしない)。
+
+- keep-list(14種、geo.js を全読みして確定): `name` / `name:ja` / `tourism` / `historic` / `leisure` / `amenity` / `natural` / `man_made` / `wikidata` / `wikipedia` / `wikipedia:ja` / `website` / `contact:website` / `opening_hours`。加えて `wikipedia` で始まる全キーを前方一致で残す(`detectWikipedia()` の判定に合わせる)。
+- `json.meta` / `json.wiki` / 要素の `type`/`id`/`lat`/`lon`/`center` には一切触れない。
+- 既存 fixture を後から軽量化する手順: `node scripts/slim-fixtures.mjs [area]`(引数省略で4エリア全部)。**書き戻しは `JSON.stringify(json)`(第2・第3引数なし)** — pretty print すると逆に増える(hakone で 900KB→1056KB になった実測あり)。
+- 実施前後で `node scripts/dump-rank.mjs <area>` を4エリア分取り、**差分ゼロ**を確認すること。差分が出たら落としたキーが実は使われているので keep-list に戻す。
+- 2026-09-16 実施時のサイズ: kusatsu 65.3KB→55.5KB / hakone 900.1KB→585.7KB / dogo 117.1KB→93.7KB / beppu 172.7KB→122.7KB(dump-rank 差分ゼロ確認済み)。
+- 今後 `make-fixture.mjs` で新規生成する fixture は保存時に最初からこの keep-list を通るため、生成直後から軽量。
+
 関連: R14(hakone.json 900KB の軽量化)・R19(far 分布)・R40(別府追加)はいずれもこの手順を前提にする。

@@ -467,3 +467,8 @@
 - やったこと: `scripts/dump-rank.mjs` を4エリア直列実行(外部API0回)。far件数は kusatsu0/dogo0/beppu0・hakoneのみ10件(30003m〜30495mの薄い殻)で、「far は osmRadiusM としきい値30km(=FAR_DRIVE_MIN60分×DRIVE_M_PER_MIN500m/分)の大小関係だけで決まる」仮説が4エリアで成立。表は docs/FIXTURES.md と09研究ノートの両方に同じ値で記録、engine.jsのFAR_DRIVE_MIN直上にコメントを2行追加(値は不変)。
 - 見た目の確認結果: `?fixture=kusatsu`・`?fixture=hakone&demo=far` mobileを撮影・目視、コメント追記のみのためデグレなし(カード枚数・far10件とも従来どおり)。`node scripts/check-all.mjs` 25本全緑。
 - 次: R19の是正3案は朝の相談に起票済み、判断待ち。ROADMAP残りはR14/R64/R72/R75/R77/R78。
+
+### 2026-09-16 R14 fixtures の不要 OSM タグを keep-list で除去(再生成なし)
+- やったこと: `scripts/slim-fixtures.mjs` を新設(`KEEP_TAG_KEYS` 14種+`wikipedia`前方一致をexport)、`make-fixture.mjs` が同じ関数をimportして保存直前に適用する片方管理に統一。既存4 fixture に適用: kusatsu 65.3→55.5KB / hakone 900.1→585.7KB(-35%) / dogo 117.1→93.7KB / beppu 172.7→122.7KB。
+- 見た目の確認結果: dump-rank を4エリアで before/after 比較し**差分ゼロ**を確認。`?fixture=hakone`・`?fixture=kusatsu` mobile 撮影して目視、カード・番号ピン・写真・要約・行き方/公式/Instagram等のリンクが従来どおり。`node scripts/check-all.mjs` 25本全緑。
+- 次: R75(fixturesサイズ表をREADMEに記録)がR14のafter値を使えるので候補。
