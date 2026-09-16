@@ -7,12 +7,12 @@
 // (このプロジェクトに npm install はしない)。check-hotelparam.mjs の作りを踏襲する。
 //
 // 確認項目:
-//   a. ?demo=zoomout(状態A)で .samples が可視、リンクが4本(サンプル3本+おまかせ)。
-//   b. 3本の href がそれぞれ fixture=kusatsu / hakone / dogo を含み、4本目が fixture=random を含む。
+//   a. ?demo=zoomout(状態A)で .samples が可視、リンクが5本(サンプル4本+おまかせ)。
+//   b. 4本の href がそれぞれ fixture=kusatsu / hakone / dogo / beppu を含み、5本目が fixture=random を含む。
 //   c. 1本目をクリックすると状態Bに遷移し、#feed-title が「草津温泉」、.feedcard が30枚。
 //   d. ?fixture=kusatsu では .samples が不可視(fixture中は出さない)。
 //   e. ?fixture=kusatsu&embed=1 でも .samples が不可視。
-//   f. ?fixture=random で3エリアのいずれかが開き、.feedcard が30枚、.samples が不可視。
+//   f. ?fixture=random で4エリアのいずれかが開き、.feedcard が30枚、.samples が不可視。
 //   g. 各ケースでコンソールエラー0件。
 
 import { chromium } from 'file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs';
@@ -75,13 +75,14 @@ async function checkSamplesVisible(browser) {
 
     const links = page.locator('.samples a');
     const count = await links.count();
-    ok(count === 4, 'a. サンプルリンクが4本', count);
+    ok(count === 5, 'a. サンプルリンクが5本', count);
 
     const hrefs = await links.evaluateAll((els) => els.map((el) => el.getAttribute('href')));
     ok(hrefs.some((h) => (h || '').includes('fixture=kusatsu')), 'b. 1本目が fixture=kusatsu を含む', hrefs);
     ok(hrefs.some((h) => (h || '').includes('fixture=hakone')), 'b. 2本目が fixture=hakone を含む', hrefs);
     ok(hrefs.some((h) => (h || '').includes('fixture=dogo')), 'b. 3本目が fixture=dogo を含む', hrefs);
-    ok(hrefs.some((h) => (h || '').includes('fixture=random')), 'b. 4本目が fixture=random を含む', hrefs);
+    ok(hrefs.some((h) => (h || '').includes('fixture=beppu')), 'b. 4本目が fixture=beppu を含む', hrefs);
+    ok(hrefs.some((h) => (h || '').includes('fixture=random')), 'b. 5本目が fixture=random を含む', hrefs);
 
     ok(consoleErrors.length === 0, 'a/b. コンソールエラー0件', consoleErrors);
   });
@@ -135,7 +136,7 @@ async function checkFixtureRandom(browser) {
     await waitFor(1500);
 
     const title = (await page.locator('#feed-title').textContent() || '').trim();
-    ok(['草津温泉', '箱根湯本', '道後温泉'].includes(title), 'f. #feed-title が3エリアのいずれか', title);
+    ok(['草津温泉', '箱根湯本', '道後温泉', '別府温泉'].includes(title), 'f. #feed-title が4エリアのいずれか', title);
 
     const cardCount = await page.locator('.feedcard').count();
     ok(cardCount === 30, 'f. .feedcard が30枚', cardCount);

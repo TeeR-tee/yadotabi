@@ -407,3 +407,8 @@
 - やったこと: `fixtureNameFromUrl()`(app.js)に`raw === 'random'`分岐を追加し、`SAMPLE_LINKS`(kusatsu/hakone/dogo)から`Math.random()`で1つ選ぶ。呼び出しごとに結果がぶれないよう`resolvedRandomFixture`にキャッシュ。`renderSampleLinks()`の末尾に`<a href="?fixture=random">おまかせ</a>`を1本追加(`SAMPLE_LINKS`配列自体には入れず自己参照を回避)。`check-sample.mjs`にケースf(random時に3エリアのいずれか・カード30枚・.samples不可視)を追加し、既存ケースaのリンク数を3→4本に修正。
 - 見た目の確認結果: `?fixture=random`mobileを3回撮影しRead目視、箱根湯本/道後温泉/草津温泉と3回とも別エリアが出てヘッダー・バッジ・カードが一致(キャッシュ有効)。`?demo=zoomout`のmobile/desktopでサンプル導線が「草津の例 箱根の例 道後の例 おまかせ」4本になり折り返しても文字切れなし、`?fixture=kusatsu`もデグレなし。`node scripts/check-all.mjs`25本全PASS。
 - 次: R14/R19/R40が残候補(いずれもOverpass利用または課金確認が必要)。
+
+### 2026-09-16 R40 fixture 4エリア目「別府」の追加
+- やったこと: `make-fixture.mjs`のAREASに`beppu`(lat 33.2846/lon 131.4914、osmRadiusM既定15000)を追加し`node scripts/make-fixture.mjs beppu`を1回実行(667要素・176KB)。`docs/check.mjs`のTARGETS、`app.js`のSAMPLE_LINKS、`check-sample.mjs`の件数アサーション(4本→5本、count===5、fixture=beppu検査追加)、`docs/FIXTURES.md`とREADMEの表・説明文を更新。
+- 見た目の確認結果: `?fixture=beppu`mobile/desktopともヘッダー「別府温泉」+固定データバッジ・30枚のピン判読可・カード崩れなし。`?demo=zoomout`mobileはサンプルチップが5本(4例+おまかせ)に増えても折り返し崩れなし。`?fixture=kusatsu`mobileはデグレなし。`scripts/check-all.mjs`25本中24本PASS(docs/check.mjsはpush前提のためbeppu.json行のみ404、push後に再実行予定)。
+- 次: R14/R19/R64が残候補。

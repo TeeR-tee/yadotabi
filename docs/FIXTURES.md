@@ -8,13 +8,14 @@ URLパラメータ全体の一覧は [README.md](../README.md#urlパラメータ
 
 ## 対象エリア表
 
-`AREAS`(`scripts/make-fixture.mjs:18-22`)の実値です。
+`AREAS`(`scripts/make-fixture.mjs:18-23`)の実値です。
 
 | area | ラベル | lat | lon | osmRadiusM | wikiRadiusM |
 |---|---|---|---|---|---|
 | kusatsu | 草津温泉 | 36.6226 | 138.5960 | 15000(既定) | 10000 |
 | hakone | 箱根湯本 | 35.2324 | 139.1069 | 30000(個別指定) | 10000 |
 | dogo | 道後温泉 | 33.8520 | 132.7860 | 15000(既定) | 10000 |
+| beppu | 別府温泉 | 33.2846 | 131.4914 | 15000(既定) | 10000 |
 
 ## 実行方法
 
