@@ -10,6 +10,9 @@
 - R45 固定データバッジに生成日付を追加(app.jsにformatFixtureDate()を新設しローカルYYYY-MM-DDで表示、index.htmlに#feed-badge-date、style.cssに.topbar__badge__date)。R46 docs/check.mjsに実バイト数のKB列を追加(content-lengthはgzip圧縮後のためcheckTargetで読んだ本文実体のバイト数で上書き)、末尾に合計サイズ行を追加。
 - kusatsu/embed/hakoneをmobileで目視、「固定データ 2026-09-16 取得」が1行に収まり見出しと重ならない・カード30枚判読可・コンソールエラー0件。docs/check.mjsのKB上位3件: fixtures/hakone.json 900.1KB / fixtures/dogo.json 117.1KB / fixtures/kusatsu.json 65.3KB。check-all.mjs 16本全PASS。
 - 次: R2-1(朝の相談待ち)または残候補(R14/R19/R40)から計画役が選定。
+- R49+R50 文書2本を追加(コード変更なし)。README に「## 判断待ちの設計課題」節(4件・結論なし・NIGHTLOGへの参照付き)と `docs/FIXTURES.md`(新規)を追加。`docs/FIXTURES.md` はエリア表3行・実行コマンド・meta一覧・Overpassのマナー・再生成しない方針・buildOverpassQuery同期注意を記載、README の `fixtures/` 行から相対リンクを追加。
+- 画面変更が無いため撮影は省略。`ls docs/FIXTURES.md` で実在確認、`node docs/check.mjs` OK(README画像3本含む既存検査もPASS)、`node scripts/check-all.mjs` 17本中17本PASS・exit 0、`git diff --stat -- assets fixtures scripts index.html demo` は空を確認。
+- 次: ROADMAP残りはR14/R19/R23/R28/R31/R32/R33/R34/R40/R42/R43/R51。R49で公開した4件の判断待ちのうち検索候補とチップの重なり(R2-1)含め依然未決。
 
 ## 朝のまとめ(2026-09-16 06:10 司令塔が記入)
 
