@@ -861,6 +861,47 @@
     '</article>';
   }
 
+  // R66: カード写真タップの簡易ライトボックス。history は一切触らない(R58と衝突するため)。
+  // overlay はJSで都度生成し、閉じたら DOM から除去する。
+  var lightboxEl = null;
+  var lightboxKeyHandler = null;
+
+  function openLightbox(img) {
+    closeLightbox();
+    var overlay = document.createElement('div');
+    overlay.className = 'lightbox';
+    overlay.innerHTML =
+      '<button type="button" class="lightbox__close" aria-label="閉じる">&times;</button>' +
+      '<img class="lightbox__img" src="' + escapeHtml(img.getAttribute('src') || '') + '" alt="' +
+        escapeHtml(img.getAttribute('alt') || '') + '">';
+    overlay.addEventListener('click', function () {
+      closeLightbox();
+    });
+    document.body.appendChild(overlay);
+    document.body.classList.add('is-lightbox');
+    // 描画後にopacityを上げてフェードインさせる(reduced-motionはCSS側で無効化済み)
+    requestAnimationFrame(function () {
+      overlay.classList.add('is-open');
+    });
+    lightboxEl = overlay;
+
+    lightboxKeyHandler = function (e) {
+      if (e.key === 'Escape') closeLightbox();
+    };
+    document.addEventListener('keydown', lightboxKeyHandler);
+  }
+
+  function closeLightbox() {
+    if (!lightboxEl) return;
+    lightboxEl.remove();
+    lightboxEl = null;
+    document.body.classList.remove('is-lightbox');
+    if (lightboxKeyHandler) {
+      document.removeEventListener('keydown', lightboxKeyHandler);
+      lightboxKeyHandler = null;
+    }
+  }
+
   function emptyHtml(hotel) {
     var url = 'https://www.google.com/maps/search/?api=1&query=' +
       encodeURIComponent(hotel.lat + ',' + hotel.lon);
@@ -1712,6 +1753,8 @@
         }
         return;
       }
+      var img = e.target.closest('.feedcard__img');
+      if (img) { openLightbox(img); return; }
       var a = e.target.closest('a');
       if (a) {
         var art = a.closest('.feedcard');

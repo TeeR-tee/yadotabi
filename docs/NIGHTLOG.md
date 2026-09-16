@@ -386,3 +386,8 @@
 - やったこと: 計画役の実測どおり`goBack()`は地図に触れず同一セッション内では既にズレないことを確認、当初仮説(`goBack()`への`setView()`追加)は否定して不採用。真因である「`saveMapView()`が`moveend`のdebounce(250ms)経由でしか呼ばれずドラッグ直後の宿選択で保存が漏れる」点に対処し、`selectHotel()`冒頭に`saveMapView()`を1回追加。回帰テスト`checkMapViewSavedOnSelect`(panBy→40ms→selectHotel→300ms後のlocalStorage一致検査)を`check-history.mjs`に追加し、修正前にFAIL(savedAfterがpanBy前の古い位置)することを確認済み。
 - 見た目の確認結果: `?fixture=kusatsu`mobileでカード30枚・番号ピン1〜30判読可・コンソールエラー0件、画面変更なしでデグレなし。`check-history.mjs`21本全PASS、`check-all.mjs`23本全PASS。
 - 次: R14/R19/R40が残候補。
+
+### 2026-09-16 R66 カードの写真タップで簡易ライトボックス
+- やったこと: `els.feedList`のclick委譲に(a)番号バッジの直後・(b)`a`リンクの前で`.feedcard__img`判定を挿入し、`openLightbox()`/`closeLightbox()`を新設(overlayはJS生成・historyは一切不使用、閉じるはoverlayタップとEscapeキーのみ)。表示画像は元の`<img>`のsrc/altをそのまま使い(Wikipediaの480pxサムネイルのため拡大しても解像度は上がらない、仕様でありバグではない)、CSSは`max-width/height:100%; object-fit:contain`で原寸以下に収める。画像タップでは`passivePush`を呼ばない(既存`tap`は「カード全体→地図pan」の意味なので混ぜると意味が変わるため)、新しいtypeも追加しない判断とした。
+- 見た目の確認結果: 新規`scripts/check-lightbox.mjs`(overlay開閉・Escape・番号バッジ/リンクチップ/プレースホルダで非発火・body overflow固定/解除・embed=1・デグレ用kusatsu30枚の21項目)全PASS、`check-all.mjs`24本全PASS。`?fixture=kusatsu`mobile/desktopのoverlay表示中スクリーンショットをRead目視し、暗幕が全面を覆い画像が中央、閉じるボタン(44px)も右上に収まっていることを確認。デグレ用kusatsu mobileもカード30枚・番号ピン判読可・コンソールエラー0件。
+- 次: R14/R19/R40が残候補。

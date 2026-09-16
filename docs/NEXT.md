@@ -1,64 +1,80 @@
-# NEXT — R68 `?embed=1` に背景色パラメータ `&bg=` を足す
+# NEXT: R66 カードの写真タップで大きく表示(簡易ライトボックス)
 
-判断理由: 残候補のうち R14/R19/R40 は fixture 再生成(Overpass)が絡んで無料APIのマナー上サイクル内で完結しにくく、R64 は Actions の課金確認という「みのるんの判断」が要り、R65/R66 は地図状態や新UIでデグレ範囲が広い。R68 は embed 限定・表示のみ・外部API 0回・検証が機械化しやすく、営業(予約サイトへの埋め込み)に直結するので今サイクル向き。
-
-難易度: sonnet / 所要目安: 30〜45分(実装15分・検査本10分・撮影と目視10分)
+判断理由: 残る未完了(R14/R19/R40 は fixture 再生成で Overpass を叩く、R64 は GitHub Actions の課金確認=みのるんの判断が要る)の中で、R66 だけが外部API0回・ユーザー判断ゼロ・閲覧のみで完結し、R62(縦長写真の見切れ)で「切り抜かれて全体が見えない」と確認済みの課題に直接答えられるため。
 
 ## 対象ファイル(絶対パス)
-- C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js (変更)
-- C:\workspace\claude\旅行先用サイト\yadotabi\assets\style.css (変更・埋め込み節)
-- C:\workspace\claude\旅行先用サイト\yadotabi\demo\hotel-page.html (変更・iframe の src に例を1つ)
-- C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-embedbg.mjs (新規)
-- C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-all.mjs (新規本を1行登録)
-- C:\workspace\claude\旅行先用サイト\yadotabi\README.md (パラメータ表に `bg` の1行を追加。R52 の表がある)
-- C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md / docs\NIGHTLOG.md (完了記録)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js`
+- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\style.css`
+- `C:\workspace\claude\旅行先用サイト\yadotabi\index.html`(overlay の器を1つ置く場合のみ。JS で生成しても可)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-lightbox.mjs`(新規)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-all.mjs`(登録1行追加。24本になる)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-a11y.mjs`(タップ領域対象に閉じるボタンを足す場合のみ)
+- `docs\ROADMAP.md` / `docs\NIGHTLOG.md`(完了記録)
+
+## 実装方針(実物を読んだうえでの指示)
+
+### 1. どこにフックするか — `els.feedList` の click 委譲(app.js:1694〜1748)
+既存のクリック委譲は上から順に **(a) `.feedcard__no` バッジ(1696〜1713)→ (b) `a`(1715〜1733)→ (c) カード全体(1734〜1748、`feedMap.panTo`)** の3段。
+画像タップの分岐は **(a) の直後・(b) の前**に挿入する。理由: 画像は `<a>` の中に無いので (b) には当たらないが、(c) の「カード全体タップで地図を pan」に吸われてしまうため、それより先に捕まえて `return` する必要がある。
+
+```
+var img = e.target.closest('.feedcard__img');
+if (img) { openLightbox(img); return; }   // ← ここ。(a) の return の直後に置く
+```
+
+- `.feedcard__no`(番号バッジ)は `.feedcard__media` の中にあるが **(a) が先に return する**ので従来どおり。`.feedcard__link`(リンクチップ)は `.feedcard__body` 側なので無関係。どちらも壊れない。
+- **プレースホルダ(`.feedcard__ph`、写真が無いカード)は対象外**。`.feedcard__img` にだけ当てること。
+- 受動ログ: 画像タップでは **`passivePush` を呼ばない**。理由は (c) が現在記録している `tap` は「カードをタップ→地図が動いた」という意味の経路で、画像タップはそこに到達しなくなるため、同じ `tap` を流すとログの意味が変わってしまう。**新しい type も足さない**(`check-passive.mjs` が既存の形を検査しているため、今回は記録なしで確定)。この判断を NIGHTLOG に1行残すこと。
+
+### 2. 表示する画像
+`cardHtml()`(app.js:827〜865)が組む `<img class="feedcard__img" src=...>` の **src をそのまま使う**。Wikipedia サムネイル(480px 相当)なので**拡大しても解像度は上がらない**。したがって overlay 側は `max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain;` で**中央に原寸以下で置くだけ**にし、無理に引き伸ばさない。この「元画像が480pxなので大きくは映らない」旨を NIGHTLOG に注記すること(仕様であってバグではない)。
+`alt` は元の img の `alt`(R57 で「<スポット名>の写真」が入っている)をコピーする。
+
+### 3. 閉じ方 — history は使わない
+**`history.pushState` / `popstate` には一切触らない**。R58(状態B→戻るで状態A)が `popstate` を使っており、ライトボックスが履歴を積むと「戻る」の意味が二重になって R58 の `check-history.mjs` が壊れる。
+閉じるのは次の2経路のみ:
+- overlay のどこをタップしても閉じる(画像自身のタップでも閉じてよい)
+- `Escape` キー(`document` に keydown を1つ足す。既存の Escape ハンドラは app.js:1631 の `els.searchInput` 上のもので、検索欄限定なので衝突しない)
+
+視認性のため右上に `×` の閉じるボタンを置くのは可(置くなら44px確保し `check-a11y.mjs` の対象に足す)。
+
+### 4. 背面のスクロール固定
+overlay 表示中は `document.body` に `.is-lightbox` を付け、CSS で `overflow: hidden` にする。閉じたら必ず外す。
+iOS の慣性スクロール対策で `position: fixed` まではやらない(スクロール位置が飛ぶ副作用の方が大きい)。`overflow: hidden` で止まることを撮影で確認する。
+
+### 5. embed と reduced-motion
+- `?embed=1` でも動かす。埋め込みは iframe 内なので overlay は iframe の内側に収まる。**R48 の `postHeightToParent()` は呼ばない**(overlay は `position: fixed` で body の高さを変えないため、親への高さ通知は不要かつ余計な postMessage になる)。
+- フェードイン(0.15s 程度)を付けてよいが、`@media (prefers-reduced-motion: reduce)`(style.css:270 / 514 / 654 にある既存ブロックのいずれかに追記するか新規ブロック)で `transition: none; animation: none;` にする。
+
+### 6. z-index
+Leaflet の地図コントロール(小地図)より確実に上に来る値にすること。overlay は `position: fixed; inset: 0;`。
+
+## 完了条件(すべて検証可能)
+1. `?fixture=kusatsu` で1位カードの写真をクリック → overlay が表示され、その中に `img` が1枚ある
+2. overlay をクリック → overlay が消える(`hidden` か DOM から除去)
+3. overlay 表示中に `Escape` → 消える
+4. **番号バッジ(`.feedcard__no`)のクリックで overlay が出ない**、かつ従来どおりピンが光る(`check-pinflash.mjs` が緑のまま)
+5. **リンクチップ(`.feedcard__link`)のクリックで overlay が出ない**、かつ `passive` の `link` 記録が従来どおり(`check-passive.mjs` 緑)
+6. 写真が無いカード(`.feedcard__ph`)のクリックでは overlay が出ず、従来どおり地図が pan する
+7. overlay 表示中は `document.body` の `overflow` が `hidden`、閉じた後は元に戻る
+8. `?fixture=kusatsu&embed=1` でも 1〜3 が成立する
+9. `node --check assets/app.js` 通過
+10. `node scripts/check-all.mjs` が **24本全緑**(新規 `check-lightbox.mjs` を登録)
+
+## 検証手順
+- `node scripts/check-lightbox.mjs` を新規作成。既存の `scripts/check-pinflash.mjs` の作り(ポート3000に自前サーバ→Playwright)をそのまま踏襲する。上の完了条件1〜8を項目化する。
+- **`check-lightbox.mjs` の中で、overlay 表示中の mobile(375px)スクリーンショットを `screenshots/r66-lightbox-mobile.png` に保存する**(Playwright の `page.screenshot`)。あわせて desktop も1枚。
+- 保存した2枚を **Read で開いて目視**し、暗幕が全面を覆っているか・画像が中央にあるか・背面のカードが透けすぎていないか・閉じるボタンが端で切れていないかを確認する。
+- デグレ確認として `?fixture=kusatsu` mobile を1枚撮り、カード30枚・番号ピン判読可・コンソールエラー0件を確認。
+- 撮影はすべて fixture、**外部API 0回**。
 
 ## 変更禁止範囲
-- assets\engine.js / assets\geo.js / fixtures\*.json は一切触らない
-- 既存 check-*.mjs の中身は編集しない(check-all.mjs への登録行のみ可)
-- 文字色・カード背景・チップ色は変更しない(コントラスト事故を避ける。暗色指定は今回対象外、理由は NIGHTLOG に残す)
+- `assets/engine.js` / `assets/geo.js`(rank・収集ロジック一切)
+- `fixtures/*.json`
+- `history.pushState` / `popstate` まわり(R58)
+- 既存 `scripts/check-*.mjs` の**中身**(`check-all.mjs` への1行登録と、`check-a11y.mjs` への対象セレクタ追加のみ可)
+- リンクチップのラベル文字列(`check-passive.mjs:94` が `Instagram` に依存)
 
-## 実装方針(実物の行番号)
-現状の実物:
-- `app.js:1280-1283` `isEmbedFromUrl(params)` … `params.get('embed') === '1'` を返すだけ。
-- `app.js:1285-1295` `setEmbed(on)` … `state.embed` と `document.body.classList.toggle('is-embed', on)`、embed 時に `startHeightObserver()`。
-- `app.js:1332` `applyEntryPoint()` … `1393` で `fixtureName`、`1396` で `hasTarget`(hotel か fixture)、`1397` で `if (isEmbedFromUrl(params) && hasTarget) setEmbed(true);`。
-- `app.js:1429-1430` fixture 読み込み失敗時に `setEmbed(false)` して通常動作へ落ちる経路がある。
-- `app.js:1777-1779` init() 側にも embed 判定がある(`setEmbed(true)`)。
-- `style.css:7-9` `body { background: var(--c-bg); }`、`--c-bg` は `tokens.css:24`(`#f7f7f9`)。`.view--feed` 自体に背景指定は無い(`style.css:288`)ので、**`--c-bg` を上書きすれば body と feed の両方の地色が一度に変わる**。
-
-手順:
-1. `isEmbedFromUrl` の直後に純粋関数 `bgFromUrl(params)` を新設する。
-   - `params.get('bg')` を取り、先頭の `#` を1つだけ許して剥がす。
-   - `/^[0-9a-fA-F]{6}$/` にマッチしたときだけ `'#' + hex` を返し、それ以外(空・3桁・7桁・`red`・`url(...)`・`;` 混入など)は `null` を返して**黙って無視**する。
-   - ROADMAP 本文は3桁も許容と書いてあるが、**今回は6桁のみ**とする(依頼の指定。3桁を足すなら別タスク)。この差分の理由を NIGHTLOG に1行残すこと。
-2. `setEmbed(on)` に第2引数 `bg` を足す(既定 `null`)。
-   - `on && bg` のときだけ `document.documentElement.style.setProperty('--c-bg', bg)`。
-   - それ以外(embed を切るとき含む)は `document.documentElement.style.removeProperty('--c-bg')`。`1429-1430` のフォールバック経路で地色が残らないこと。
-   - CSS 変数経由にするのは、`body` の style を直書きするとダークモードや将来の `.view--feed` 背景と衝突するため。**値の検証は 1 の正規表現のみで行い、文字列連結で CSS に流すのはここだけ**(XSS/CSS インジェクション防止)。
-3. 呼び出し2か所を差し替える: `app.js:1397` と `app.js:1777-1779` を `setEmbed(true, bgFromUrl(params))`(init 側は `initialParams`)にする。**embed でないときは `bgFromUrl` の結果を使わない**こと(`?bg=` 単独では何も起きない)。
-4. `style.css` の埋め込み節(`599` 付近)に1行コメントを添えて `body.is-embed { background: var(--c-bg); }` を明示しておく(既に body 側で効くが、意図を読めるようにするため。新しい色指定は増やさない)。
-5. `demo/hotel-page.html:212` の iframe src を `../index.html?fixture=kusatsu&embed=1&bg=fff7e6` にし、`.sales-notes`(`219` 付近の箇条書き)に「`&bg=fff7e6` で背景色を宿ページに合わせられます(6桁の16進のみ)」を1行足す。`223` の `<pre class="tag-example">` にも同じ形で `&amp;bg=fff7e6` を入れる。
-
-## 完了条件(検証可能)
-- `scripts/check-embedbg.mjs`(Playwright、既存本と同じポート3000の自前サーバ方式)が全項目 PASS:
-  1. `?fixture=kusatsu&embed=1&bg=fff7e6` … `body` の computedStyle `background-color` が `rgb(255, 247, 230)`。
-  2. 同上で `#fff7e6`(`%23` エンコード)でも同じ値になる。
-  3. `?fixture=kusatsu&embed=1&bg=zzzzzz` / `&bg=fff` / `&bg=red` / `&bg=fff7e6;color:red` … いずれも既定色 `rgb(247, 247, 249)` のまま(=無視)。
-  4. `?fixture=kusatsu&bg=fff7e6`(embed なし) … 既定色のまま(embed 以外では効かない)。
-  5. `?fixture=kusatsu&embed=1&bg=fff7e6` で `documentElement.style.getPropertyValue('--c-bg')` が `#fff7e6`、無効値のときは空文字。
-  6. カードは 30 枚のままで `.feedcard` の背景色が変わっていない(文字が読めなくなっていない)。
-- `node scripts/check-all.mjs` が全本 PASS・exit 0(本数が1つ増えること)。
-- `node --check assets/app.js` が通る。
-- 外部API 0回(全て fixture)。
-
-## 検証手順(撮影+目視)
-1. `node C:\workspace\tools\shot\shot.mjs "http://localhost:3000/?fixture=kusatsu&embed=1&bg=fff7e6" --mobile`(またはローカルサーバの実URL)で撮り、Read で目視。地色が淡いクリーム色になり、カード(白)・文字・リンクチップのコントラストが保たれていること。
-2. `?fixture=kusatsu&embed=1`(bg なし)を mobile で撮り、従来と同じ地色・レイアウトであること(デグレなし)。
-3. `demo/hotel-page.html` を mobile で撮り、iframe の中と親ページの地色が馴染んでいること・二重スクロールが出ていないこと(R48 の高さ通知が壊れていないこと)。
-4. `?fixture=kusatsu`(通常)を mobile で撮り、カード30枚・番号ピン判読可・コンソールエラー0件。
-
-## 記録
-- ROADMAP の R68 行を `- [x] 2026-09-16 R68 ...` にする。
-- NIGHTLOG に3行(やったこと / 見た目の確認結果 / 次)。3桁 HEX を許可しなかった理由と、文字色を変えない(暗色 bg はコントラスト事故になるため対象外)方針も添える。
-- コミット(1行の日本語)→ `git push`。
+## 難易度・所要目安
+- sonnet
+- 目安 25〜40分(実装15分・check-lightbox 作成10分・撮影と目視10分)
