@@ -1282,10 +1282,24 @@
     return params.get('embed') === '1';
   }
 
-  /** 埋め込みの入り切り。クラスは CSS 側の出し分けに使う。 */
-  function setEmbed(on) {
+  /** `?bg=<6桁HEX>` を読む。3桁/7桁/色名/CSS混入などは黙って無視して null を返す。 */
+  function bgFromUrl(params) {
+    var raw = params.get('bg');
+    if (!raw) return null;
+    var hex = raw.charAt(0) === '#' ? raw.slice(1) : raw;
+    if (!/^[0-9a-fA-F]{6}$/.test(hex)) return null;
+    return '#' + hex;
+  }
+
+  /** 埋め込みの入り切り。クラスは CSS 側の出し分けに使う。bg は embed 時のみ反映する。 */
+  function setEmbed(on, bg) {
     state.embed = !!on;
     document.body.classList.toggle('is-embed', !!on);
+    if (state.embed && bg) {
+      document.documentElement.style.setProperty('--c-bg', bg);
+    } else {
+      document.documentElement.style.removeProperty('--c-bg');
+    }
     if (state.embed) {
       startHeightObserver();
     } else if (heightObserver) {
@@ -1394,7 +1408,7 @@
 
     // 埋め込みは「宿が決まっている」ことが前提。どちらも無ければ通常動作(状態A)に落とす。
     var hasTarget = !!hotelFromUrl(params) || !!fixtureName;
-    if (isEmbedFromUrl(params) && hasTarget) setEmbed(true);
+    if (isEmbedFromUrl(params) && hasTarget) setEmbed(true, bgFromUrl(params));
 
     if (fixtureName) {
       // fixture の読み込みは撮影用の事情で、本番の通常動作には無い工程。
@@ -1776,7 +1790,7 @@
     var initialParams = new URLSearchParams(global.location.search);
     if (isEmbedFromUrl(initialParams) &&
         (hotelFromUrl(initialParams) || fixtureNameFromUrl(initialParams))) {
-      setEmbed(true);
+      setEmbed(true, bgFromUrl(initialParams));
     }
     renderSampleLinks();
     if (!state.embed) ensureMap();

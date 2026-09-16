@@ -376,3 +376,8 @@
 - やったこと: `check-all.mjs`のspawnSyncを`stdio:'inherit'`から`['ignore','pipe','pipe']`に変更しつつ捕まえた出力をその場で画面にも流し、FAILした本だけ`screenshots/fail-<本名>-<時刻>.txt`に再現コマンド・exit code・stdout/stderr末尾40行を保存する`saveFailLog()`を追加。既存check本体・表の書式・exitCode判定は無変更。
 - 見た目の確認結果: 画面出力は従来どおり流れる(見た目に変化なしのため撮影は省略)。1本を存在しないパスに差し替えて実行しFAIL・fail-check-nonexistent-*.txtの生成と中身を目視確認後、元の並びに戻して22本全PASS・fail-*.txt残存0件を確認。
 - 次: R14/R19/R40が残候補。
+
+### 2026-09-16 R68 `?embed=1&bg=` で埋め込みの背景色を指定
+- やったこと: `bgFromUrl(params)`を新設し`?bg=`の値を`/^[0-9a-fA-F]{6}$/`(先頭`#`は1つだけ剥がす)で厳格検証、`setEmbed(on, bg)`に第2引数を足しembed時のみ`--c-bg`をCSS変数経由でセット(文字列連結でCSSに流すのはここだけ)。ROADMAP本文は3桁も許容と書いてあったが今回は6桁のみとした(3桁許容は`red`等の色名や中途半端な値との区別を複雑にし、営業用途では宿サイトの正確な色コードをそのまま渡す想定のため6桁固定の方が安全と判断、3桁対応は別タスク)。文字色・カード背景は変更していない。
+- 見た目の確認結果: `?fixture=kusatsu&embed=1&bg=fff7e6`mobileで地色が淡いクリーム色になりカード(白)・文字・リンクチップの可読性は保たれている、`?fixture=kusatsu&embed=1`(bgなし)mobileは従来どおりの白系でデグレなし、`demo/hotel-page.html`mobileも親子の地色が馴染み二重スクロールなし。新規`scripts/check-embedbg.mjs`(有効値/#付き/無効値4種/embedなし/カード30枚維持の11項目)を追加し`check-all.mjs`23本全PASS。
+- 次: R14/R19/R40が残候補。
