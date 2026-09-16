@@ -668,3 +668,8 @@
 - 朝のまとめの冒頭数字を実測値(146コミット・R126まで)に更新し、直近10サイクル(R115〜R124)の成果を画面で確かめられる言葉でまとめた新節を追加。「夜にやったこと」に項目27〜37を追記(既存26項目は無傷)、見出しの無かった裸の箇条書き35サイクル分に`### `見出しを補い(過去の本文は1行も削除せず)、「朝の相談」全項目に選択肢・推奨を付けR125/R122/R116を追加した。
 - 文書のみの変更のため撮影は省略。`node scripts/check-all.mjs`は29本中29本PASS(exit 0)、`git diff --stat -- assets fixtures`は空、`git diff --numstat docs/NIGHTLOG.md`の削除は3行(冒頭数字1行+朝の相談の整形分)のみでサイクル記録本文の削除は無いことを確認。
 - 次: R125(geo.js改修+fixtures再生成、みのるんの承認待ち)またはROADMAP残り(R64/R81/R85/R92/R102/R103/R116/R122)から計画役が選定。
+### 2026-09-16 R127 英語名だけのカードを除去
+- R127 `engine.js` に判定を1つ追加(rank・geo.js・fixtures は無改変)。`hasJapaneseChar()` を新設し、統合(dedupe)・R80昇格(`source='both'`化)の**直後**で「source=osm(単独候補)+日本語文字なし+summary無し+wikipediaTitle/wikidataId無し」の4条件AND成立時だけ `merged` から除去した。挿入位置を統合より後にしたことで、dogo 10位「松山城」(R114で`Matsuyama Castle`と統合済み・`source=both`・公式サイト○)は判定の対象外のまま残る。
+- 落としたのは実測どおり3件: hakone 17位「Ajisai Bridge」、beppu more の「Tsuruya」「OAB Garden Studio Five」。`dump-rank` を4エリアで変更前後に取り差分を全件確認、kusatsu/dogoは完全無差分、hakone/beppuはこの3件の除去と以降の繰り上がりのみ(繰り上がった湯本茶屋一里塚・鉄牛寿塔・箱根駒ヶ岳ロープウェー・鉄輪むし湯・光壽泉べっぷ野上本館・ハーモニーランド等を全件目視、廃止施設・他社の宿・非観光対象なし)。松山城は`?fixture=dogo`で10位のまま・source=both・公式サイトリンクありをブラウザで実測確認。
+- `check-engine.mjs` に (r127) 節を新設(落とす2件+残す3件(松山城の統合結果を含む)、既存ケースは1件も削らず、R114節の日英ペア非併合5ケースは英語名側に`wikidataId`を付与してR127の対象外にし判定を独立させた)、295 pass/0 fail。`node --check assets/engine.js` OK。`?fixture=hakone`/`?fixture=dogo` mobile を撮影し該当カード付近をRead目視、17位が「かっぱ天国」に入れ替わり・10位「松山城」に公式ボタンが出ていることを確認、文字崩れ・重なりなし。`node scripts/check-all.mjs` は29本中29本PASS(exit 0・合計268.7s)・外部API 0回。
+- 次: ROADMAP残りは R64/R81/R85/R92/R102/R103/R116/R122 またはR125(geo.js改修、承認待ち)から計画役が選定。

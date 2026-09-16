@@ -514,6 +514,16 @@
   }
 
   /**
+   * 名前に日本語文字(ひらがな・カタカナ・漢字・長音符)が1文字でも含まれるか。
+   * R127: 全角英数や記号だけの名前を誤って「日本語あり」と判定しないよう、
+   * 対象はひらがな/カタカナ/漢字/長音符の4レンジのみに絞る。
+   */
+  function hasJapaneseChar(name) {
+    var s = typeof name === 'string' ? name : '';
+    return /[぀-ゟ゠-ヿ一-鿿ー]/.test(s);
+  }
+
+  /**
    * 名前だけで観光の対象になりにくいと分かるものかどうか。true なら落とす。
    * OSM 候補(extract が無い)と Wikipedia 候補の両方から使う共通判定。
    * 保護 → 除外の順で見るので、「愛媛大学ミュージアム」は大学に当たっても残る。
@@ -1057,6 +1067,21 @@
     merged.forEach(function (item) {
       if (item.source !== 'osm') return;
       if (item.wikipediaTitle || item.wikidataId) item.source = 'both';
+    });
+
+    // R127: 統合・昇格の後で、英語名だけの OSM 単独候補を落とす。
+    // 日本語UIに「Kinosaki Ropeway」のような要約も写真も無いカードが出るのを防ぐ。
+    // 4条件すべてが揃う場合だけ落とす(緩めると松山城のような統合済み候補まで消える)。
+    //   1. item.source === 'osm'(上のループで 'both' に昇格しなかった=統合先が無い単独候補)
+    //   2. 表示名に日本語文字が1つも無い(ラテン文字のみの名前)
+    //   3. 要約(summary)が無い
+    //   4. wikipediaTitle も wikidataId も無い(記事の裏付けが無い)
+    merged = merged.filter(function (item) {
+      if (item.source !== 'osm') return true;
+      if (hasJapaneseChar(item.name)) return true;
+      if (item.summary) return true;
+      if (item.wikipediaTitle || item.wikidataId) return true;
+      return false;
     });
 
     if (typeof onStage === 'function') onStage('wiki', merged.slice(), meta);

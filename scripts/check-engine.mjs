@@ -1228,12 +1228,18 @@ console.log('\n(r114) 日英表記ゆれの救済(ホスト一致+カテゴリ�
   eq((await collectNames(umitamagoGroup)).length, 3,
     'うみたまごの館内施設3件は3件のまま残る(日英ペアでない)');
 
+  // 4〜7 は「日英ペアでも併合しない」ことの確認が目的で、英語名側に wikidataId を
+  // 持たせることで R127(要約無し+記事無しの英語名単独候補を落とす)の対象から外し、
+  // 併合ロジック単体をテストする(R127 追加により、記事の裏付けが無い英語名は
+  // 併合されないだけでなく候補からも落ちるため、判定の切り分けに必要)。
+
   // 4. カテゴリが違えば、日英ペアでホストが同じでも併合しない(AND の各条件が効いている)
   const crossCategory = [
     { id: 'node/x1', name: '松山城', lat: 33.845651, lon: 132.7657463,
       category: 'castle', categoryLabel: '城・城跡', distanceM: 1000, website: 'https://www.matsuyamajo.jp/' },
     { id: 'node/x2', name: 'Matsuyama Castle Ropeway', lat: 33.844972, lon: 132.7659941,
-      category: 'attraction', categoryLabel: '観光スポット', distanceM: 1080, website: 'https://matsuyamajo.jp' }
+      category: 'attraction', categoryLabel: '観光スポット', distanceM: 1080, website: 'https://matsuyamajo.jp',
+      wikidataId: 'Q99999901' }
   ];
   eq((await collectNames(crossCategory)).length, 2, 'カテゴリが違えば日英ペアでも併合しない');
 
@@ -1242,7 +1248,8 @@ console.log('\n(r114) 日英表記ゆれの救済(ホスト一致+カテゴリ�
     { id: 'node/y1', name: '松山城', lat: 33.845651, lon: 132.7657463,
       category: 'castle', categoryLabel: '城・城跡', distanceM: 1000, website: 'https://www.matsuyamajo.jp/' },
     { id: 'node/y2', name: 'Matsuyama Castle', lat: 33.844972, lon: 132.7659941,
-      category: 'castle', categoryLabel: '城・城跡', distanceM: 1080, website: 'https://example.com/' }
+      category: 'castle', categoryLabel: '城・城跡', distanceM: 1080, website: 'https://example.com/',
+      wikidataId: 'Q99999902' }
   ];
   eq((await collectNames(otherHost)).length, 2, '公式サイトのホストが違えば併合しない');
 
@@ -1251,7 +1258,8 @@ console.log('\n(r114) 日英表記ゆれの救済(ホスト一致+カテゴリ�
     { id: 'node/z1', name: '松山城', lat: 33.845651, lon: 132.7657463,
       category: 'castle', categoryLabel: '城・城跡', distanceM: 1000, website: 'https://www.matsuyamajo.jp/' },
     { id: 'node/z2', name: 'Matsuyama Castle', lat: 33.844972, lon: 132.7659941,
-      category: 'castle', categoryLabel: '城・城跡', distanceM: 1080, website: null }
+      category: 'castle', categoryLabel: '城・城跡', distanceM: 1080, website: null,
+      wikidataId: 'Q99999903' }
   ];
   eq((await collectNames(noWebsite)).length, 2, '片方に公式サイトが無ければ併合しない');
 
@@ -1260,7 +1268,8 @@ console.log('\n(r114) 日英表記ゆれの救済(ホスト一致+カテゴリ�
     { id: 'node/w1', name: '松山城', lat: 33.845651, lon: 132.7657463,
       category: 'castle', categoryLabel: '城・城跡', distanceM: 1000, website: 'https://www.matsuyamajo.jp/' },
     { id: 'node/w2', name: 'Matsuyama Castle', lat: 33.845651 + 300 / 111000, lon: 132.7657463,
-      category: 'castle', categoryLabel: '城・城跡', distanceM: 1300, website: 'https://matsuyamajo.jp' }
+      category: 'castle', categoryLabel: '城・城跡', distanceM: 1300, website: 'https://matsuyamajo.jp',
+      wikidataId: 'Q99999904' }
   ];
   eq((await collectNames(tooFar)).length, 2, '300m離れていれば併合しない(150m超)');
 
@@ -1269,9 +1278,63 @@ console.log('\n(r114) 日英表記ゆれの救済(ホスト一致+カテゴリ�
     { id: 'node/v1', name: '松山城', lat: 33.845651, lon: 132.7657463,
       category: 'castle', categoryLabel: '城・城跡', distanceM: 1000, website: 'not a url' },
     { id: 'node/v2', name: 'Matsuyama Castle', lat: 33.844972, lon: 132.7659941,
-      category: 'castle', categoryLabel: '城・城跡', distanceM: 1080, website: 'not a url' }
+      category: 'castle', categoryLabel: '城・城跡', distanceM: 1080, website: 'not a url',
+      wikidataId: 'Q99999905' }
   ];
   eq((await collectNames(badUrl)).length, 2, '不正なURLは例外を投げず併合もしない');
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n(r127) 英語名だけの OSM 単独候補を落とす(統合・昇格の後で判定)');
+{
+  // R127: 日本語UIに要約も写真も無い英語名カード(Kinosaki Ropeway 等)が出る問題。
+  // 落とす条件は4つのAND: source=osm(統合されず単独) + 日本語文字なし
+  // + summary無し + wikipediaTitle/wikidataId無し。
+  async function collectNames(spots, wikiArticles) {
+    const E = loadEngine({
+      ...geoMock(),
+      fetchSpots: () => Promise.resolve(JSON.parse(JSON.stringify(spots))),
+      fetchWikiNearby: () => Promise.resolve(wikiArticles || [])
+    });
+    return await E.collect(HOTEL, CTX);
+  }
+
+  // --- 落とす側: fixture 実測(hakone/beppu)そのままの2件 ---
+  const dropSpots = [
+    { id: 'way/9001', name: 'Ajisai Bridge', lat: at(240), lon: HOTEL.lon,
+      category: 'attraction', categoryLabel: '観光名所', distanceM: 240 },
+    { id: 'node/9002', name: 'Tsuruya', lat: at(3617), lon: HOTEL.lon,
+      category: 'spring', categoryLabel: '湧水', distanceM: 3617 }
+  ];
+  const gotDrop = await collectNames(dropSpots);
+  const namesDrop = new Set(gotDrop.map((x) => x.name));
+  ok(!namesDrop.has('Ajisai Bridge'), 'R127 落とす: Ajisai Bridge(要約無し・記事無しの単独OSM)');
+  ok(!namesDrop.has('Tsuruya'), 'R127 落とす: Tsuruya(要約無し・記事無しの単独OSM)');
+
+  // --- 残す側1: 松山城(R114統合→R80昇格でsource=bothになったもの)。
+  //     統合の後で判定するため、日本語文字なしの英語名側と結合済みでも公式サイトごと残る。
+  const castlePair = [
+    { id: 'node/611661255', name: '松山城', lat: 33.845651, lon: 132.7657463,
+      category: 'castle', categoryLabel: '城・城跡', distanceM: 1000,
+      website: 'https://www.matsuyamajo.jp/', wikipediaTitle: null, wikidataId: 'Q981357' },
+    { id: 'node/12827570072', name: 'Matsuyama Castle', lat: 33.844972, lon: 132.7659941,
+      category: 'castle', categoryLabel: '城・城跡', distanceM: 1080,
+      website: 'https://matsuyamajo.jp', wikipediaTitle: null, wikidataId: null }
+  ];
+  const gotCastle = await collectNames(castlePair);
+  const matsuyama = gotCastle.find((x) => x.name === '松山城');
+  ok(!!matsuyama, 'R127 残す: 松山城(統合の後で判定されるため消えない)');
+  eq(matsuyama && matsuyama.source, 'both', 'R127 残す: 松山城は source=both のまま');
+  ok(!!(matsuyama && matsuyama.website), 'R127 残す: 松山城の公式サイトが残る');
+
+  // --- 残す側2: 日本語名のOSM単独候補(誤爆しないことの下限確認)。source=osm・要約無し
+  //     でも「日本語文字あり」で1条件が外れるため残る。
+  const jaOnlySpot = [
+    { id: 'node/9003', name: '公園A', lat: at(500), lon: HOTEL.lon,
+      category: 'park', categoryLabel: '公園', distanceM: 500 }
+  ];
+  const gotJa = await collectNames(jaOnlySpot);
+  ok(gotJa.some((x) => x.name === '公園A'), 'R127 残す: 日本語名の単独OSM候補(公園A)は落ちない');
 }
 
 console.log('\n==== ' + pass + ' pass / ' + fail + ' fail ====');
