@@ -16,6 +16,12 @@
 //      修正前と同じ(デグレなし)
 //   6. (R57) ?fixture=kusatsu(demo無し)で4枚目以降の .feedcard__img の alt が
 //      全件空でなく、対応するカードの .feedcard__name のテキストを含む
+//   7. (R62) ?fixture=kusatsu&demo=portrait で先頭3枚の .feedcard__img が
+//      naturalHeight > naturalWidth(縦長ダミーが入っている)、表示高さが
+//      3枚とも同値かつ .feedcard__media の高さと一致(枠が伸びていない)、
+//      object-fit が cover であること。4枚目以降は naturalWidth >= naturalHeight
+//      (差し替えが先頭3枚に限定されている)
+//   8. ?fixture=kusatsu(demo無し)で先頭3枚が縦長ダミーになっていない(デグレなし)
 
 import { chromium } from 'file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs';
 import { spawn } from 'node:child_process';
@@ -147,6 +153,71 @@ async function main() {
         }
       }
       ok(allAltOk, '6. 4枚目以降の .feedcard__img の alt が空でなくスポット名を含む');
+      await context.close();
+    }
+
+    // --- 7. (R62) demo=portrait: 先頭3枚が縦長ダミー・枠が伸びていない ---
+    {
+      const context = await browser.newContext({ viewport: { width: 375, height: 812 } });
+      const page = await context.newPage();
+      await page.goto(`${BASE}/?fixture=kusatsu&demo=portrait`, { waitUntil: 'load' });
+      await waitFor(2500);
+
+      const cards = page.locator('.feedcard');
+      const heights = [];
+      for (let i = 0; i < 3; i++) {
+        const card = cards.nth(i);
+        const img = card.locator('.feedcard__img');
+        const natural = await img.evaluate((el) => ({ w: el.naturalWidth, h: el.naturalHeight }));
+        ok(natural.h > natural.w, `7. 先頭${i + 1}枚目が縦長ダミー(naturalHeight > naturalWidth)`, natural);
+
+        const objectFit = await img.evaluate((el) => getComputedStyle(el).objectFit);
+        ok(objectFit === 'cover', `7. 先頭${i + 1}枚目の object-fit が cover`, objectFit);
+
+        const mediaBox = await card.locator('.feedcard__media').evaluate((el) => el.getBoundingClientRect().height);
+        const imgBox = await img.evaluate((el) => el.getBoundingClientRect().height);
+        ok(Math.abs(mediaBox - imgBox) < 1, `7. 先頭${i + 1}枚目の表示高さが .feedcard__media と一致(枠が伸びていない)`, { mediaBox, imgBox });
+        heights.push(imgBox);
+      }
+      ok(heights[0] === heights[1] && heights[1] === heights[2], '7. 先頭3枚の表示高さが3枚とも同値', heights);
+
+      const cardCount = await cards.count();
+      let laterOk = true;
+      for (let i = 3; i < cardCount; i++) {
+        const img = cards.nth(i).locator('.feedcard__img');
+        const imgCount = await img.count();
+        if (imgCount === 0) continue; // 元々プレースホルダのカード
+        const natural = await img.evaluate((el) => ({ w: el.naturalWidth, h: el.naturalHeight }));
+        if (!(natural.w >= natural.h)) {
+          laterOk = false;
+          console.log(`  NG: ${i + 1}枚目 naturalWidth=${natural.w} naturalHeight=${natural.h}`);
+        }
+      }
+      ok(laterOk, '7. 4枚目以降は naturalWidth >= naturalHeight(差し替えが先頭3枚に限定)');
+
+      await context.close();
+    }
+
+    // --- 8. demo無しで先頭3枚が縦長ダミーになっていない(デグレなし) ---
+    {
+      const context = await browser.newContext({ viewport: { width: 375, height: 812 } });
+      const page = await context.newPage();
+      await page.goto(`${BASE}/?fixture=kusatsu`, { waitUntil: 'load' });
+      await waitFor(2000);
+
+      const cards = page.locator('.feedcard');
+      let noPortraitDummy = true;
+      for (let i = 0; i < 3; i++) {
+        const img = cards.nth(i).locator('.feedcard__img');
+        const imgCount = await img.count();
+        if (imgCount === 0) continue; // 元々プレースホルダのカード
+        const src = await img.getAttribute('src');
+        if (src && src.startsWith('data:image/svg+xml')) {
+          noPortraitDummy = false;
+          console.log(`  NG: ${i + 1}枚目が縦長ダミーのままになっている`);
+        }
+      }
+      ok(noPortraitDummy, '8. ?demo= 無しで先頭3枚が縦長ダミーになっていない');
       await context.close();
     }
   } finally {

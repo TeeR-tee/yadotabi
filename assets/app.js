@@ -144,6 +144,7 @@
   var demoNoSaveView = false; // ?demo=zoomout    … 撮影用の地図位置を localStorage に残さない
   var demoPassive = false;    // ?demo=passive     … 受動ログの中身をその場で目視する
   var demoImgFail = false;    // ?demo=imgfail     … 先頭3枚のカード画像を強制的に読み込み失敗させる
+  var demoPortrait = false;   // ?demo=portrait    … 先頭3枚を縦長ダミー画像に差し替える
   var demoNoHotels = false;   // ?demo=nohotels    … 宿が0件の画面を外部APIなしで再現する
   var isFixtureMode = false;  // ?fixture=…        … 固定データ読み込み成功時のバッジ表示フラグ
   var fixtureGeneratedAt = ''; // fixture の meta.generatedAt をローカル日付(YYYY-MM-DD)にした文字列
@@ -781,6 +782,20 @@
     }).join('') + '</div>';
   }
 
+  // R62: ?demo=portrait 用の縦長ダミー画像(400x800、外部リクエスト0回)。
+  // 上部60pxの位置に横線と「ここが頭」の目印を描き、object-fit:cover で
+  // 上部が切れているかどうかを撮影画像だけで判別できるようにする。
+  var PORTRAIT_DATA_URI = 'data:image/svg+xml,' + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="800">' +
+      '<rect width="400" height="800" fill="#7aa6c2"/>' +
+      '<rect y="0" width="400" height="60" fill="#2f5d7c"/>' +
+      '<line x1="0" y1="60" x2="400" y2="60" stroke="#ff3b30" stroke-width="6"/>' +
+      '<text x="200" y="40" font-size="28" fill="#ffffff" text-anchor="middle">▲ ここが頭</text>' +
+      '<text x="200" y="400" font-size="24" fill="#ffffff" text-anchor="middle">縦長ダミー</text>' +
+      '<text x="200" y="760" font-size="20" fill="#ffffff" text-anchor="middle">ここが足元</text>' +
+    '</svg>'
+  );
+
   function placeholderHtml(card, emoji) {
     return '<div class="feedcard__ph" data-cat="' + escapeHtml(card.categoryLabel || '') + '">' +
       '<span aria-hidden="true">' + escapeHtml(emoji) + '</span></div>';
@@ -800,11 +815,17 @@
 
   function cardHtml(card, index) {
     var emoji = emojiFor(card.categoryLabel);
+    var isPortraitDemo = demoPortrait && index < 3;
     var imgSrc = demoImgFail && index < 3 ? './__imgfail_test__.png' : card.imageUrl;
-    var media = imgSrc && safeUrl(imgSrc)
-      ? '<img class="feedcard__img" src="' + escapeHtml(imgSrc) + '" alt="' + escapeHtml(card.name || 'スポット') + 'の写真" loading="lazy" ' +
+    // R62: data: URI は safeUrl() の対象外(https? のみ許可)なので、
+    // safeUrl の許可スキームは広げずに portrait 専用の分岐で直接 img を組む。
+    var media = isPortraitDemo
+      ? '<img class="feedcard__img" src="' + PORTRAIT_DATA_URI + '" alt="' + escapeHtml(card.name || 'スポット') + 'の写真(縦長ダミー)" loading="lazy" ' +
           'data-cat="' + escapeHtml(card.categoryLabel || '') + '" data-emoji="' + escapeHtml(emoji) + '">'
-      : placeholderHtml(card, emoji);
+      : (imgSrc && safeUrl(imgSrc)
+        ? '<img class="feedcard__img" src="' + escapeHtml(imgSrc) + '" alt="' + escapeHtml(card.name || 'スポット') + 'の写真" loading="lazy" ' +
+            'data-cat="' + escapeHtml(card.categoryLabel || '') + '" data-emoji="' + escapeHtml(emoji) + '">'
+        : placeholderHtml(card, emoji));
 
     var summary = card.summary
       ? '<p class="feedcard__summary">' + escapeHtml(card.summary) + '</p>'
@@ -1321,6 +1342,7 @@
     if (demo === 'suggest' || demo === 'recent' || demo === 'recentmix' || demo === 'zoomout') demoStateA = true;
     if (demo === 'passive') demoPassive = true;
     if (demo === 'imgfail') demoImgFail = true;
+    if (demo === 'portrait') demoPortrait = true;
     if (demo === 'nohotels') { demoStateA = true; demoNoHotels = true; }
     // ?demo=autozoom: demoStateA は立てず、fetchHotelsInBbox を回数で差し替える
     // (外部APIを叩かずに「0件→自動で1段引く→2回目で宿が出る」経路を再現する)。

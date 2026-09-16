@@ -386,7 +386,7 @@ body {
   aspect-ratio: 16 / 9;
   background: var(--c-surface-2);
 }
-.feedcard__img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.feedcard__img { width: 100%; height: 100%; object-fit: cover; object-position: center 30%; display: block; }
 
 .feedcard__ph {
   display: flex;

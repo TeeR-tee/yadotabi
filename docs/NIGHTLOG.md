@@ -356,6 +356,11 @@
 - R55の数字: `check-all.mjs`合計162.8s・20本全PASS、最遅`scripts/check-hotelparam.mjs`27.9s、次点`scripts/check-feednote.mjs`12.3s・`scripts/check-attrib.mjs`12.1s。
 - 次: R14/R19/R40が残候補。
 
+### 2026-09-16 R62 縦長写真の見切れ確認と object-position の採用
+- やったこと: `?demo=portrait`(app.js、先頭3枚を400x800のdata: URI SVGに差し替え・上部60pxに「▲ここが頭」の目印)を追加。safeUrl()はhttps?のみ許可のままdata:は通さず、cardHtml内でportrait専用の分岐からimg要素を直接組んでスキーム許可は広げていない。`?fixture=kusatsu&demo=portrait`mobile撮影で目印が完全に見切れていたため、`.feedcard__img`に`object-position: center 30%;`を追加して再撮影し、目印が全部見えることを確認して採用。
+- 見た目の確認結果: kusatsu/hakone/dogoのmobile撮影で横長写真(建物・鳥居等)の構図デグレなし(頭部・屋根が切れていない)。fixturesの縦長比率はkusatsu 3/46・hakone 1/39・dogo 1/47(計5/132)で稀だが実在。check-imgfail.mjsにportraitの13項目(縦長判定・表示高さ一致・object-fit・4枚目以降の非対象・デグレ無し)を追加、check-all.mjs 21本全PASS。
+- 次: R14/R19/R40が残候補。
+
 ### 2026-09-16 R63 状態Aに「サンプル: 草津/箱根/道後」のデモ導線を追加
 - やったこと: 配置A(`.chips`の下に新規1行)/B(チップ行内末尾)/C案の3案のうちA・Bを実装して`?demo=zoomout`mobileで撮り比べ、Bは横スクロールの奥に隠れて画面に出ないため不採用、Aは地図が窮屈にならず文字も読めたため採用。`<a href="?fixture=kusatsu|hakone|dogo">`の素のリンク(JSイベント追加なし)を`renderSampleLinks()`で描画し、`state.embed`または`fixtureNameFromUrl()`が非nullなら`hidden`。新規`scripts/check-sample.mjs`(15項目)を`check-all.mjs`に追加、`check-a11y.mjs`に`.samples a`を追加。
 - 見た目の確認結果: `?demo=zoomout`mobile/desktopとも「サンプル: 草津の例 箱根の例 道後の例」が1行に収まり横スクロールなし、地図は潰れず十分な高さ。`?fixture=kusatsu`mobileでは状態Bに遷移し導線は不可視(テストでも確認)。コンソールエラー0件、`check-all.mjs`21本全PASS。
