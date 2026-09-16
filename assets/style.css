@@ -628,3 +628,26 @@ body.is-embed .view--feed { padding-bottom: var(--sp-4); }
   font: 11px/1.5 monospace;
   white-space: pre-wrap;
 }
+
+/* --------------------------------------------------------------------------
+   フィード末尾の注記(提案の作り方を1行で明かす)
+   -------------------------------------------------------------------------- */
+
+.feednote {
+  margin: 4px var(--sp-3) 24px;
+  font-size: var(--fs-sm);
+  line-height: 1.7;
+  color: var(--c-text-faint);
+}
+.feednote a {
+  color: inherit;
+  text-decoration: underline;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+.feednote a:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 2px;
+  box-shadow: none;
+}

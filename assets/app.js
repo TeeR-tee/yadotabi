@@ -828,6 +828,17 @@
   }
 
   /**
+   * フィード末尾の注記。順位の作り方を隠さず正直に1行で明かす。
+   * スポットが0件のときは付けない(「提案を作れませんでした」の下に不要)。
+   */
+  function noteHtml(cardCount) {
+    if (!cardCount) return '';
+    return '<p class="feednote">この提案は、周辺の地図情報（OpenStreetMap）とWikipediaから、' +
+      '宿からの距離と種類の多様性で並べた暫定版です。有名な場所が下に来ることがあります。' +
+      ' <a href="https://github.com/TeeR-tee/yadotabi#仕組みかんたん解説" target="_blank" rel="noopener">くわしい仕組み</a></p>';
+  }
+
+  /**
    * フィード上部の1行。読み込み中は進捗、読み込み後は Overpass が混雑していた
    * ことだけを正直に伝える(隠すと「なぜ少ないのか」が分からなくなるため)。
    */
@@ -882,6 +893,7 @@
         '<p class="empty__note">通信が不安定かもしれません。戻ってもう一度お試しください。</p>' +
       '</div>';
       els.feedFar.hidden = true;
+      if (els.feedNote) els.feedNote.hidden = true;
       return;
     }
 
@@ -912,6 +924,9 @@
       var details = els.feedFar.querySelector('.far');
       if (details) details.setAttribute('open', '');
     }
+
+    var note = loading ? '' : noteHtml(state.cards.length);
+    if (els.feedNote) { els.feedNote.hidden = !note; els.feedNote.innerHTML = note; }
 
     // 表示した宿と上位カードの記録。段階描画で renderFeed が複数回走るので done の1回だけに絞る
     if (state.stage === 'done') {
@@ -1596,7 +1611,8 @@
       feedStatus: document.getElementById('feed-status'),
       feedList: document.getElementById('feed-list'),
       feedMore: document.getElementById('feed-more'),
-      feedFar: document.getElementById('feed-far')
+      feedFar: document.getElementById('feed-far'),
+      feedNote: document.getElementById('feed-note')
     };
 
     renderChips();

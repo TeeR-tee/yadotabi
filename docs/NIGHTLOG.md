@@ -305,3 +305,8 @@
 - やったこと: `.topbar__title`直後に`#feed-badge`(淡色バッジ)を追加し、fixture読み込み成功時のみ`isFixtureMode`フラグで可視化、見出しの`(固定データ)`括弧書きは削除。`?demo=nohotels`で`demoStateA`+`demoNoHotels`を立て、`loadHotelsInView()`の状態A分岐先頭で本番と同一文言「この範囲には宿が見つかりませんでした」を外部APIなしで再現。`check-hotelparam.mjs`にバッジ4ケース追加、`check-nohotels.mjs`を新設し`check-all.mjs`に追加(14本)。
 - 見た目の確認結果: `?fixture=kusatsu`/`&embed=1`/`?demo=nohotels`のmobile3枚をRead目視。見出し・バッジ・戻るボタンが1行に収まりバッジ文字のはみ出しなし、0件バナーはLeaflet帰属表示と重ならず判読可。`check-all.mjs`14本全PASS、`node --check assets/app.js`OK。engine/geo/fixturesは無変更のためdump-rank差分なし。
 - 次: `?demo=nohotels`と`?simulate=overpass504`併用時は混雑トースト側が勝つ(catchが後に上書きするため)現状のまま据え置き。ROADMAP残りはR2-1/R11/R14/R19/R37/R40。
+
+### 2026-09-16 R47 フィード末尾に「提案の作り方」の正直な注記を追加
+- やったこと: `farHtml()`直後に`noteHtml(cardCount)`を新設し、`#feed-far`の直後の`#feed-note`に「この提案は、周辺の地図情報（OpenStreetMap）とWikipediaから、宿からの距離と種類の多様性で並べた暫定版です。有名な場所が下に来ることがあります。」+「くわしい仕組み」リンクを描画。0件時・読み込み中・error時は出さない。`docs/09_研究ノート`はリポジトリに存在しないため、README.md:48の「仕組み(かんたん解説)」節(rankが暫定であることを正直に書いた既存段落)へのGitHubアンカーリンクに差し替えた。embedでも隠すCSSは書かず表示する判断とした(埋め込み先の宿ページにとっても「暫定」と明示される方が誠実で、やどたび側の免責にもなるため。高さ増分は1〜2行のみ)。
+- テストと目視: 新設`scripts/check-feednote.mjs`(11 pass/0 fail)を`check-all.mjs`に追加し17本全PASS、`node --check assets/app.js`OK。`?fixture=kusatsu`/`&embed=1`mobile --fullをRead目視し、注記がフィード最下部に3行で収まりカード・もっと見るボタンと重ならず、375px幅で文字切れ・「くわしい仕組み」の途中折り返しなし、リンクは下線で識別できるが目立ちすぎず、embed版も同じ見え方でカード30枚のデグレなしを確認。
+- コミットとpush: 完了。次はROADMAP残り(R2-1/R11/R14/R19/R28/R37/R40/R48/R51等)。

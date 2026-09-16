@@ -1,97 +1,136 @@
-# NEXT: R45 + R46(固定データバッジの生成日付 / check.mjs にレスポンスサイズ列)
+# NEXT — R47 提案の作り方を1行で明かす(フィード末尾の注記)
 
-判断理由: どちらも表示・記録のみでロジック変更ゼロ、かつ2件とも R14(fixture軽量化)の判断材料になる(いつのデータか・何KBか)。R2-1 は朝の相談待ち、R14/R19/R40 は Overpass 再取得が必要なので夜間に回さない。
+**選定理由**: 残候補のうち R14/R19/R40 は fixture 再生成や Overpass 呼び出しを伴い外部APIのマナー上リスクが高く、R48/R51 より先に「順位の根拠を隠していない」ことを示す R47(計画書08の正直さ方針)を選ぶ。表示のみ・ロジック無変更で最も安全。
 
-難易度: **sonnet** / 所要目安: 30〜45分(check-all.mjs が約60秒かかるので検証時間込み)
-
----
+- 難易度: **sonnet**
+- 所要目安: 40〜60分(実装15分 + 新規テスト15分 + check-all 約60秒 + 撮影/目視)
 
 ## 対象ファイル(絶対パス)
 
-- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js`(R45: バッジ描画)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\index.html`(R45: バッジ要素に日付用の子要素を足す場合のみ)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\style.css`(R45: 日付部分の小さめ配色)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-hotelparam.mjs`(R45 の検査ケース追加)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\check.mjs`(R46)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js` (追記: `noteHtml()` 新設 + `renderFeed()` 内で描画)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\index.html` (1行: `#feed-note` コンテナ追加)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\style.css` (末尾に `.feednote` 系を追記)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-feednote.mjs` (**新規**)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-all.mjs` (リストに1行追加 → 17本)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md` / `docs\NIGHTLOG.md` (完了記録)
 
-## 変更禁止範囲(絶対に触らない)
+## 実装方針
 
-- `assets/engine.js` / `assets/geo.js`(rank の重み・閾値・除外ルール・fixture 分岐)
-- `fixtures/*.json`(再生成しない。Overpass は1回も叩かない)
-- `scripts/make-fixture.mjs`(**generatedAt は既に 199行目で meta に入っており、kusatsu/hakone/dogo の3本とも保持済み**。確認済みなので触る必要なし。将来 generatedAt が無い fixture が来た場合は「日付を出さない」で済ませる)
+### 1. 置き場所(実物の構造を確認済み)
 
----
+`index.html:63-67` は現在この順:
 
-## R45 実装方針(固定データバッジに生成日付)
+```
+<div class="feed" id="feed-list"></div>
+<div id="feed-more" hidden></div>
+<div id="feed-far" hidden></div>
+```
 
-現状の実物:
+この **`#feed-far` の直後**に `<div id="feed-note" hidden></div>` を1行足す。
+つまり「カード → もっと見るボタン → もっと遠く → 注記」の順になり、
+ROADMAP が求める「far の後、または『もっと見る』の後」の両方を自動的に満たす
+(far が0件でも more が展開済みでも、常にフィードの一番下に来る)。
 
-- `index.html:56` — `<span class="topbar__badge" id="feed-badge" hidden>固定データ</span>`
-- `assets/app.js:847` — `renderFeed()`(842行〜)の中で `els.feedBadge.hidden = !isFixtureMode;` の1行だけ
-- `assets/app.js:145` — `var isFixtureMode = false;`
-- `assets/app.js:1261-1276` — `fetch('fixtures/' + fixtureName + '.json')` の `.then(function (json) {...})` で `json.meta` を検証し `YadoGeo.setFixture(json)` / `isFixtureMode = true` にしている。**ここで `json.meta.generatedAt` を保持する変数(例: `var fixtureGeneratedAt = '';`)に入れる**のが最短。`YadoGeo` から取り直す必要はない(geo.js は触らない)。
-- `assets/style.css:283-291` — `.topbar__badge`(`--fs-sm` / `--c-surface-2` / `--c-text-sub` / `white-space: nowrap`)
+### 2. `assets/app.js`
 
-手順:
+- `farHtml()`(app.js:815-828)の**直後**に `noteHtml()` を新設する。
+  内容は固定文字列を返すだけ。スポットが0件のとき(`state.cards.length === 0`)は
+  空文字を返して「提案を作れませんでした」/0件カードの下に付けない。
+- `renderFeed()`(app.js:858)の中、`farHtml` を入れている
+  app.js:907-913 のブロックの**直後**に以下を足す:
 
-1. `app.js:145` 付近に `var fixtureGeneratedAt = '';` を追加(コメント1行)。
-2. `app.js:1267` の `.then(json)` 内、`isFixtureMode = true;` の直後で
-   `fixtureGeneratedAt = formatFixtureDate(json.meta && json.meta.generatedAt);` とする。
-3. `formatFixtureDate(iso)` を新設(`renderFeed()` の近くの純関数置き場でよい)。
-   - 空・不正(`isNaN(d.getTime())`)なら `''` を返す。
-   - `new Date(iso)` から**ローカル時刻**で `YYYY-MM-DD` を組み立てる(`toISOString()` はUTCに寄るので使わない。kusatsu の `2026-09-15T18:05:50.632Z` は JST では 2026-09-16 になり、NIGHTLOG の生成日と一致するのが正)。
-4. `app.js:847` を、バッジ本文の組み立てに変える。日付がある時だけ後ろに小さく添える:
-   - `els.feedBadge.hidden = !isFixtureMode;`(維持)
-   - 日付ありなら `固定データ` + `<span class="topbar__badge__date">2026-09-16 取得</span>`、無しなら `固定データ` のみ。
-   - **`innerHTML` を使うなら埋め込む値は `formatFixtureDate` が作った `YYYY-MM-DD` だけ**(fixture の生文字列をそのまま流し込まない)。`textContent` の2要素構成(`index.html` に空の `<span class="topbar__badge__date" id="feed-badge-date"></span>` を置き、`textContent` で入れて `hidden` を切り替える)の方が安全で、こちらを推奨。
-   - `title` 属性にも同じ日付を入れてよい(任意)。
-5. `style.css` の `.topbar__badge` 直後に `.topbar__badge__date { margin-left: 6px; opacity: .75; }` 程度。**バッジが伸びて `#feed-title` を押し出さないこと**(`.topbar__badge` は `flex: 0 0 auto` なので、mobile 375px で宿名が長い時に折り返さないか撮影で確認する)。
+```
+var note = loading ? '' : noteHtml(state.cards.length);
+if (els.feedNote) { els.feedNote.hidden = !note; els.feedNote.innerHTML = note; }
+```
 
-注意: `?fixture=` 以外(通常モード・`?hotel=` のみ)ではバッジ自体が `hidden` のままで、日付要素も出ない。既存の R39 のケース a〜d を壊さないこと。
+  読み込み中(`loading`)は出さない。`state.stage === 'error'` の早期 return
+  (app.js:879-887)より後なので、エラー時は自動的に出ない。**ただし** その early return の
+  中で `els.feedFar.hidden = true` と並べて `if (els.feedNote) els.feedNote.hidden = true;`
+  を足しておくこと(前回描画の残りが残らないように)。
+- `els` の登録(app.js:1596 付近の `feedStatus:` と同じオブジェクト)に
+  `feedNote: document.getElementById('feed-note'),` を追加。
 
-## R46 実装方針(docs/check.mjs にレスポンスサイズ KB 列)
+### 3. 文言(事実のみ・本番に無いページへリンクしない)
 
-現状の実物(`docs/check.mjs`、全267行):
+```
+この提案は、周辺の地図情報(OpenStreetMap)とWikipediaから、宿からの距離と
+種類の多様性で並べた暫定版です。有名な場所が下に来ることがあります。
+```
 
-- `31行` `const timings = []; // { label, ms }`
-- `33-40行` `async function timedFetch(label, url, options)` — `performance.now()` 差分を取り `timings.push({ label, ms })` して `{ res, ms }` を返す。**呼び出し元は4か所**: `checkTarget`(51行)、`collectLinks`(101行)、`checkLink`(162行・170行の HEAD/GET フォールバック)、`collectMarkdownLinks`(195行)。
-- `257-263行` 集計行(`合計 N件 / 総計 Nms / 平均 Nms` と `最遅: ...`)
++ 続けてリンク1本:
+`<a href="https://github.com/TeeR-tee/yadotabi#仕組みかんたん解説" target="_blank" rel="noopener">くわしい仕組み</a>`
 
-手順:
+- `docs/09_研究ノート` は**このリポジトリに存在しない**(`docs/` にあるのは
+  AUTOPILOT/NEXT/NIGHTLOG/ROADMAP/check.mjs/og.jpg/passive-log.md のみ)ため、
+  ROADMAP 本文の「研究ノートへのリンク」は**不採用**とし、README の
+  「仕組み(かんたん解説)」節(README.md:48。rank が暫定であることを正直に書いた
+  段落が既にある)へ GitHub 上で飛ばす。この差し替え理由を NIGHTLOG に1行残すこと。
+- 「暫定版」「下に来ることがある」は README:48 節の記述と一致しており事実。誇張・謝罪の語は入れない。
 
-1. `timedFetch` の中で `res` のサイズを求める。**`res.body` を消費してはいけない**(呼び出し元が後で `res.text()` / `res.json()` する)。
-   - `const len = Number(res.headers.get('content-length'));` を見る。有限で 0 以上ならそれを採用。
-   - 取れない場合(`content-length` 欠落・HEAD 応答など)は `null` にして「本文長からの補完」は**呼び出し元で分かるところだけ**行う。具体的には `checkTarget` が既に `res.text()` 相当で本文を読んで `byteLength` を出している(83行の `${byteLength}バイト`)ので、そこで `recordBytes(path, byteLength)` のようなヘルパを呼んで `timings` の該当エントリに後追いで入れる。**無理に全件埋めない**(HEAD リンク検査はサイズ不明のままでよい)。
-2. `timings` の要素を `{ label, ms, bytes }` に拡張。
-3. 各成功行の detail に KB を併記する。例: `checkTarget` の 61行 `report(\`${path} (HTTP 200)\`, true, \`${ms}ms\`)` を `` `${ms}ms / ${kb}KB` `` に。`kb` は `(bytes/1024).toFixed(1)`、不明なら KB 部分を出さない。
-4. 集計行の直後に**サイズの集計行を1行追加**:
-   `合計サイズ NNN.NKB(計測できた M件) / 最大: fixtures/hakone.json 899.2KB`
-   (`bytes` が取れたものだけを合計する。件数を併記して「全件ではない」ことを正直に出す)
-5. **閾値での失敗判定は付けない**(`hasFailure` を触らない)。GitHub Actions のログに数字が残るのがゴール。
+### 4. 埋め込み(`?embed=1`)でも**出す**
 
-期待値の目安(ローカル実ファイル): `fixtures/hakone.json` 921,743バイト ≒ **900KB**、`dogo.json` ≒ 117KB、`kusatsu.json` ≒ 65KB。この3つが一目で並ぶことが R14 の材料になる。
+埋め込み先の宿ページにとっても「この並びは暫定」と明示されている方が誠実で、
+やどたび側の免責にもなる。`body.is-embed` で隠す CSS は**書かない**。
+高さは1〜2行増えるだけで、iframe は既存どおり縦スクロールする(R48 で別途対応予定)。
 
----
+### 5. `assets/style.css`
+
+末尾に追記。淡色・小さめ・タップ領域確保:
+
+- `.feednote { margin: 4px 16px 24px; font-size: 12px; line-height: 1.7; color: var(--muted 相当の淡色トークン); }`
+  (色は `tokens.css` の既存変数を使い、新しい色は定義しない。`.far__summary`(style.css:509)
+  付近の既存の淡色指定に合わせること)
+- `.feednote a { color: inherit; text-decoration: underline; display: inline-flex; align-items: center; min-height: 44px; }`
+  ← **44px は必須**(check-a11y の追加対象にするため)。`min-height` を付けても
+  周囲の余白が膨らみすぎないよう、`.feednote` の `margin-bottom` で調整する。
+- フォーカスリングは既存の `:focus-visible` 方針(style.css:570 付近)に合わせる。
+
+## 変更禁止範囲
+
+- `assets/engine.js`(rank の重み・閾値・除外ルール・truncate)
+- `assets/geo.js`
+- `fixtures/*.json`(再生成しない。Overpass/Wikipedia を1回も叩かない)
+- 既存の `scripts/check-*.mjs` の中身(check-all.mjs のリスト1行追加のみ可)
 
 ## 完了条件(検証可能)
 
-1. `scripts/check-hotelparam.mjs` に R45 のケースを追加し、全て PASS:
-   - e. `?fixture=kusatsu` でバッジ本文に `/\d{4}-\d{2}-\d{2}/` にマッチする日付が含まれる
-   - f. `?fixture=hakone` / `?fixture=dogo` でも同様に日付が出る(3 fixture とも `generatedAt` を持つ)
-   - g. `?hotel=36.6226,138.5960`(fixtureなし)では日付要素も不可視(`offsetParent === null` か `getComputedStyle().display === 'none'` まで見る。既存 `checkBadgeVisible` の流儀に合わせる)
-   - h. `#feed-title` は従来どおり「草津温泉」のまま(日付がタイトル側に混入していない)
-2. `node docs/check.mjs` の出力に **KB 列**が出ており、`fixtures/hakone.json` の行に 900KB 前後が見えること。末尾に合計サイズ行があり、exit code 0。
-3. `node scripts/check-all.mjs` が **16本全 PASS・exit 0**。
-4. `node --check assets/app.js` 通過。
+1. `scripts/check-feednote.mjs`(新規、check-more.mjs の作り・ポート3000の自前サーバ起動を踏襲)が全PASS:
+   - `?fixture=kusatsu` で `#feed-note` が hidden でなく、`.feedcard` 30枚の**下**に位置する
+     (`getBoundingClientRect().top` が最後の `.feedcard` より大きい)
+   - 注記テキストに「暫定版」「OpenStreetMap」「Wikipedia」が含まれる
+   - `#feed-note a` の href が `https://github.com/TeeR-tee/yadotabi#` で始まる
+   - `#more-btn` を click して60枚に展開した後も `#feed-note` が最下部にある
+   - `?fixture=hakone&demo=far` で `#feed-far`(details)より下に `#feed-note` がある
+   - `?fixture=kusatsu&embed=1` でも `#feed-note` が表示される(hidden でない)
+   - `?fixture=kusatsu&simulate=empty` では `#feed-note` が hidden(0件時は出さない)
+   - コンソールエラー0件
+2. `scripts/check-a11y.mjs` の `TARGETS`(check-a11y.mjs:23-30)に
+   `{ selector: '#feed-note a', label: '提案の作り方リンク' }` を1件追加し、
+   44px 以上で全件OK・exitCode 0(※ TARGETS 配列への1行追加は「中身の編集」に該当しないので可)
+3. `node scripts/check-all.mjs` が **17本全PASS・exit 0**
+4. `node --check assets/app.js` 通過
 
-## 検証手順(撮影)
+## 検証手順(外部API 0回)
 
-- `node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=kusatsu" --mobile` を撮り、**Read で画像を開いて目視**:
-  - ヘッダーが `← 草津温泉 [固定データ 2026-09-16 取得]` のように収まり、宿名が切れていない・バッジが2行に折り返していない・戻るボタンと重なっていない。
-  - カード30枚・番号ピン判読可・コンソールエラー0件(デグレなし)。
-- 余裕があれば `?fixture=hakone`(ラベル「箱根湯本」で宿名が長め)も mobile で1枚撮って、バッジが伸びた分の押し出しが無いことを確認する。
-- 撮影は全て fixture モード = **外部API 0回**。
+```
+node scripts/check-all.mjs
+node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=kusatsu" --mobile --full
+node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=kusatsu&embed=1" --mobile --full
+node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=hakone&demo=far" --mobile --full
+```
 
-## コミット
+撮った画像を **Read で開いて目視**し、次を確認する:
 
-作業が終わったら**先にコミット**(1行の日本語メッセージ)して `git push`。`docs/ROADMAP.md` の R45・R46 を `[x] 2026-09-16` にし、`docs/NIGHTLOG.md` に3行(やったこと / 見た目の確認結果 / 次)を追記する。報告は簡潔に。
+- 注記がフィード最下部に1〜3行で収まり、カード・far の枠と重なっていない
+- mobile 375px で右端で文字が切れていない・「くわしい仕組み」が単語の途中で折り返していない
+- リンクが本文と識別できる(下線)が、目立ちすぎてカードより強くなっていない
+- embed 版でも同じ見え方で、iframe 幅からはみ出していない
+- カード30枚・番号ピン判読可のデグレなし
+
+## 記録
+
+- `docs/ROADMAP.md` の R47 行を `- [x] 2026-09-16 R47 ...` にする
+- `docs/NIGHTLOG.md` に3行(やったこと / 見た目の確認結果 / 次)。
+  「研究ノートへのリンクを README へ差し替えた理由」と「embed でも出す判断の理由」を必ず含める
+- コミット→`git push`(1行の日本語メッセージ)
