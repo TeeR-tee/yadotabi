@@ -1,75 +1,96 @@
-# NEXT: R48 `?embed=1` で高さを親に postMessage で通知する
+# NEXT: R51 カードのリンクチップの並び順とラベルを決める
 
-選定理由: 残る未完了は R14 / R19 / R40 / R51 だが、R14・R19・R40 は fixture 再生成や rank 分布調査を伴い Overpass を叩くリスクがある(無料APIのマナー)。R48 は外部API 0回・fixture 不変で、しかも「予約サイトに貼れる部品」という本プロジェクトの売り(F1/F2)の完成度を直接上げるので最優先。R51 は次サイクル送り。
+**選んだ理由**: R51 は最新スクリーンショット2枚で「4個+YouTube 1個だけ2行目」の折り返しが実際に確認でき、外部API 0回・fixture のみで3案を撮り比べできる純粋な表示タスクだから(R14/R19/R40 は Overpass を叩く必要があり、R52〜R55 は文書・計測で視覚的成果が小さい)。
 
-## 目的
-現在 `demo/hotel-page.html` の iframe は `height: 640px`(PC 720px)固定で、中身(カード30枚+「もっと見る」で+30枚)が必ずはみ出して **iframe 内に二重スクロール**が出る。埋め込み時だけ中身の高さを親へ通知し、親が iframe を伸ばせるようにする。
+難易度: **sonnet** / 所要目安: **10〜15分**
+
+---
+
+## 背景(事実確認済み)
+
+- 現状のチップ順は `Googleマップ / 公式 / Instagram / TikTok / YouTube` の固定順。
+- `screenshots/2026-09-16T00-43-09_..._fixture_kusats_mobile.png`(および `...00-43-05_...`)の1位カード「光泉寺」で、**1行目に4個・2行目に YouTube 1個だけ**落ちている。見た目として収まりが悪い。
+- R38 で Googleマップのリンク先は既に「宿→スポットの経路(`maps/dir/?api=1&origin=...&destination=...`)」に変わっている。**ラベルだけが「Googleマップ」のまま**で、リンク先の意味と表示文字列がずれている。
+- 「Googleマップ」は8文字、「行き方」は3文字。**ラベル短縮でチップ幅が大きく縮むので、5個が1行に収まる可能性がある**(これが本タスクの主眼)。
 
 ## 対象ファイル(絶対パス)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js`(送信側)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\demo\hotel-page.html`(受信側サンプル)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-embedheight.mjs`(新規・機械検査)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-all.mjs`(18本目として登録)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md` / `docs\NIGHTLOG.md`(完了記録)
 
-## 実装方針
+- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js` — **主対象**
+- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md` — R51 を `[x] 2026-09-16` に
+- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\NIGHTLOG.md` — 3行 + 採否理由
+- (必要なら)`C:\workspace\claude\旅行先用サイト\yadotabi\assets\style.css` — 折り返し調整が必要になった場合のみ。原則さわらない
 
-### 1. 送信側 `assets/app.js`
-- 既存の `setEmbed(on)`(**app.js:1217**)の直後に `postHeightToParent()` と `startHeightObserver()` を新設する。
-- **必ず `state.embed === true` のときだけ送る**。非 embed では ResizeObserver も張らない(`setEmbed(true)` の中からのみ `startHeightObserver()` を呼ぶ)。フォールバック経路(app.js:1318 付近の `setEmbed(false)` 相当)で embed が解除されたら observer を `disconnect()` する。
-- 送る内容:
-  ```
-  parent.postMessage({ type: 'yadotabi:height', height: <number> }, '*');
-  ```
-  他の情報は載せない。受信は一切しない(`message` リスナーを足さない)。
-- 高さの取り方: `Math.ceil(document.documentElement.scrollHeight)`。`body` は `margin:0` 前提だが、念のため `Math.max(body.scrollHeight, documentElement.scrollHeight)` を取る。
-- 発火点は 2 系統:
-  1. `new ResizeObserver(...)` で `document.body` を監視(描画完了・画像読み込み・「もっと見る」展開のすべてを1つで拾える)。`ResizeObserver` が無い環境(古いブラウザ)は `typeof ResizeObserver === 'function'` でガードし、無ければ何もしない(送らないだけで壊れない)。
-  2. 保険として `renderFeed()`(**app.js:869**)の末尾と、「もっと見る」クリックハンドラ(**app.js:1589-1593**、`state.moreOpen = true; renderFeed();` の直後)から `postHeightToParent()` を1回呼ぶ。ResizeObserver が先に発火していれば同値なので二重送信は無害。
-- **連打防止**: 直前に送った高さと同じなら送らない(`lastSentHeight` を持つ)。さらに `requestAnimationFrame` で1フレームに1回へ丸める。
-- 状態Aや通常モードのコードパス(`render()` app.js:1148、`ensureMap()`)には触らない。
+## 実装箇所(実物を読んで確認済み)
 
-### 2. 受信側サンプル `demo/hotel-page.html`
-- `iframe.embed`(**demo/hotel-page.html:209**)の `height: 640px`(CSS **:136-145**)は**初期高さとして残す**(JSが無効/postMessage が来ないときに真っ白にならないため)。
-- `</body>`(**:223**)の直前に `<script>` を1つ足す:
-  - `window.addEventListener('message', function (e) { ... })`
-  - **origin を必ず検証する**。許可するのは `https://teer-tee.github.io`(本番)と、ローカル検査用に `window.location.origin`(同一オリジンで `../index.html` を読むため `e.origin === location.origin` になる)。この2つ以外は即 return。
-  - `e.data` が object で `e.data.type === 'yadotabi:height'` かつ `height` が 100〜20000 の有限数のときだけ `iframe.style.height = height + 'px'`。範囲外は無視(暴走防止)。
-  - 対象 iframe は `document.querySelector('iframe.embed')` を1つだけ。
-- 埋め込みコード例の `<pre class="tag-example">`(**:220**)にも、受信スクリプトが必要である旨の1行コメントを添える(営業資料としての正しさ)。
+`assets/app.js` の **`function linkRowHtml(card)`(738行目〜758行目)** がチップ列を組み立てている唯一の場所。
 
-### 3. 機械検査 `scripts/check-embedheight.mjs`(新規)
-`scripts/check-more.mjs` の作り(自前で `python -m http.server 3000` を起動し finally で落とす / Playwright は `file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs` を絶対パスで読む)をそのまま踏襲する。確認項目:
-1. `/demo/hotel-page.html` を開き、カード描画完了後に `iframe.embed` の実高さ(`getBoundingClientRect().height`)が初期値 640px より**大きく**なっている
-2. iframe 内の `#more-btn` をクリック(`frameLocator`)した後、iframe の高さが**さらに増える**
-3. 増えた後の iframe 高さが、iframe 内の `document.documentElement.scrollHeight` と ±4px 以内で一致する
-4. 親ページ側に二重スクロールが無い(iframe 内 `scrollHeight <= clientHeight + 4`)
-5. **非 embed の検査**: `/index.html?fixture=kusatsu`(embed なし)を直接開き、`postMessage` が一度も呼ばれないこと。`addInitScript` で `window.parent.postMessage` をラップしてカウンタに記録し、描画完了後に 0 件であることを確認する
-6. `?fixture=kusatsu&embed=1` 単体(親なし)を開いてもコンソールエラー 0 件
-7. コンソールエラー 0 件(親・子とも)
+```
+738  function linkRowHtml(card) {
+741    var gmap = safeUrl(links.gmap);
+742    if (gmap) rows.push({ url: gmap, label: 'Googleマップ' });   ← ここが3案の分岐点
+743    var official = safeUrl(links.official);
+745    if (official) rows.push({ url: official, label: '公式' });
+747    if (ig) rows.push({ url: ig, label: 'Instagram' });
+749    if (tt) rows.push({ url: tt, label: 'TikTok' });
+751    if (yt) rows.push({ url: yt, label: 'YouTube' });
+754    return '<div class="feedcard__links">' + rows.map(...)
+```
 
-`scripts/check-all.mjs` の `SCRIPTS` 配列(**:13-28**)にアルファベット順の位置(`check-chipcurrent.mjs` と `check-engine.mjs` の間)で `'scripts/check-embedheight.mjs'` を追加し、ヘッダコメント(**:2**)の「16本」「17本」を「17本」「18本」に直す。
+`rows.push` の順序がそのまま DOM 順=表示順。**push の順番と label 文字列を変えるだけ**で3案とも実現でき、他の関数に触れる必要はない。
 
-## 完了条件(検証可能)
-- `node scripts/check-embedheight.mjs` が全項目 PASS・exit 0
-- `node scripts/check-all.mjs` が **18本中18本 PASS**・exit 0
-- `node --check assets/app.js` 通過
+## 実装方針: 3案を mobile で撮り比べて採否を決める
 
-## 検証手順(撮影・目視)
-1. `node C:\workspace\tools\shot\shot.mjs http://127.0.0.1:3000/demo/hotel-page.html --mobile --full` を撮り、**iframe の下端でカードが切れておらず**、iframe の下に「1行の iframe タグを貼るだけで…」の営業注記が続いていることを Read で目視
-2. 同 URL の desktop 幅も1枚
-3. デグレ確認: `?fixture=kusatsu`(非 embed・mobile)と `?fixture=kusatsu&embed=1`(単体・mobile)を各1枚。カード30枚・番号ピン1〜30判読可・文字崩れなし・コンソールエラー0件
-4. 撮影は全て fixture 経由なので **外部API 0回**
+| 案 | 内容 | 期待 |
+|---|---|---|
+| **A(現状維持)** | `Googleマップ / 公式 / Instagram / TikTok / YouTube` | 比較のベースライン |
+| **B(ラベル短縮)** | 742行の label を `'Googleマップ'` → **`'行き方'`** に変更。順序は現状のまま | 8文字→3文字でチップが縮み、5個が1行に収まるかを見る。R38 の経路リンク化とラベルの意味も一致する |
+| **C(順序変更)** | 案B に加えて `公式` を先頭へ(`公式 → 行き方 → SNS3種`) | 公式サイトがあるスポットでは公式が最有用、という ROADMAP 本文の仮説の検証 |
+
+**判断の優先順位**: (1) 5個が1行に収まる/2行目の孤立が解消されるか (2) 「行き方」がリンク先(経路案内)の意味と合っているか (3) タップ領域44pxが保たれるか。
+
+**推奨は案B**。理由は、R38 で実装済みの経路リンクとラベルの意味が揃い、かつ折り返しの改善が同時に得られるため。ただし**撮影して実際に1行に収まらなければ案A維持でよい**(その場合も「行き方」への改名だけは意味の整合として採用する価値があるので、NIGHTLOG に理由を書いて判断すること)。案Cは「Googleマップ(行き方)を先頭のまま維持」という司令塔の方針とぶつかるので、**Bで折り返しが解決しないときの次善策**として扱う。
+
+### 必ず守ること(壊れやすい箇所)
+
+- **SNS3種のラベル文字列(`Instagram` / `TikTok` / `YouTube`)は絶対に変えない**。`scripts/check-passive.mjs:94` が `locator('a.feedcard__link', { hasText: 'Instagram' })` でラベル文字列に依存しており、変えるとテストが落ちる。
+- チップの見た目(`.feedcard__link` のCSS)・リンク先URL・`::after` によるタップ領域44pxの仕組み(R13で導入)は変更しない。
+- `card.links` を組み立てている側(engine.js)は触らない。**ラベルと push 順だけ**の変更に留める。
+
+## 完了条件(すべて検証可能であること)
+
+1. `node scripts/check-a11y.mjs` が**全件OK・exit 0**(リンクチップのタップ領域44pxが維持されている)。
+2. `node scripts/check-all.mjs` が**18本中18本PASS・exit 0**。
+3. **3案それぞれの mobile 撮影が `screenshots/` に残っている**(`?fixture=kusatsu` の1位カード「光泉寺」がチップ5個すべて持つので比較に最適)。ファイル名かNIGHTLOGで、どの画像がどの案かが分かること。
+4. 採用案の撮影で**文字崩れ・チップのはみ出し・タップ領域の重なりが無い**ことを画像をReadして目視確認済み。
+5. `docs/NIGHTLOG.md` に**3案の折り返し結果(何個目が2行目に落ちたか)と、なぜその案を採ったか**が書かれている。
+6. `docs/ROADMAP.md` の R51 が `[x] 2026-09-16` になっている。
+7. コミット → `git push` 済み。
+
+## 検証手順
+
+```
+cd C:\workspace\claude\旅行先用サイト\yadotabi
+node --check assets/app.js
+# 3案それぞれで撮影(案を1つずつ app.js に当てては撮る)
+node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/index.html?fixture=kusatsu" --mobile
+# → 撮れた画像を Read で開いて1位カードのチップ行を目視(何行に分かれたか)
+node scripts/check-a11y.mjs
+node scripts/check-all.mjs
+node scripts/dump-rank.mjs kusatsu   # 必要なら順位不変の確認(表示のみの変更なので変わらないはず)
+```
+
+デグレ確認として `?fixture=hakone` と `?fixture=kusatsu&embed=1` も1枚ずつ mobile 撮影し、埋め込み幅でもチップが崩れないことを見ること(埋め込みは幅が狭いので折り返しが増えやすい)。
 
 ## 変更禁止範囲
-- `assets/engine.js` / `assets/geo.js` / `fixtures/*.json`(rank の重み・閾値・収集ロジックには一切触らない)
-- 既存 `scripts/check-*.mjs` の中身(`check-all.mjs` への1行追加のみ可)
-- `?embed=1` の既存の出し分け(検索・チップ・地図を隠す挙動、`.is-embed` の CSS)
-- git stash / reset --hard / checkout でのファイル復元は禁止
 
-## 難易度・所要目安
-- 難易度: **sonnet**(既存パターンの踏襲。新規ロジックは postMessage 送信 15行程度+受信サンプル 15行程度)
-- 所要目安: 実装 20分 + check-all 約1分 + 撮影/目視 10分 = **30〜40分**
+- `assets/engine.js`(rank の重み・閾値・除外ルール・リンク生成ロジック)
+- `assets/geo.js`
+- `fixtures/*.json`(再生成しない。Overpass を叩かない)
+- `scripts/check-*.mjs` の既存検査の中身(今回は新規検査の追加も不要)
+- SNS3種のラベル文字列(上記のとおり check-passive.mjs が依存)
 
-## 実装後
-`docs/ROADMAP.md` の R48 を `[x] 2026-09-16` に、`docs/NIGHTLOG.md` に3行(やったこと/見た目の確認結果/次)を追記し、コミット→push。報告は簡潔に。
+## やらないこと
+
+- チップのアイコン化・色分け・並べ替えアニメーション(スコープ外)
+- 公式サイトが無いスポットでの代替リンク追加
+- R54(「宿から◯km」表記)との同時実施。1サイクル=1タスク

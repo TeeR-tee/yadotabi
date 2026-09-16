@@ -739,7 +739,7 @@
     var links = card.links || {};
     var rows = [];
     var gmap = safeUrl(links.gmap);
-    if (gmap) rows.push({ url: gmap, label: 'Googleマップ' });
+    if (gmap) rows.push({ url: gmap, label: '行き方' });
     var official = safeUrl(links.official);
     // official は無いことが多いので、そのときは行ごと省く
     if (official) rows.push({ url: official, label: '公式' });
