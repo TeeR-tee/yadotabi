@@ -143,6 +143,7 @@
   var demoImgFail = false;    // ?demo=imgfail     … 先頭3枚のカード画像を強制的に読み込み失敗させる
   var demoNoHotels = false;   // ?demo=nohotels    … 宿が0件の画面を外部APIなしで再現する
   var isFixtureMode = false;  // ?fixture=…        … 固定データ読み込み成功時のバッジ表示フラグ
+  var fixtureGeneratedAt = ''; // fixture の meta.generatedAt をローカル日付(YYYY-MM-DD)にした文字列
 
   // ---------------------------------------------------------------------------
   // 計測(?perf=1 のときだけ動く)
@@ -830,6 +831,21 @@
    * フィード上部の1行。読み込み中は進捗、読み込み後は Overpass が混雑していた
    * ことだけを正直に伝える(隠すと「なぜ少ないのか」が分からなくなるため)。
    */
+  /**
+   * fixture の meta.generatedAt(ISO文字列)を、ローカル時刻の YYYY-MM-DD にする。
+   * 空・不正な日付なら '' を返す(バッジには「固定データ」だけが出る)。
+   * toISOString() はUTCに寄ってしまうため使わず、ローカルの年月日を組み立てる。
+   */
+  function formatFixtureDate(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    var y = d.getFullYear();
+    var m = String(d.getMonth() + 1).padStart(2, '0');
+    var day = String(d.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + day;
+  }
+
   function statusText(stage, osmFailed) {
     if (stage === 'loading' || stage === 'osm') return '周辺を集めています…';
     if (stage === 'wiki') return 'Wikipediaで補強しています…';
@@ -845,6 +861,12 @@
 
     els.feedTitle.textContent = hotel.name || '';
     els.feedBadge.hidden = !isFixtureMode;
+    if (els.feedBadgeDate) {
+      var hasDate = isFixtureMode && !!fixtureGeneratedAt;
+      els.feedBadgeDate.hidden = !hasDate;
+      els.feedBadgeDate.textContent = hasDate ? fixtureGeneratedAt + ' 取得' : '';
+      if (hasDate) els.feedBadgeDate.title = fixtureGeneratedAt + ' 取得';
+    }
 
     var status = statusText(state.stage, state.osmFailed);
     els.feedStatus.hidden = !status;
@@ -1265,6 +1287,7 @@
           }
           YadoGeo.setFixture(json);
           isFixtureMode = true;
+          fixtureGeneratedAt = formatFixtureDate(json.meta && json.meta.generatedAt);
           // ?hotel= が同時にあるならそちらの座標を優先する(fixture はデータ源だけ差し替える)
           var hotel = hotelFromUrl(params) || {
             id: 'fixture/' + fixtureName,
@@ -1568,6 +1591,7 @@
       backBtn: document.getElementById('back-btn'),
       feedTitle: document.getElementById('feed-title'),
       feedBadge: document.getElementById('feed-badge'),
+      feedBadgeDate: document.getElementById('feed-badge-date'),
       feedMap: document.getElementById('feed-map'),
       feedStatus: document.getElementById('feed-status'),
       feedList: document.getElementById('feed-list'),

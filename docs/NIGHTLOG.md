@@ -7,6 +7,9 @@
 - R43 状態Aの宿ピンに宿名ツールチップを追加。app.js:459付近の`renderHotelPins()`で`marker.on('click',...)`直前に`marker.bindTooltip(h.name,{direction:'top',offset:[0,-14],className:'hoteltip'})`を追加し、二重表示を避けるため`L.marker`の`title`オプションを削除(`aria-label`は維持)。タップ即遷移するため開閉はLeaflet既定のhoverのまま(ROADMAP本文の「タップで開く」は不採用、理由をNEXT.mdに明記済み)。撮影用に`?demo=hoteltip`(app.js:1204付近、外部API0回・密集宿6件+長い宿名1件)とscripts/check-hoteltip.mjs(10項目)を新設、check-all.mjsに登録(16本目)。
 - `?demo=hoteltip`をmobile/desktopで目視。長い宿名「草津温泉 ホテル紅葉亭」も地図右端で切れず、密集ペアのツールチップも重ならずピン絵文字も隠れていない。check-all.mjsは16本中16本PASS、`?fixture=kusatsu`のカード30枚・番号ピン判読可・コンソールエラー0件でデグレなしを確認。
 - 次: R2-1(朝の相談待ち)または残候補(R14/R19/R40/R45/R46)から計画役が選定。
+- R45 固定データバッジに生成日付を追加(app.jsにformatFixtureDate()を新設しローカルYYYY-MM-DDで表示、index.htmlに#feed-badge-date、style.cssに.topbar__badge__date)。R46 docs/check.mjsに実バイト数のKB列を追加(content-lengthはgzip圧縮後のためcheckTargetで読んだ本文実体のバイト数で上書き)、末尾に合計サイズ行を追加。
+- kusatsu/embed/hakoneをmobileで目視、「固定データ 2026-09-16 取得」が1行に収まり見出しと重ならない・カード30枚判読可・コンソールエラー0件。docs/check.mjsのKB上位3件: fixtures/hakone.json 900.1KB / fixtures/dogo.json 117.1KB / fixtures/kusatsu.json 65.3KB。check-all.mjs 16本全PASS。
+- 次: R2-1(朝の相談待ち)または残候補(R14/R19/R40)から計画役が選定。
 
 ## 朝のまとめ(2026-09-16 06:10 司令塔が記入)
 

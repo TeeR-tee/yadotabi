@@ -28,14 +28,31 @@ const MIN_JS_BYTES = 1000;
 let hasFailure = false;
 
 // --- R33: 応答時間(ms)の記録 ---
-const timings = []; // { label, ms }
+// R46: レスポンスサイズ(bytes)も併せて記録する。timedFetch は res.body を消費しない
+// (呼び出し元が後で res.text() / res.json() する)ため、まずは content-length ヘッダを
+// 見ておく。ただし GitHub Pages は gzip 転送するため content-length は圧縮後サイズになり、
+// ファイルの実サイズ(展開後)とは一致しない。本文を実際に読む checkTarget は、読んだ本文の
+// 実バイト数で recordBytes() により上書きする(HEAD だけのリンク検査はヘッダ値のままでよい)。
+const timings = []; // { label, ms, bytes }
 
 async function timedFetch(label, url, options) {
   const t0 = performance.now();
   const res = await fetch(url, options);
   const ms = Math.round(performance.now() - t0);
-  timings.push({ label, ms });
+  const lenHeader = Number(res.headers.get('content-length'));
+  const bytes = Number.isFinite(lenHeader) && lenHeader >= 0 ? lenHeader : null;
+  timings.push({ label, ms, bytes });
   return { res, ms };
+}
+
+// 本文を実際に読んだ側から、実バイト数(展開後の実サイズ)で確定値に置き換える。
+function recordBytes(label, bytes) {
+  const entry = timings.find((t) => t.label === label);
+  if (entry) entry.bytes = bytes;
+}
+
+function toKB(bytes) {
+  return (bytes / 1024).toFixed(1);
 }
 
 function report(label, ok, detail) {
@@ -58,9 +75,10 @@ async function checkTarget(path) {
     report(path, false, `HTTP ${res.status}`);
     return;
   }
-  report(`${path} (HTTP 200)`, true, `${ms}ms`);
-
   const body = await res.text();
+  const byteLength = Buffer.byteLength(body, 'utf8');
+  recordBytes(path, byteLength);
+  report(`${path} (HTTP 200)`, true, `${ms}ms / ${toKB(byteLength)}KB`);
 
   if (path === 'index.html') {
     const hasTitle = body.includes('<title>やどたび');
@@ -78,7 +96,6 @@ async function checkTarget(path) {
   }
 
   if (JS_FILES.has(path)) {
-    const byteLength = Buffer.byteLength(body, 'utf8');
     const ok = byteLength >= MIN_JS_BYTES;
     report(`${path} のサイズが ${MIN_JS_BYTES}バイト以上`, ok, `${byteLength}バイト`);
   }
@@ -260,6 +277,14 @@ if (timings.length > 0) {
   const slowest = timings.reduce((a, b) => (b.ms > a.ms ? b : a));
   console.log(`合計 ${timings.length}件 / 総計 ${total}ms / 平均 ${avg}ms`);
   console.log(`最遅: ${slowest.label} ${slowest.ms}ms`);
+
+  // --- R46: サイズの集計行(計測できたものだけを合計する) ---
+  const sized = timings.filter((t) => t.bytes !== null);
+  if (sized.length > 0) {
+    const totalBytes = sized.reduce((sum, t) => sum + t.bytes, 0);
+    const largest = sized.reduce((a, b) => (b.bytes > a.bytes ? b : a));
+    console.log(`合計サイズ ${toKB(totalBytes)}KB(計測できた ${sized.length}件) / 最大: ${largest.label} ${toKB(largest.bytes)}KB`);
+  }
 }
 
 if (hasFailure) {

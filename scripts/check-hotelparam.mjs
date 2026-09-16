@@ -20,6 +20,12 @@
 //   c. ?fixture=kusatsu&embed=1 でも #feed-badge が可視
 //   d. ?hotel= のみ(fixtureなし)では #feed-badge が不可視
 //   判定は el.hidden ではなく offsetParent / getComputedStyle().display まで確認する。
+//
+// R45: バッジの生成日付(#feed-badge-date)の機械検査
+//   e. ?fixture=kusatsu でバッジ本文に /\d{4}-\d{2}-\d{2}/ にマッチする日付が含まれる
+//   f. ?fixture=hakone / ?fixture=dogo でも同様に日付が出る
+//   g. ?hotel=36.6226,138.5960(fixtureなし)では日付要素も不可視
+//   h. #feed-title は従来どおり「草津温泉」のまま(日付がタイトル側に混入していない)
 
 import { chromium } from 'file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs';
 import { spawn } from 'node:child_process';
@@ -86,8 +92,36 @@ async function checkBadgeVisible(browser, path, expectVisible, label) {
   });
   ok(visible === expectVisible, label + ': #feed-badge が' + (expectVisible ? '可視' : '不可視'), visible);
   if (expectVisible) {
+    // R45: 生成日付が続くことがあるため「固定データ」を含むかで見る(厳密一致はしない)
     const text = (await badge.textContent() || '').trim();
-    ok(text === '固定データ', label + ': #feed-badge の本文が「固定データ」', text);
+    ok(text.indexOf('固定データ') === 0, label + ': #feed-badge の本文が「固定データ」で始まる', text);
+  }
+  ok(consoleErrors.length === 0, label + ': コンソールエラー0件', consoleErrors);
+
+  await context.close();
+}
+
+// R45: バッジの生成日付(#feed-badge-date)の機械検査
+async function checkBadgeDate(browser, path, expectDate, label) {
+  const context = await browser.newContext({ viewport: { width: 375, height: 812 } });
+  const page = await context.newPage();
+  const consoleErrors = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') consoleErrors.push(msg.text());
+  });
+  page.on('pageerror', (err) => consoleErrors.push(String(err)));
+
+  await page.goto(`${BASE}${path}`, { waitUntil: 'load' });
+  await waitFor(1500);
+
+  const dateEl = page.locator('#feed-badge-date');
+  const visible = await dateEl.evaluate((el) => {
+    return el.offsetParent !== null && getComputedStyle(el).display !== 'none';
+  });
+  ok(visible === expectDate, label + ': #feed-badge-date が' + (expectDate ? '可視' : '不可視'), visible);
+  if (expectDate) {
+    const text = (await dateEl.textContent() || '').trim();
+    ok(/\d{4}-\d{2}-\d{2}/.test(text), label + ': #feed-badge-date が日付を含む', text);
   }
   ok(consoleErrors.length === 0, label + ': コンソールエラー0件', consoleErrors);
 
@@ -144,6 +178,19 @@ async function main() {
 
     // d. ?hotel= のみ(fixtureなし)ではバッジ不可視
     await checkBadgeVisible(browser, '/?hotel=36.6226,138.5960', false, 'd.hotelのみでバッジ不可視');
+
+    // e. ?fixture=kusatsu でバッジに生成日付が出る
+    await checkBadgeDate(browser, '/?fixture=kusatsu', true, 'e.kusatsuで日付表示');
+
+    // f. hakone / dogo でも同様に日付が出る
+    await checkBadgeDate(browser, '/?fixture=hakone', true, 'f.hakoneで日付表示');
+    await checkBadgeDate(browser, '/?fixture=dogo', true, 'f.dogoで日付表示');
+
+    // g. ?hotel= のみ(fixtureなし)では日付要素も不可視
+    await checkBadgeDate(browser, '/?hotel=36.6226,138.5960', false, 'g.hotelのみで日付不可視');
+
+    // h. #feed-title は従来どおり「草津温泉」のまま(日付混入なし)
+    await checkTitle(browser, '/?fixture=kusatsu', '草津温泉', 'h.タイトルに日付混入なし');
   } finally {
     await browser.close();
     if (serverProc) serverProc.kill();
