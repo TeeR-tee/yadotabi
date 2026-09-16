@@ -34,6 +34,11 @@ const TARGETS = [
   { selector: '.samples a', label: 'サンプル導線' },
 ];
 
+// aria-label が空でないことを確かめる対象(高さ検査とは別立て)
+const LABEL_TARGETS = [
+  { selector: '.topbar__back', label: '戻るボタン' },
+];
+
 const PAGES = [
   { url: `${BASE}/?fixture=kusatsu`, label: '?fixture=kusatsu(状態B)' },
   { url: `${BASE}/?demo=zoomout`, label: '?demo=zoomout(状態A)' },
@@ -101,6 +106,22 @@ async function main() {
         const minHeight = Math.min(...heights);
         const ok = minHeight >= MIN_HEIGHT;
         console.log(`[${ok ? 'OK' : 'NG'}] ${pageInfo.label} ${target.label}(${target.selector}): 最小 ${minHeight.toFixed(1)}px (件数${heights.length})`);
+        if (!ok) hasFailure = true;
+      }
+
+      for (const target of LABEL_TARGETS) {
+        const labels = await page.evaluate((selector) => {
+          const els = Array.from(document.querySelectorAll(selector))
+            .filter((el) => el.offsetParent !== null);
+          return els.map((el) => el.getAttribute('aria-label'));
+        }, target.selector);
+
+        if (labels.length === 0) {
+          console.log(`[SKIP] ${pageInfo.label} ${target.label} の aria-label: 表示要素なし`);
+          continue;
+        }
+        const ok = labels.every((label) => !!label);
+        console.log(`[${ok ? 'OK' : 'NG'}] ${pageInfo.label} ${target.label} の aria-label: ${JSON.stringify(labels)}`);
         if (!ok) hasFailure = true;
       }
 

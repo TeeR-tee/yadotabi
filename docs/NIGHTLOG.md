@@ -16,6 +16,9 @@
 - R84 `?fixture=` 併用時のみ効く `?debug=1` を追加し、rank のスコア内訳をカード下端に淡色表示。engine.js は baseScore を `scoreBreakdown()`(image/summary/official/both/distance/season/base)に切り出し、加算順を1行も変えずに `rank()` の最後で `entry.item._debug`(rank・source・category・distanceM・total・categoryPenalty・categoryIndex)を後付け、`toCard()` に `_debug` を1行追加。app.js は `fixtureNameFromUrl()` が null なら絶対にフラグを立てず、fixture 読み込み失敗の catch でも `debugRank=false` に戻す。WEIGHT・CATEGORY_FREE_SLOTS は無変更。
 - `?fixture=kusatsu&debug=1` mobile を目視: 1位カードに「#1 · both · place_of_worship · 108m · 合計 71.4 写真+25 要約+15 公式+12 両ソース+20 距離-0.6」が375pxで2行に収まり、リンクチップともカード枠とも重ならず本文より確実に淡い。`?fixture=kusatsu`(debug無し)mobile は内訳行が1つも出ずカード30枚のままでデグレなし。埋め込み(`?embed=1`)でも出す判断にした(埋め込みは `?fixture=` 併用時しか有効にならず、一般公開URLに内訳が漏れる経路が無いため。分岐を足すと debugRank の条件が二重になり漏れの検証が難しくなる)。
 - 検証: `node scripts/dump-rank.mjs` の kusatsu/hakone/dogo/beppu 4エリアが実装前後で差分ゼロ(計算結果は不変)。check-engine.mjs に (r84) 10ケース追加(_debug を落とせば元の JSON に戻る・2回呼んでも順序同一・total === base + categoryPenalty)で226 pass/0 fail、新規 scripts/check-debugflag.mjs(11項目、`?debug=1` 単独で `.dbg` 0件を含む・外部API 0回)を check-all.mjs に登録し27本中27本PASS。次: R64(GitHub Actions 無料枠・朝の相談寄り)/R77(表示可否の判断)/R81(Overpass を叩く fixture 追加)/R82(aria-label 1行)/R85(英語デモページ)から計画役が選定。
+- R82 実測したら `index.html:56` に `aria-label="地図に戻る"` は既に実装済み(ROADMAP本文は事実誤認)だったため、`scripts/check-a11y.mjs` に別立ての `LABEL_TARGETS` ループを追加し戻るボタンの aria-label 検査のみ新設。既存の44px計測ループは無編集。
+- R77 `?fixture=kusatsu` mobile で `#feed-note` を撮り比べ。現状(出さない)と「上位30件を表示中（全60件）」を足したB案の2枚を目視した結果、「残り30件」は `moreHtml()` が既に表示しておりB案は情報の二重化かつ行数増で間延びするだけ、かつ正確な総数はengine.js改修なしには出せない(R77はengine不可)ため**不採用**。app.jsは変更なし(撮影用の一時差し込みは撮影後に必ず元へ戻し済み・`git diff --stat -- assets` 空を確認)。
+- 次: ROADMAP残りはR64(GitHub Actions無料枠・朝の相談寄り)/R81(Overpass1回・同僚検証前は4エリアで十分)/R85(国内予約サイト想定で優先度低)。すべて判断寄りのため計画役が朝の相談経由で選定。
 
 ## 朝のまとめ(2026-09-16 06:10 司令塔が記入)
 
