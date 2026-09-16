@@ -4,6 +4,8 @@
 
 `?fixture=<area>` は撮影・検証を外部API0回で回すための保存済み生レスポンスです。加工前の生JSONを保存し、ブラウザ側 `geo.js` の整形コードをそのまま通す前提で作られています(`scripts/make-fixture.mjs:1-9`)。
 
+URLパラメータ全体の一覧は [README.md](../README.md#urlパラメータ一覧) の「## URLパラメータ一覧」節を参照してください。
+
 ## 対象エリア表
 
 `AREAS`(`scripts/make-fixture.mjs:18-22`)の実値です。

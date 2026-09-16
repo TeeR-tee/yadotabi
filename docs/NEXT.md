@@ -1,59 +1,77 @@
-# NEXT: R56 リンクチップの見た目調整(5個を1行に収める)
+# NEXT: R52 + R53 文書2本(パラメータ一覧表の是正 + 埋め込み手順の明文化)
+
+難易度: **sonnet** / 所要目安: **20分** / コード変更なし(文書・デモページの表示文のみ)
 
 ## 選定理由(1行)
-前サイクル R51 の申し送り「ラベル短縮・順序変更では折り返しが解消せず、チップの合計幅が主因」を受け、幅そのものを詰める唯一残った手段(padding/font-size)を撮り比べで決着させるため。
+残候補 R14/R19/R40 は fixture 再生成で Overpass を叩くため夜間に回すには重く、R54/R55 は撮り比べ・計測の判断が要る。一方 R52 は調査の結果 **README の `?demo=` 行が実装(11値)に対し 7値しか書かれておらず実際に古い**(R28 `nohotels` / R44 `autozoom` / R43 `hoteltip` が欠落)ことが判明したため、無害な文書タスクではなく実在の誤記修正になる。R53 も受信スクリプトが HTML コメントにしか説明が無く読者に届いていないので同種。両方ともコード無変更で検証可能。
 
-## 目的
-mobile 375px で 5個のリンクチップ(行き方 / 公式 / Instagram / TikTok / YouTube)が **1行**に収まること。
-現状は `?fixture=kusatsu` 1位「光泉寺」が 4個+YouTube 1個で2行になり、カード下端に間延びした余白ができている。
+## 計画役の事前調査(実測済み・作業役は再確認だけでよい)
+- `assets/app.js:1278-1310` の `var demo = params.get('demo')` 分岐に実在する値は **11個**:
+  `far` / `zoomout` / `suggest` / `recent` / `recentmix` / `passive` / `imgfail` / `nohotels` / `autozoom` / `hoteltip`
+  (※ `zoomout` は `demoNoSaveView` と `demoStateA` の両方を立てる。上の列挙で重複して見えるのは同じ値の2行)
+  → 正味は **10値**。README は 7値しか書いておらず `nohotels` / `autozoom` / `hoteltip` の3つが欠落。
+- `?simulate=` の実在値は **`overpass504`(app.js:1269)と `empty`(app.js:1277)の2つのみ**。README は正しい。
+- `?slow=` は `assets/app.js:1197 slowDelaysFromUrl()` と `assets/geo.js:87 slowDelays`。形式 `osm<ms>,wiki<ms>`、上限は app.js の実装を読んで確認すること(README は10000msと記載)。
+- `?fixture=` の実在値は `fixtures/` 配下の `kusatsu` / `hakone` / `dogo` の3つ。README は正しい。
+- `?embed=1` / `?perf=1` / `?hotel=` / `?q=` も README の記載どおり。
+- 既存の表は README の「## URLパラメータ一覧」節(README.md 内、「## ファイル構成」の直前)にあり、**2列(パラメータ / 実装上の値)**。ROADMAP R52 が求める4列にはなっていない。
 
 ## 対象ファイル(絶対パス)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\style.css` ← **今回の主対象。原則ここだけ**
-- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md`(R56 を `[x] 2026-09-16` に)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\NIGHTLOG.md`(3行追記)
+1. `C:\workspace\claude\旅行先用サイト\yadotabi\README.md`
+2. `C:\workspace\claude\旅行先用サイト\yadotabi\demo\hotel-page.html`
+3. `C:\workspace\claude\旅行先用サイト\yadotabi\docs\FIXTURES.md`(相互リンク1行の追加のみ)
+4. `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md` / `docs\NIGHTLOG.md`(完了記録)
 
-## 現状の実測値(計画役が確認済み。これを出発点にすること)
-- `assets/style.css:424` `.feedcard__links { display:flex; flex-wrap:wrap; gap:10px 8px; margin-top:var(--sp-1); }`
-- `assets/style.css:430` `.feedcard__link { position:relative; padding:5px 10px; border:1px solid var(--c-border); border-radius:var(--r-full); font-size:var(--fs-xs); font-weight:600; color:var(--c-text-sub); text-decoration:none; }`
-- `assets/style.css:441` `.feedcard__link::after { ... height:44px; }` ← **R13 のタップ領域44px。絶対に維持**
-- `assets/tokens.css:44` `--fs-xs: 0.75rem;`(=12px)。**トークンは触らない**(他所に波及するため、`.feedcard__link` 側で直接 px 指定する)
-- ラベル生成は `assets/app.js:738` `linkRowHtml(card)`(747〜751行が Instagram / TikTok / YouTube)。**今回 app.js は編集しない**
-- 幅の予算: 375px − `.feedcard__body` の左右 padding(`var(--sp-4)` ×2)− カード外側余白。実測は Playwright で `.feedcard__links` の clientWidth を取って NIGHTLOG に残すこと。
+## 実装方針
 
-## 実装方針(3案を撮り比べてから1案を採用)
-`.feedcard__link` に対してのみ変更する。SNS のラベル文字列は**変更禁止**(`scripts/check-passive.mjs:94` が `hasText: 'Instagram'` に依存)。
+### R52 — README のパラメータ一覧表を4列に作り直す
+- 既存の「## URLパラメータ一覧」節の表を、**4列**に置き換える:
+  `| パラメータ | 値の例 | 何が起きるか | 外部APIを叩くか |`
+- 各行の「外部APIを叩くか」は事実ベースで書く。目安:
+  - `?fixture=` → **叩かない**(fixtures/ の保存済み応答のみ)
+  - `?demo=` の `suggest`/`recent`/`recentmix`/`zoomout`/`nohotels`/`autozoom`/`hoteltip` → 状態Aのデモ分岐で宿ピンを取りに行かないため **叩かない**(app.js の `demoStateA` 分岐を読んで各値ごとに確認すること。憶測で書かない)
+  - `?simulate=overpass504` → Overpass は飛ばさない。Wikipedia 側は fixture 併用かどうかで変わるので、併用前提で書く
+  - `?hotel=` / `?q=` 単独 → **叩く**
+- `?demo=` は値が10個あって1行に詰めると読めないので、**`?demo=` だけ別の小見出し+専用の表**に切り出してよい(各値1行 / 何が再現されるか)。判断は作業役に任せるが、選んだ形を NIGHTLOG に1行残す。
+- **app.js を grep して実在するものだけ書く**。ROADMAP 本文や NIGHTLOG の記述と実装が食い違う場合は**実装を正**とし、食い違いを NIGHTLOG に1行残す。
+- 表の直後に `docs/FIXTURES.md` への相対リンク1行を置く。逆に `docs/FIXTURES.md` からも README のこの節への相対リンクを1行足す(R52 の「FIXTURES.md からもリンクする」要件)。
 
-- **案A(padding のみ)**: `padding: 5px 10px` → `padding: 4px 8px`、`gap: 10px 8px` → `10px 6px`。
-- **案B(padding + font-size)**: 案A に加えて `font-size: 11px`(トークンではなく直書き)。
-- **案C(最小手)**: `gap` の横だけ `8px → 5px` と `padding` の左右だけ `10px → 8px`(font-size と縦 padding は不変)。
+### R53 — `demo/hotel-page.html` の `.sales-notes` に貼り方の説明を足す
+- 現状 `hotel-page.html:214-222` の `<ul>` は3項目、その下に `<pre class="tag-example">` の iframe タグ1行。高さ自動調整の受信スクリプト(同ファイル 224-235行)については **HTML コメント(221行)にしか触れられておらず、ページを見た人には存在が伝わらない**。
+- `.sales-notes` に営業資料として読める **2〜3行**を追記する。必ず含める内容:
+  1. `width="100%"` / `height` は初期値(720程度)でよく、**高さは受信スクリプトを置けば自動で伸びる**こと(置かない場合は固定高のままで中に二重スクロールが出る)
+  2. `?hotel=<緯度>,<経度>,<宿名>` の**宿名は URL エンコードが必要**なこと(日本語・空白を含むため)
+  3. 受信スクリプトの実物がこのページの `</body>` 直前にあること(「このページのソースをそのままコピーできます」)
+- 受信スクリプトを**見える形で示す**なら `<pre class="tag-example">` をもう1つ増やしてよい(`&lt;script&gt;` へのエスケープを忘れないこと)。増やす場合は mobile 375px で `pre` が横にはみ出さないこと(既存の `overflow-x:auto` と `word-break:break-all` が効いているか撮影で確認)。
+- **やどたび本体(index.html / assets/)は一切変更しない。**
 
-いずれも `::after { height: 44px }` は**そのまま残す**(見た目が縮んでもタップ判定は44pxを維持できるのがこの方式の利点)。
-3案を `?fixture=kusatsu` mobile で撮影し、1行に収まる中で**最も文字が大きい案**を採用する。全案とも収まらなかった場合のみ、案Bをさらに `padding:3px 7px` まで詰めて再撮影し、それでも駄目なら「不採用・理由を NIGHTLOG に記録して ROADMAP の R56 を未完のまま残す」こと(無理な縮小はしない)。
+## 変更禁止範囲(厳守)
+- `assets/` 配下すべて(app.js / geo.js / engine.js / *.css)
+- `fixtures/` 配下すべて
+- `scripts/` 配下すべて(check-*.mjs / check-all.mjs / make-fixture.mjs / dump-rank.mjs)
+- `index.html`
+- 作業後に `git diff --stat -- assets fixtures scripts index.html` が**空**であることを確認する
 
-## 完了条件(検証可能)
-1. **375px で `.feedcard__link` が1行**: Playwright で 1位カードの全 `.feedcard__link` の `offsetTop` を取り、**全て同値**であること(5個のカードで確認。kusatsu 1位「光泉寺」は公式ありで5個)。数値を NIGHTLOG に書く。
-2. `node scripts/check-a11y.mjs` が全件 OK(リンクチップの判定領域が 44px のまま)。
-3. `node scripts/check-all.mjs` が **18本すべて PASS・exit 0**。
-4. 長い名前・チップ4個のカード(hakone 1位「早雲寺」= 公式なし4個)でも崩れていないこと。
+## 完了条件(すべて検証可能)
+1. `grep -n "params.get('demo')" -A 40 assets/app.js` で拾える `demo === '…'` の値の集合と、README の `?demo=` 表に並ぶ値の集合が**完全一致**する(過不足ゼロ)。同様に `?simulate=` は `overpass504` / `empty` の2つと一致。
+2. README の表が4列(`パラメータ / 値の例 / 何が起きるか / 外部APIを叩くか`)になっている。
+3. README → `docs/FIXTURES.md`、`docs/FIXTURES.md` → README のリンクが双方向に存在する。
+4. `demo/hotel-page.html` の `.sales-notes` に、上記3点(高さ自動調整・URLエンコード・受信スクリプトの所在)が読める形で入っている。
+5. `node docs/check.mjs` が全項目 OK・exit 0(README のリンク切れ検査を含むので、追加した相対リンクが壊れていれば落ちる)。
+6. `node scripts/check-all.mjs` が **18本全PASS・exit 0**。
+7. `git diff --stat -- assets fixtures scripts index.html` が空。
 
 ## 検証手順
-1. `node scripts/check-all.mjs`(変更前の基準を取る)
-2. 案A/B/C を順に当てて `?fixture=kusatsu` mobile を3枚撮影 → **Read で目視**して1行化を確認
-3. 採用案を確定したら `?fixture=kusatsu` / `?fixture=hakone` / `?fixture=dogo` の mobile 3枚 + `?fixture=kusatsu&embed=1` mobile 1枚を撮影して Read で目視(文字の潰れ・チップ同士の接触・はみ出し・コンソールエラー0件)
-4. `node scripts/check-a11y.mjs` → `node scripts/check-all.mjs` の順で実行
-5. 撮り比べ3案の結果(どの案が何行になったか)を NIGHTLOG に表か箇条書きで残す ← **次サイクルへの申し送りとして必須**
+1. `node --check` は対象外(JS を触らないため)。代わりに `node docs/check.mjs` を先に回す。
+2. `demo/hotel-page.html` は表示が変わるので**撮影必須**:
+   `node C:\workspace\tools\shot\shot.mjs http://localhost:3010/demo/hotel-page.html --mobile --full`
+   (ポートは既存の撮影手順に合わせる。`--full` でページ全体を1枚に)
+   → 画像を **Read で開いて目視**し、(a) `.sales-notes` の追記が折り返しで崩れていないか (b) `pre.tag-example` が mobile 幅で横にはみ出していないか (c) 下の iframe(やどたび本体)が従来どおり表示されているか を確認する。
+3. README は画面ではないので撮影不要。ただし表の Markdown が崩れていないか(パイプの数が全行で揃っているか)を目視する。
+4. 最後に `node scripts/check-all.mjs` 18本全緑を確認してからコミット・push。
 
-## 変更禁止範囲
-- `assets/engine.js` / `assets/geo.js`(rank・重み・閾値・収集ロジック)
-- `fixtures/*.json`(再生成しない。Overpass を叩かない)
-- **SNS チップのラベル文字列**(`Instagram` / `TikTok` / `YouTube` / `行き方` / `公式`)と `assets/app.js:738 linkRowHtml()` の構造・並び順
-- `assets/tokens.css` の `--fs-xs` など共通トークン
-- `.feedcard__link::after { height: 44px }`
-- `scripts/check-*.mjs` の既存本体(検査の中身は書き換えない)
-- git stash / reset --hard / checkout でのファイル復元
-
-## 難易度・所要目安
-sonnet / 20〜30分(CSS 3行の変更 + 撮影7枚 + check-all 約1分)
-
-## 仕上げ
-実装が終わったら**まず先にコミット**(1行の日本語メッセージ)して push。報告は簡潔に(長文の報告書を書かない)。
+## 記録
+- `docs/ROADMAP.md` の R52 と R53 を `- [x] 2026-09-16 …` にする。
+- `docs/NIGHTLOG.md` に3行(やったこと / 見た目の確認結果 / 次)。
+  **「README の `?demo=` が7値→10値に是正された(nohotels/autozoom/hoteltip が未記載だった)」という事実を必ず1行残すこと。**
+  次の候補は R14 / R19 / R40 / R54 / R55。

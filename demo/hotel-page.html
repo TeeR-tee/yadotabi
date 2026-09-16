@@ -165,6 +165,9 @@
     white-space: pre-wrap;
     word-break: break-all;
   }
+  .sales-note-extra {
+    margin: 12px 0;
+  }
 </style>
 </head>
 <body>
@@ -218,7 +221,23 @@
         <li>APIキー不要・利用料無料でご利用いただけます。</li>
       </ul>
       <pre class="tag-example">&lt;iframe src="https://teer-tee.github.io/yadotabi/?hotel=36.6226,138.5960,草津 湯けむり荘&amp;embed=1" width="100%" height="720" style="border:0;border-radius:10px;"&gt;&lt;/iframe&gt;</pre>
-      <!-- 高さを自動で伸ばすには、上のiframeタグに加えて下記の受信スクリプトも設置してください -->
+      <p class="sales-note-extra">
+        ・<code>width</code> / <code>height</code> は初期値(720程度)のままで構いません。下記の受信スクリプトを一緒に設置すると、中身の高さに合わせて自動で伸びます(設置しない場合は固定高のままになり、宿の紹介が長いと中に二重スクロールが出ます)。<br>
+        ・<code>?hotel=</code> の宿名部分は日本語や空白を含むため、URLエンコードが必要です(例: 「草津 湯けむり荘」→ <code>%E8%8D%89%E6%B4%A5%20%E6%B9%AF%E3%81%91%E3%82%80%E3%82%8A%E8%8D%98</code>)。<br>
+        ・受信スクリプトの実物はこのページの <code>&lt;/body&gt;</code> 直前(下記)にあります。このページのソースをそのままコピーしてお使いいただけます。
+      </p>
+      <pre class="tag-example">&lt;script&gt;
+window.addEventListener('message', function (e) {
+  if (e.origin !== 'https://teer-tee.github.io' &amp;&amp; e.origin !== location.origin) return;
+  var data = e.data;
+  if (!data || typeof data !== 'object' || data.type !== 'yadotabi:height') return;
+  var height = data.height;
+  if (typeof height !== 'number' || !isFinite(height) || height &lt; 100 || height &gt; 100000) return;
+  var iframe = document.querySelector('iframe.embed');
+  if (!iframe) return;
+  iframe.style.height = height + 'px';
+});
+&lt;/script&gt;</pre>
     </div>
   </div>
   <script>

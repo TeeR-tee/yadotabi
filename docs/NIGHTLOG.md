@@ -329,3 +329,8 @@
 - やったこと: 案A(padding 5px10px→4px8px, gap横8px→6px)、案B(案A+font-size 11px)、案C(gap横8→5,padding横10→8のみ)の3案を`?fixture=kusatsu`mobileで撮影・Playwrightのoffsetでも実測。案A・Cは実測でYouTubeが2行目に落ち、NEXT.mdの指示通り案Bをさらに`padding:3px 7px`まで詰めて再撮影したところ、全5個の`offsetTop`が620pxで一致(1行化成功)。最終値: `.feedcard__link { padding:3px 7px; font-size:11px }` / `.feedcard__links { gap:10px 6px }`。
 - 見た目の確認結果: `check-a11y.mjs`全OK(`.feedcard__link::after`は44px維持)、`check-all.mjs`18本全PASS。`?fixture=kusatsu`(5個)/`hakone`(4個・長い名前「早雲寺」)/`dogo`(5個・長い名前「伊佐爾波神社」)/`kusatsu&embed=1`のmobile4枚をRead目視し、全て1行・文字読める・チップ接触なし・コンソールエラー0件を確認。
 - 次: ROADMAP残りはR2-1/R11/R14/R19/R28/R37/R40/R51。撮り比べの申し送り: paddingか font-size 単独の1段縮小では不足で、両方の複合縮小が必要だった。
+
+### 2026-09-16 R52 + R53 文書2本(パラメータ一覧表の是正 + 埋め込み手順の明文化)
+- やったこと: README の `?demo=` が7値→10値に是正された(`nohotels`/`autozoom`/`hoteltip`が未記載だった)。`assets/app.js`を再grepし、URLパラメータ一覧を4列(パラメータ/値の例/何が起きるか/外部APIを叩くか)に作り直し、`?demo=`は値が10個あるため専用の小見出し+別表に切り出した。README↔`docs/FIXTURES.md`の相互リンクを追加。`demo/hotel-page.html`の`.sales-notes`に高さ自動調整・URLエンコード必須・受信スクリプトの所在の3点を追記し、受信スクリプトの実物も`<pre class="tag-example">`で可視化した。
+- 見た目の確認結果: `demo/hotel-page.html`をローカルサーバー(port 3000)でmobile撮影しRead目視。追記した説明文は折り返しで読め、追加した`pre.tag-example`もmobile幅で横はみ出しなし(既存のoverflow-x:auto/word-break:break-allが適用)。既存のiframe埋め込み表示・上部の宿情報も従来どおりでデグレなし。
+- 次: `node docs/check.mjs`・`scripts/check-all.mjs`18本全PASS・`git diff --stat -- assets fixtures scripts index.html`空を確認済み。次候補はR14/R19/R40/R54/R55。
