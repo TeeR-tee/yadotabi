@@ -1,77 +1,113 @@
-# NEXT — R127 日本語UIに英語名だけのカードが出る
+# NEXT: R128 ブラウザの「進む」で状態Bに戻れず、そのあと「戻る」が1回効かなくなる
 
-- **タスクID**: R127
+- **タスクID**: R128
 - **難易度**: sonnet
 - **所要目安**: 30〜45分
-- **外部API**: **0回**(作業役は本番URLを叩かない。撮影は全て `?fixture=` で行う)
+- **外部API**: 0回(`?fixture=kusatsu` と `?demo=nohotels` のみ)
 
 ## 目的
 
-日本語UIの提案カードに、英語名だけのスポットが混ざるのをやめる。利用者には何の施設か分からず、要約も写真も無いため情報量がゼロのカードになっている。
+R58 が `history.pushState` で「端末の戻る → 状態A」を実現したが、**対になる「進む」を一切扱っていない**。
+その結果、(a) 進むを押しても提案画面が戻ってこない、(b) そのあと戻るを押しても1回分だけ何も起きない、
+という「素朴に壊れて見える」挙動になっている。スマホの戻る/進むは日常的に使われるので実ユーザー影響が大きい。
 
-## 実測で判明した前提(計画役が本番の実データで確認済み)
+## 実測で判明した前提(すべて計画役が Playwright で再現済み)
 
-**本番実データ**: `https://teer-tee.github.io/yadotabi/?hotel=35.6262,134.8055,城崎温泉ごと地湯`(fixture の無い城崎温泉)を撮影したところ、**22位に「Kinosaki Ropeway」**(カテゴリ「観光名所」・徒歩3分・車1分・164m・要約なし・写真なしのプレースホルダ)が出た。実体は現地の「城崎ロープウェイ」。1位〜6位(温泉寺本堂・四所神社・城崎麦わら細工伝承館・玄武洞・来日岳ほか)は正しく日本語で、固定データで直した問題(閉鎖済み施設・他社の宿・カテゴリ誤判定・「記事がありません」の誤表示)の再発は**実データでも確認されなかった**。
+### 現状のコード
 
-**R114 との違い**: R114 は「小田原城」と「Odawara Castle」のような日英**重複**の統合を解いた。今回は**対になる日本語記事が存在しない**英語名の OSM 単独候補で、統合先が無いためそのまま生き残る別の穴。
+- `assets/app.js:119-120` — `var historyPushed = false;`(状態Bへの push 済みフラグ)
+- `assets/app.js:743-746` — `selectHotel()` の末尾。`if (!state.embed && !historyPushed) { history.pushState({ yado: 'feed' }, '', location.href); historyPushed = true; }`
+- `assets/app.js:778-789` — `goBack()`。末尾で `historyPushed = false;` に戻している
+- `assets/app.js:794-800` — `goBackFromUi()`。`historyPushed` が真なら `history.back()`、偽なら直接 `goBack()`
+- `assets/app.js:2030-2034` — **問題の箇所**。popstate ハンドラが以下の3行しかない:
+  ```js
+  global.addEventListener('popstate', function () {
+    if (state.embed) return;
+    if (state.view === 'feed') goBack();
+    // 既に状態Aならブラウザが勝手に離脱するのが正しい挙動
+  });
+  ```
+  → **状態Aにいるときに前方の `{yado:'feed'}` エントリへ進んだ場合が無条件に素通りする。**
+- `assets/app.js:104-114` — `state` に直前の宿を保持する場所は無い(`goBack()` が `state.hotel = null` にする)
 
-**fixture でも再現する**(作業役はこれだけで検証できる)。`fixtures/*.json` の `overpass.elements` でラテン文字のみの名前は **41件**(kusatsu 0 / hakone 19 / dogo 2 / beppu 20)。うちカードに到達しているのは **3件**:
+### 再現手順(実測ログそのまま)
 
-| エリア | 位置 | 名前 | OSMタグ | 距離 | 要約/画像/公式 | source |
-|---|---|---|---|---|---|---|
-| hakone | **cards 17位(可視)** | **Ajisai Bridge** | `{"name":"Ajisai Bridge","tourism":"attraction"}` | 240m | × / × / × | osm |
-| beppu | more 1位 | Tsuruya | `{"name":"Tsuruya","natural":"spring"}` | 3617m | × / × / × | osm |
-| beppu | more 29位 | OAB Garden Studio Five | `{"leisure":"garden","name":"OAB Garden Studio Five"}` | 11357m | × / × / × | osm |
+`?fixture=kusatsu&demo=nohotels` を 375x812 で開き、以下を順に実行:
 
-**安全性の根拠**: 41件すべてが `wikipedia` / `wikipedia:ja` / `wikidata` タグを**1つも持たない**ことを実測済み。よって「要約も画像も無く source=osm のまま」という条件を併せれば、この3件だけを正確に落とせる。
+| # | 操作 | `history.length` | `history.state` | `YadoApp.getState().view` |
+|---|---|---|---|---|
+| 0 | 初期(fixtureで自動的に状態B) | 3 | `{"yado":"feed"}` | feed |
+| 1 | `YadoApp.selectHotel({name:'宿A',lat:36.6226,lon:138.596})` | 3 | `{"yado":"feed"}` | feed |
+| 2 | `page.goBack()` | 3 | `null` | select |
+| 3 | **`page.goForward()`** | 3 | **`{"yado":"feed"}`** | **select ← バグ1** |
+| 4 | `selectHotel({name:'宿B',...})` | **4 ← バグ2(履歴汚染)** | `{"yado":"feed"}` | feed |
+| 5 | `page.goBack()` | 4 | `{"yado":"feed"}` | select |
+| 6 | `page.goBack()` | 4 | `null` | **select のまま ← 戻るが1回効かない** |
+| 7 | `page.goBack()` | — | — | `about:blank`(ようやく離脱) |
 
-**最重要の落とし穴**: dogo 10位「松山城」は OSM 側が `{"historic":"castle","name":"Matsuyama Castle","opening_hours":"Mo-Su 09:00-17:00","website":"https://matsuyamajo.jp"}` で、R114 の統合により日本語記事へ寄せられて **`source=both`・公式サイト○** になっている。**統合の前に名前で落とすと、この公式サイトリンクごと消える**。必ず統合の後に判定すること。
+- **バグ1**: #3 で `history.state` は `{yado:'feed'}` に進んでいるのに、画面は状態Aのまま(`#view-select` 表示・`#view-feed` hidden)。
+- **バグ2**: #3 の時点で `historyPushed` が `false`(#2 の `goBack()` が倒した)なので、#4 で**2枚目の feed エントリを push** する(3→4)。その結果 #5→#6 で「戻るを押しても画面が変わらない回」が1回挟まる。
+- 撮影済み: `screenshots/2026-09-17_r128-forward-stuck_mobile.png`(#3 の状態。進んだのに状態Aのまま)
+
+### 確認済みで壊れていないもの(今回いじらない)
+
+- 状態A → 宿選択 → 戻る、を3回繰り返しても `history.length` は増えない(二重push防止は正しく効いている)
+- `#back-btn` クリックでも `popstate` 経由で正しく状態Aへ戻る
+- `?embed=1` では `history.length` が変化しない(`app.js:744` の `!state.embed` ガードが効いている)
+- 4つの入口(`?hotel=` 直接 / `?fixture=` 自動 / `selectHotel()` 再選択)はいずれも**同じ宿なら同じ提案30枚**(草津で全て一致)
+- 「最近見た宿」(`yado.recent.v3`)は選択のたび正しく先頭へ積まれる(実測: 宿C/宿B/宿A/草津温泉)
+- コンソールエラー0件
 
 ## 対象ファイル(絶対パス)
 
-- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\engine.js`(本体の変更はここだけ)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-engine.mjs`(ケース追加)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md` / `docs\NIGHTLOG.md`(記録)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js`(本体)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-history.mjs`(検査の追加)
 
 ## 実装方針
 
-1. `engine.js` に判定ヘルパを1つ足す。日本語文字(ひらがな `\u3040-\u309F` / カタカナ `\u30A0-\u30FF` / 漢字 `\u4E00-\u9FFF`、長音符 `\u30FC` を含む)が名前に1文字も無いことを見る。**全角英数や記号だけで日本語と誤判定しないこと**。
-2. 落とす条件は**4つのAND**(1つでも欠けると誤爆する):
-   - `item.source === 'osm'`(統合されなかった単独候補)
-   - 表示名に日本語文字が1つも無い
-   - 要約(extract / summary)が無い
-   - `wikipediaTitle` も `wikidataId` も無い
-3. **挿入位置は `engine.js:1057-1060` の R80 昇格パス(`item.source = 'both'` にするループ)の直後**。統合(`merged` 構築・`mergeIntoOsm`)より後であることが必須。`merged` から該当要素を除くフィルタを1本足すだけ。
-4. `isExcludedName` / `isExcludedArticle` には**入れない**(あれらは統合より前に走るため、松山城の公式サイトを巻き込む)。
-5. 画像の有無は条件に入れなくてよい(要約なし+記事タグなしで既に十分絞れている)。
+1. **直前の宿を覚える**: `goBack()` が `state.hotel = null` する前に、モジュール内変数(例 `lastHotel`)へ退避する。`state` の形は変えない(`check-*.mjs` が `getState()` の形に依存しているため)。
+2. **popstate を `history.state` で分岐させる**(`app.js:2030-2034` を書き換え):
+   - `state.embed` なら従来どおり即 return。
+   - `history.state && history.state.yado === 'feed'` かつ `state.view === 'select'` → **前方へ進んだ場合**。`lastHotel` があれば `selectHotel(lastHotel)` 相当で状態Bを描き直す。無ければ何もしない(従来どおり)。
+   - それ以外で `state.view === 'feed'` → 従来どおり `goBack()`。
+   - **注意**: 進む復帰で `selectHotel()` をそのまま呼ぶと `pushState` が走って履歴がさらに増える。復帰経路では push しないこと(下の 3 で構造的に防ぐ)。
+3. **`historyPushed` を `history.state` から導出して二重pushを構造的に消す**: `selectHotel()` の push 判定を `if (!state.embed && !(history.state && history.state.yado === 'feed'))` に変える。こうすると #4 の「既に feed エントリの上にいるのに push する」が起きない。あわせて `goBack()` の `historyPushed = false` と `goBackFromUi()` の分岐も同じ導出に揃える(`historyPushed` 変数そのものを消してよい)。
+4. `?embed=1` では 1〜3 のいずれも一切効かないこと(既存の `state.embed` ガードを緩めない)。
 
 ## 完了条件
 
-- hakone cards から「Ajisai Bridge」が消え、beppu more から「Tsuruya」「OAB Garden Studio Five」が消える。
-- **dogo 10位「松山城」が `source=both`・公式サイト○ のまま残る**(最重要の回帰確認)。
-- `dump-rank` の4エリア差分が、上記3件の除去と以降の繰り上がり**だけ**であること。繰り上がった候補は全件目視し、廃止施設・他社の宿・非観光対象が無いことを確認する。
-- kusatsu は完全無差分のはず(ラテン名0件)。
-- カード30枚が維持されること。
+- 上の再現表の #3 で `YadoApp.getState().view === 'feed'`・`#view-feed` が表示・カード30枚に戻る。
+- 上の再現表の #4 で `history.length` が **3 のまま**(汚染しない)。
+- 上の再現表の #5 の戻る **1回**で `about:blank` へ離脱する(「効かない戻る」が無い)。
+- `?embed=1` で `history.length` が変化しない(既存検査が引き続き PASS)。
+- `scripts/check-history.mjs` に「進むで状態Bへ復帰する」「進んだ後に宿を選び直しても history.length が増えない」の2ケースを**追加**する(既存ケースは1件も削らない)。
+- `node --check assets/app.js` が OK。
+- `git diff --stat -- assets/engine.js assets/geo.js fixtures` が**空**。
 
 ## 検証手順
 
-1. `node --check assets/engine.js`
-2. `node scripts/dump-rank.mjs <area>` を4エリアで変更前後に取り、差分を突き合わせる(特に dogo 松山城の行)。
-3. `scripts/check-engine.mjs` にケースを追加(落とす3件 + **残す対照として松山城の統合結果** + 日本語名のOSM単独候補1件)。既存ケースは1件も削らない。
-4. **`node scripts/check-all.mjs` が 29本全緑(exit 0)** ← 必須。
-5. 撮影して目視: `?fixture=hakone` mobile(17位が入れ替わり、帰属表示「Leaflet | © OpenStreetMap」が右上に読め、ピンの重なり・文字崩れ・はみ出しなし)と `?fixture=dogo` mobile(松山城のデグレ確認)の2枚。画像を Read で開いて確認すること。
+1. `node --check assets/app.js`
+2. `node scripts/check-history.mjs`(既存 + 追加ケースが全 PASS)
+3. 撮影(いずれも外部API 0回):
+   - `node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=kusatsu" --mobile`(375x812)
+   - `node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=kusatsu" --desktop`(1280x900)
+   - `node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=kusatsu&embed=1" --mobile`(375x812)
+   撮った画像を **Read で開いて目視**し、カード30枚・帰属表示「Leaflet | © OpenStreetMap」が右上に読める・文字崩れ/重なり/はみ出しなしを確認する。
+4. **`node scripts/check-all.mjs` が 29本全緑(exit 0)** ← 必須
 
 ## 変更禁止範囲
 
-- **rank の重み・閾値は変更不可**。
-- **`assets/geo.js` と `fixtures/*.json` は変更不可**(再生成もしない)。
-- `git stash` / `git reset` / `git checkout` でファイルを戻す操作は**禁止**。
-- **作業役は外部API 0回**(本番URLを叩かない。撮影は全て `?fixture=`)。
-- 既存の検査ケースを削って通さない。
+- `rank` の重み・閾値は**不可**
+- `assets/geo.js`・`fixtures/` は**不可**(`git diff --stat` が空であること)
+- `git stash` / `git reset` / `git checkout` でファイルを戻す操作は**禁止**
+- 外部API(Overpass / Wikipedia / Nominatim)は **0回**
+- 既存 `scripts/check-*.mjs` の検査項目を**減らさない**(追加のみ)
+- OSM 帰属表示の表示状態・文言・CSS は無変更
 
 ## 終わったら
 
-1. `docs/ROADMAP.md` の R127 を `[x] 2026-09-16` に。
-2. `docs/NIGHTLOG.md` の**ファイル末尾**の「## サイクル記録」節の末尾に `### 2026-09-16 R127 <一言>` の見出しを付けて3行追記(やったこと / 見た目の確認結果 / 次)。
-3. **先にコミット** → `git push`。
-4. 報告は簡潔に(長文の報告書を書かない)。
+1. `docs/ROADMAP.md` の R128 行を `- [x] 2026-09-16` に書き換える
+2. `docs/NIGHTLOG.md` の**ファイル末尾**の「## サイクル記録」節の末尾に `### 2026-09-16 R128 進む/戻るの履歴を修復` の見出しを付けて**3行**追記する
+3. **先にコミット**(1行の日本語メッセージ)
+4. `git push`
+5. 報告は簡潔に(長文の報告書を書かない)

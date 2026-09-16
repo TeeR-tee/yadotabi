@@ -116,8 +116,13 @@
   /** 提案リクエストの世代番号。戻る→別の宿、の取り違えを防ぐ。 */
   var requestSeq = 0;
 
-  /** 状態Bへの pushState を済ませたか。二重 push 防止のためのフラグ。 */
-  var historyPushed = false;
+  /** ブラウザの「進む」で状態Bへ復帰するために覚えておく直前の宿。 */
+  var lastHotel = null;
+
+  /** 現在の history エントリが状態B(yado:feed)を指しているかの判定ヘルパー。 */
+  function atFeedHistoryEntry() {
+    return !!(global.history.state && global.history.state.yado === 'feed');
+  }
 
   var els = {};
   var map = null;            // 状態Aの地図(1回だけ生成して使い回す)
@@ -739,10 +744,9 @@
     maxSeenIndex = -1;
     pushRecent(hotel);
     render();
-    // 状態Bへ入ったことを履歴に積む(埋め込み時と二重push時は何もしない)
-    if (!state.embed && !historyPushed) {
+    // 状態Bへ入ったことを履歴に積む(埋め込み時と、既に feed エントリの上にいる場合は何もしない)
+    if (!state.embed && !atFeedHistoryEntry()) {
       global.history.pushState({ yado: 'feed' }, '', global.location.href);
-      historyPushed = true;
     }
     // 状態Bに入った瞬間を計測の起点にする
     perfReset();
@@ -778,6 +782,8 @@
   function goBack() {
     // 進行中の提案があっても、戻った先の画面には描かせない
     requestSeq++;
+    // ブラウザの「進む」で状態Bへ復帰できるように、直前の宿を退避しておく。
+    lastHotel = state.hotel;
     state.view = 'select';
     state.hotel = null;
     state.cards = [];
@@ -787,12 +793,11 @@
     state.stage = null;
     state.osmFailed = false;
     render();
-    historyPushed = false;
   }
 
   /** UI(戻るボタン)からの戻る操作。history の辻褄を合わせるための入口を分ける。 */
   function goBackFromUi() {
-    if (historyPushed) {
+    if (atFeedHistoryEntry()) {
       // 実際の画面遷移は popstate ハンドラに任せる
       global.history.back();
     } else {
@@ -2029,7 +2034,15 @@
     // --- ブラウザの「戻る」 ---
     global.addEventListener('popstate', function () {
       if (state.embed) return;
-      if (state.view === 'feed') goBack();
+      // 実際の history.state に画面の認識を合わせる(進む/戻るの両方をここで処理する)。
+      var nowAtFeedEntry = atFeedHistoryEntry();
+      if (nowAtFeedEntry && state.view === 'select') {
+        // 「進む」で状態Bのエントリへ戻ってきた場合。直前の宿があれば描き直す
+        // (selectHotel() は既に feed エントリの上にいるので pushState しない)。
+        if (lastHotel) selectHotel(lastHotel);
+        return;
+      }
+      if (!nowAtFeedEntry && state.view === 'feed') goBack();
       // 既に状態Aならブラウザが勝手に離脱するのが正しい挙動
     });
   }

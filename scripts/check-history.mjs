@@ -58,7 +58,7 @@ async function checkBasicHistoryFlow(browser) {
 
   // ?fixture=kusatsu は読み込み直後に自動で状態Bへ入る仕様のため、
   // まず goBack で状態Aへ落としてから基準の history.length を取る。
-  await page.evaluate(() => { window.YadoApp.goBack(); });
+  await page.goBack();
   await waitFor(300);
   ok((await page.evaluate(() => window.YadoApp.getState().view)) === 'select', '前提: goBackで状態Aに戻れる');
 
@@ -80,8 +80,12 @@ async function checkBasicHistoryFlow(browser) {
   const stateAfterSelect = await page.evaluate(() => window.YadoApp.getState().view);
   ok(stateAfterSelect === 'feed', '1a. 宿選択後は状態B(feed)');
 
+  // R128: page.goBack() で状態Aへ戻った直後は、ブラウザの仕様で「戻った位置から新規push」すると
+  // 前方に捨てられるエントリと相殺され history.length 自体は変わらないことがあるため、
+  // pushされたかどうかは history.state で判定する(length ベースの判定はここでは使えない)。
+  const historyStateAfterSelect = await page.evaluate(() => history.state);
+  ok(historyStateAfterSelect && historyStateAfterSelect.yado === 'feed', '1. 状態Bに入った直後に history.state が feed エントリを指す', historyStateAfterSelect);
   const lenAfterSelect = await page.evaluate(() => history.length);
-  ok(lenAfterSelect === lenA + 1, '1. 状態Bに入った直後の history.length が +1', { lenA, lenAfterSelect });
 
   // 3. 状態Bで別の宿に切り替えても history.length がさらに増えない(二重push防止)
   await page.evaluate(() => {
@@ -128,7 +132,7 @@ async function checkBackButtonFlow(browser) {
   await page.goto(`${BASE}/?fixture=kusatsu`, { waitUntil: 'load' });
   await waitFor(1000);
   // fixtureは自動で状態Bに入るため、まず状態Aへ戻して基準を取る
-  await page.evaluate(() => { window.YadoApp.goBack(); });
+  await page.goBack();
   await waitFor(300);
   const lenA = await page.evaluate(() => history.length);
 
@@ -137,8 +141,11 @@ async function checkBackButtonFlow(browser) {
   });
   await waitFor(600);
 
+  // R128: page.goBack() 直後の push は前方エントリの破棄と相殺され length が変わらないことが
+  // あるため、pushされたことは history.state で確認する。
   const lenFeed = await page.evaluate(() => history.length);
-  ok(lenFeed === lenA + 1, '戻るボタン検証: 状態Bで history.length が +1');
+  const stateFeed = await page.evaluate(() => history.state);
+  ok(stateFeed && stateFeed.yado === 'feed', '戻るボタン検証: 状態Bで history.state が feed エントリを指す', stateFeed);
 
   // 戻るボタン(#back-btn)クリック -> history.back() 経由で1つ消費される想定
   await page.click('#back-btn');
@@ -189,7 +196,7 @@ async function checkMapViewSavedOnSelect(browser) {
 
   await page.goto(`${BASE}/?fixture=kusatsu`, { waitUntil: 'load' });
   await waitFor(1000);
-  await page.evaluate(() => { window.YadoApp.goBack(); });
+  await page.goBack();
   // 初回訪問直後はまだ moveend の debounce による保存が一度も走っていないため、
   // 前提を成立させるための最小限の地図操作(panBy)をここで1回行う。
   await page.evaluate(() => { window.YadoApp.getMap().panBy([1, 1], { animate: false }); });
@@ -234,6 +241,56 @@ async function checkMapViewSavedOnSelect(browser) {
   await context.close();
 }
 
+async function checkForwardBackFlow(browser) {
+  // R128: ブラウザの「進む」で状態Bへ復帰し、その後の「戻る」が空振りしないことを確認
+  const { context, page, consoleErrors } = await newPage(browser);
+
+  await page.goto(`${BASE}/?fixture=kusatsu`, { waitUntil: 'load' });
+  await waitFor(1000);
+  await page.goBack();
+  await waitFor(300);
+  const lenA = await page.evaluate(() => history.length);
+
+  await page.evaluate(() => {
+    window.YadoApp.selectHotel({ name: '宿A', lat: 36.6226, lon: 138.596 });
+  });
+  await waitFor(600);
+  // R128: page.goBack() 直後の push は length が変わらないことがあるため history.state で確認する。
+  const lenFeed = await page.evaluate(() => history.length);
+  const stateFeed = await page.evaluate(() => history.state);
+  ok(stateFeed && stateFeed.yado === 'feed', '進む/戻る検証: 宿選択で history.state が feed エントリを指す', stateFeed);
+
+  await page.goBack();
+  await waitFor(400);
+  ok((await page.evaluate(() => window.YadoApp.getState().view)) === 'select', '進む/戻る検証: 戻るで状態Aに戻る');
+
+  // R128 バグ1: 「進む」で状態Bへ復帰できるか
+  await page.goForward();
+  await waitFor(400);
+  const stateAfterForward = await page.evaluate(() => window.YadoApp.getState().view);
+  ok(stateAfterForward === 'feed', '進むで状態B(feed)へ復帰する', stateAfterForward);
+  const viewFeedHiddenAfterForward = await page.evaluate(() => document.getElementById('view-feed').hidden);
+  ok(!viewFeedHiddenAfterForward, '進む後に #view-feed が表示される');
+
+  // R128 バグ2: 進んだ後に宿を選び直しても history.length が増えない(feedエントリの上にいるため)
+  const lenAfterForward = await page.evaluate(() => history.length);
+  await page.evaluate(() => {
+    window.YadoApp.selectHotel({ name: '宿B', lat: 36.63, lon: 138.61 });
+  });
+  await waitFor(600);
+  const lenAfterReselect = await page.evaluate(() => history.length);
+  ok(lenAfterReselect === lenAfterForward, '進んだ後に宿を選び直しても history.length が増えない', { lenAfterForward, lenAfterReselect });
+
+  // R128 完了条件: 戻る1回で状態Aに戻り、もう1回で離脱できる(効かない戻るが無い)
+  await page.goBack();
+  await waitFor(400);
+  ok((await page.evaluate(() => window.YadoApp.getState().view)) === 'select', '進む後の戻る1回目で状態Aに戻る');
+
+  ok(consoleErrors.length === 0, '進む/戻る検証: コンソールエラー0件', consoleErrors);
+
+  await context.close();
+}
+
 async function main() {
   let serverProc = null;
   const alreadyRunning = await isPortOpen(PORT);
@@ -254,6 +311,7 @@ async function main() {
     await checkBackButtonFlow(browser);
     await checkEmbedNoHistoryChange(browser);
     await checkMapViewSavedOnSelect(browser);
+    await checkForwardBackFlow(browser);
   } finally {
     await browser.close();
     if (serverProc) serverProc.kill();
