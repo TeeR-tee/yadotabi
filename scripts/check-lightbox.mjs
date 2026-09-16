@@ -12,6 +12,12 @@
 //   6. 写真が無いカード(.feedcard__ph)のクリックではoverlayが出ず、地図がpanする
 //   7. overlay表示中はdocument.bodyのoverflowがhidden、閉じた後は元に戻る
 //   8. ?fixture=kusatsu&embed=1 でも1〜3が成立する
+//   R96(フォーカストラップ):
+//   9. 写真クリックで開いた直後 document.activeElement が .lightbox__close
+//  10. overlay表示中にTabを5回押しても activeElement が .lightbox 内に留まる
+//  11. overlay表示中にShift+Tabを3回押しても同様
+//  12. Escapeで閉じた後、開く前の .feedcard__imgbtn にフォーカスが戻る
+//  13. ?fixture=kusatsu&embed=1 でも10が成立する
 // 撮影: overlay表示中のmobile/desktopと、デグレ確認用のkusatsu mobileをscreenshots/に保存する
 
 import { chromium } from 'file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs';
@@ -102,9 +108,46 @@ async function main() {
     await firstImg.click();
     await waitFor(300);
     ok(await page.locator('.lightbox').count() === 1, '再度クリックでoverlayが開く');
+
+    // --- R96: フォーカストラップ(開いている間はoverlay内にフォーカスを閉じ込める) ---
+    const focusInfo = () => page.evaluate(() => {
+      const el = document.activeElement;
+      return {
+        cls: el ? String(el.className || '') : '',
+        inLightbox: !!(el && el.closest && el.closest('.lightbox')),
+      };
+    });
+    const afterOpen = await focusInfo();
+    ok(afterOpen.cls.indexOf('lightbox__close') >= 0, '開いた直後のフォーカスが閉じるボタンにある', afterOpen);
+
+    let tabEscaped = null;
+    for (let i = 0; i < 5; i++) {
+      await page.keyboard.press('Tab');
+      await waitFor(120);
+      const f = await focusInfo();
+      if (!f.inLightbox && tabEscaped === null) tabEscaped = { at: i + 1, ...f };
+    }
+    ok(tabEscaped === null, 'Tabを5回押してもフォーカスがライトボックス内に留まる', tabEscaped);
+
+    let shiftEscaped = null;
+    for (let i = 0; i < 3; i++) {
+      await page.keyboard.press('Shift+Tab');
+      await waitFor(120);
+      const f = await focusInfo();
+      if (!f.inLightbox && shiftEscaped === null) shiftEscaped = { at: i + 1, ...f };
+    }
+    ok(shiftEscaped === null, 'Shift+Tabを3回押してもフォーカスがライトボックス内に留まる', shiftEscaped);
+
+    // 撮影(mobile, Tab連打後のoverlay。閉じるボタンにフォーカスリングが残っているはず)
+    const trapShot = path.join(PROJECT_ROOT, 'screenshots', dateStamp() + '_r96-focustrap_mobile.png');
+    await page.screenshot({ path: trapShot, fullPage: false });
+    console.log('  撮影: ' + trapShot);
+
     await page.keyboard.press('Escape');
     await waitFor(300);
     ok(await page.locator('.lightbox').count() === 0, 'Escapeキーでoverlayが消える');
+    const afterClose = await focusInfo();
+    ok(afterClose.cls.indexOf('feedcard__imgbtn') >= 0, 'Escapeで閉じた後は開く前の写真ボタンにフォーカスが戻る', afterClose);
 
     // 番号バッジはoverlayを開かず、従来どおりピンが光る
     const badge1 = page.locator('.feedcard__no[data-no="1"]');
@@ -176,6 +219,23 @@ async function main() {
     ok(await ePage.locator('.lightbox').count() === 0, 'embed=1でもoverlayクリックで消える');
     await embedImg.click();
     await waitFor(300);
+
+    // R96: embed=1 でもTabでフォーカスが抜けない
+    let embedTabEscaped = null;
+    for (let i = 0; i < 5; i++) {
+      await ePage.keyboard.press('Tab');
+      await waitFor(120);
+      const f = await ePage.evaluate(() => {
+        const el = document.activeElement;
+        return {
+          cls: el ? String(el.className || '') : '',
+          inLightbox: !!(el && el.closest && el.closest('.lightbox')),
+        };
+      });
+      if (!f.inLightbox && embedTabEscaped === null) embedTabEscaped = { at: i + 1, ...f };
+    }
+    ok(embedTabEscaped === null, 'embed=1でもTabを5回押してフォーカスがライトボックス内に留まる', embedTabEscaped);
+
     await ePage.keyboard.press('Escape');
     await waitFor(300);
     ok(await ePage.locator('.lightbox').count() === 0, 'embed=1でもEscapeで消える');

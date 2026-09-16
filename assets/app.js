@@ -917,8 +917,18 @@
     var closeBtn = overlay.querySelector('.lightbox__close');
     if (closeBtn) closeBtn.focus();
 
+    // R96: 開いている間はフォーカスをoverlay内に閉じ込める(フォーカストラップ)。
+    // 暗幕で隠れた背後のカードへTabで抜けると、キーボード利用者が迷子になるため。
     lightboxKeyHandler = function (e) {
-      if (e.key === 'Escape') closeLightbox();
+      if (e.key === 'Escape') { closeLightbox(); return; }
+      if (e.key === 'Tab') {
+        // overlay内のフォーカス可能要素は現状 .lightbox__close の1つだけなので、
+        // Tab / Shift+Tab とも既定動作を止めてそこへ留める。
+        // 将来フォーカス可能要素が増えたら、ここを先頭/末尾の循環に書き換えること。
+        e.preventDefault();
+        var btn = lightboxEl && lightboxEl.querySelector('.lightbox__close');
+        if (btn) btn.focus();
+      }
     };
     document.addEventListener('keydown', lightboxKeyHandler);
   }

@@ -1,6 +1,9 @@
 # 夜間ログ(みのるんが朝に読む)
 
 ## サイクル記録
+- R96 ライトボックスにフォーカストラップを追加。実装前にPlaywrightで現状を再現したところ、開いた直後は`.lightbox__close`だが**Tab 1回目でbody・2回目で背後の`.topbar__back`・3回目以降は地図とピン**へ抜けていた(実測)。`assets/app.js:920`の`lightboxKeyHandler`に`e.key === 'Tab'`分岐を足し、フォーカス可能要素が閉じるボタン1つだけのため`e.preventDefault()`して閉じるボタンに留める形(+11行、将来要素が増えたとき用の理由コメント付き)。`tabindex`・`Escape`・暗幕クリック・`closeLightbox()`の復帰フォーカス(既に実装済みと再確認)は無変更。
+- `scripts/check-lightbox.mjs`に5ケース追加(開いた直後のフォーカス位置/Tab×5で留まる/Shift+Tab×3で留まる/Escape後に`.feedcard__imgbtn`へ戻る/embed=1でもTab×5で留まる)し26項目全PASS。Tab連打後のoverlayを撮影して目視、閉じるボタンに白いフォーカスリングが残り背後は暗幕のまま。`?fixture=kusatsu`のmobile/PC幅もデグレなし(カード30枚・番号ピン判読可・文字崩れなし・コンソールエラー0件)、`node scripts/check-all.mjs`は27本全PASS(exit 0)。
+- 次: R89(check-all.mjs高速化)またはR92〜R94から計画役が選定。
 - R95 `docs/FIXTURES.md` の「既存 fixture は原則再生成しない方針」節の直前に「鮮度の目安と再取得の手順(R95)」節を新設。(a)半年を目安(統計的根拠は無く運用上の目安と明記)・`buildOverpassQuery()`変更時は期間問わず例外・次の見直しは2027-03頃、(b)Overpassマナー節への相互リンク、(c)dump-rank前後比較→撮影→check-all→NIGHTLOG記録の順序リスト、(d)keep-listはmake-fixture.mjs:14のimportで自動適用済みで手動実行不要、を記載。「保存されるmeta」節からも新節へリンクを追加。
 - `git diff --stat -- assets fixtures scripts index.html demo`が空(文書のみ)を確認、`?fixture=kusatsu`をmobileで目視しカード30枚・番号ピン判読可・文字崩れなし・コンソールエラー0件、`node scripts/check-all.mjs`は27本全てPASS(fail語0件)。
 - 次: R89(check-all.mjs高速化)またはR92〜R94から計画役が選定。
