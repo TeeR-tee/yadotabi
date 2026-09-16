@@ -1,79 +1,75 @@
-# NEXT: R80 OSM候補のタグ・ホワイトリスト化を「調査で否定 → wiki単独候補の構造化判定」へ振り替え(最優先)
+# NEXT: R74 サンプル導線チップの折り返しを解消し、チップ行と同じ横スクロールに寄せる
 
-## 計画役の事前調査(作業役は必ず読むこと。仮説が1つ潰れています)
+## なぜこれを選んだか(1行)
+最新スクリーンショット `screenshots/2026-09-16T03-59-14_localhost_3000_demo_zoomout_mobile.png` を目視したところ、375px で `.samples` が既に**2行に折り返し「おまかせ」だけが下に落ち、44px の空白帯が地図を押し下げている**のを実測で確認できたため(R40 の別府追加でリンクが5本になり顕在化)。初見の人が最初に見る画面の実害であり、`style.css` だけで直せる。
 
-R79 の作業役は「本命は OSM タグでのホワイトリスト化」と 09_研究ノート(191〜193行)に書きました。
-計画役が **fixture の生データで実測したところ、この案は既に実装済みで、やることが残っていません**。
+## 現状(実測・推測ではない)
+- `index.html:44` … `<div class="samples" id="sample-links" hidden></div>`(中身は JS 生成)
+- `assets/app.js:1635` `SAMPLE_LINKS` … kusatsu / hakone / dogo / beppu の **4件**(R40 で beppu 追加済み)
+- `assets/app.js:1641` `renderSampleLinks()` … `<span class="samples__label">サンプル:</span>` + 4本の `<a>` + 末尾に `<a href="?fixture=random">おまかせ</a>` を出力。**合計6要素**(ラベル1+リンク5)
+- `assets/style.css:183` `.samples { display:flex; align-items:center; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-2); font-size: var(--fs-xs); }`
+- `assets/style.css:192` `.samples a { display:inline-flex; align-items:center; min-height:44px; padding:2px 4px; ... }`
+- 崩れの原因は2つの合わせ技: (1) `flex-wrap: wrap` が5本を収めきれず改行、(2) 各 `<a>` が `min-height:44px`(R13 のタップ領域)なので、2行目に1本落ちるだけで**行全体が 44px+gap ぶん背が伸びる**。スクリーンショットでは「おまかせ」の行がほぼ空白に見える。
 
-確認した事実(作業役も再現すること):
-1. `fixtures/*.json` は `overpass.elements` に **生タグを完全に保持**している(4エリアとも全要素に `tags` あり。beppu 667要素すべて)。fixture 再生成は不要 — この点は R79 の想定どおり。
-2. しかし `assets/geo.js:527 buildOverpassQuery()` の6つの clause が **既にホワイトリストそのもの**です:
-   `tourism~^(attraction|museum|viewpoint|zoo|aquarium|theme_park|gallery|picnic_site)$` /
-   `historic~^(castle|monument|memorial|ruins)$` / `leisure~^(park|garden)$` /
-   `amenity~^(place_of_worship|public_bath)$` / `natural~^(waterfall|spring|hot_spring|cave_entrance|peak)$` /
-   `man_made=lighthouse`。
-   `amenity=school|hospital|townhall`・`office=*`・`building=*` 単独の要素は **Overpass の応答にそもそも入ってきません**。
-3. 実測: 4 fixture の全要素のうち `CATEGORY_RULES`(geo.js:242)にどれも当たらない「名前付き候補」は
-   **kusatsu 0件 / hakone 0件 / dogo 0件 / beppu 0件**。`detectCategory` が `'other'` を返す OSM 候補は存在しません。
-   → ホワイトリストを engine.js に書き足しても **落ちる候補は0件**で、差分が出ません。
-4. R79 で落ちた13件を source 別に見ると、**全件が wiki 由来**(`別府市総合体育館`『ビーコンプラザ』等)。
-   `dump-rank beppu` の現在の上位30件でも OSM 単独(source=osm)は6件で、すべて観光対象です
-   (グローバルタワー・油屋熊八の像・ワンダーラクテンチ動物園 等)。
+## 対象ファイル(絶対パス)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\style.css` … **このファイルのみ変更**
+- 検証で使うだけ(無変更): `scripts\check-a11y.mjs` / `scripts\check-sample.mjs` / `scripts\check-all.mjs`
 
-**結論: R79 の推奨どおりにやると空振りします。** 09_研究ノートの当該段落も事実誤認(「fixture はタグを保持していないので着手できない」→ 保持している。「OSM候補にホワイトリストを入れれば除外語が不要になる」→ Overpass が既にやっている)を含むので、R80 の一部として訂正してください。
+## 実装方針
+`.chips`(`style.css:146`)が既に確立している横スクロールの型に `.samples` を寄せる。`.chips` は
+`overflow-x:auto; scrollbar-width:none; -webkit-overflow-scrolling:touch;` +
+`mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);` +
+`.chips::-webkit-scrollbar { display:none; }` という構成なので、同じものを `.samples` に適用する。
 
-## 振り替え後のタスク: wiki 単独候補を Wikidata の構造化データで判定する
+1. `style.css:183` の `.samples` から **`flex-wrap: wrap` を削除**し、代わりに以下を足す。
+   - `overflow-x: auto;`
+   - `scrollbar-width: none;`
+   - `-webkit-overflow-scrolling: touch;`
+   - `-webkit-mask-image` と `mask-image` を `.chips` と同じ 24px 右端フェードで指定
+2. `.samples::-webkit-scrollbar { display: none; }` を1行追加(`.chips::-webkit-scrollbar` の書き方に合わせる)。
+3. 横スクロール中に要素が潰れないよう、`.samples__label`(`style.css:191`)と `.samples a`(`style.css:192`)の両方に
+   `flex: 0 0 auto;` と `white-space: nowrap;` を足す(`.chip` が `flex:0 0 auto; white-space:nowrap;` でやっているのと同じ理由)。
+4. `min-height: 44px` は **絶対に下げない**(R13 のタップ領域44px、`check-a11y.mjs:34` が `.samples a` を検査対象にしている)。
+5. PC幅の扱い: `style.css:588` のメディアクエリで `.pickbar__row, .chips { max-width:560px; margin-left:auto; margin-right:auto; }` としているので、**`.samples` も同じ 560px 中央寄せの対象に加える**(加えないとPCで `.samples` だけ左端に張り付いて `.chips` と縦線が揃わない)。加えた結果ずれるようなら加えない判断でよいが、どちらにしたか NIGHTLOG に理由を1行残す。
 
-語ベースの天井(R79 で指摘された本物の問題)は **wiki 単独候補にだけ残っています**。
-`assets/engine.js:730` の `isExcludedArticle(article.title, article.extract)` が唯一の門で、名前と冒頭文の語しか見ていません。
-一方 OSM 候補は `geo.js` の Overpass 段で構造化判定が済んでいます。つまり **非対称を埋めるべきは wiki 側**です。
+> 注: `flex-wrap: wrap` を消すと mask の右端フェードで最後の「おまかせ」が薄くなるが、これは `.chips` で既に受け入れている表現なので同じ扱いでよい。指で横に送れることが伝わればよい。
 
-ただし Wikidata API を新規に叩くのはコスト0円原則は満たすものの外部API呼び出しが増え、fixture にデータがないため検証できません。
-**今回は API を増やさず、fixture 内にある情報だけでできる範囲に絞ります。**
+## 完了条件(検証可能)
+1. 375px 幅・`?demo=zoomout` で、**`.samples` の全子要素(`.samples__label` と5本の `.samples a`)の `offsetTop` が全て同値**であること(=1行に収まっている)。Playwright か DevTools で数値を取って NIGHTLOG に貼る。
+2. 同条件で `.samples` の `scrollWidth > clientWidth` であること(=収まらない分は横スクロールで送れる)。
+3. `.samples` 要素自体の高さが、修正前の約2行ぶんから**1行ぶん(おおむね44〜52px)に減っている**こと。before/after の数値を両方記録する。
+4. `node scripts/check-a11y.mjs` が全件OK(特に `.samples a` のタップ領域が5本とも44px以上)。
+5. `node scripts/check-sample.mjs` が全項目PASS(リンク5本・fixture中と embed 中は不可視・random が動く、の既存挙動を壊していない)。
+6. `node scripts/check-all.mjs` が **25本全PASS・exit 0**。
+7. `git diff --stat` が **`assets/style.css` の1ファイルのみ**であること(JS・HTML・fixtures に差分が無いこと)。
 
-### 実装方針(対象ファイルは絶対パス)
+## 検証手順(撮影+目視)
+外部API は0回。すべて固定データ/デモパラメータで完結する。
 
-対象: `C:\workspace\claude\旅行先用サイト\yadotabi\assets\engine.js` のみ。
-**`assets/geo.js` は変更しない**(調査の結果、変更する理由が無くなったため)。
+1. **before を撮る**(修正前に1枚): `?demo=zoomout` mobile。既存の 03-59-14 の画像でも代用可だが、R40 後の現状を撮り直す方が確実。
+2. style.css を修正。
+3. **after を撮る**:
+   - `?demo=zoomout` mobile(375px) … 主目的。サンプル行が1行に収まり、地図の上端が上に戻っていること
+   - `?demo=zoomout` desktop … PC幅でチップ行とサンプル行の左端が揃っているか(方針5の判断材料)
+   - `?fixture=kusatsu` mobile … `.samples` は非表示のはずなのでデグレ確認(カード30枚・番号ピン1〜30判読可)
+   - `?fixture=kusatsu&embed=1` mobile … 埋め込みでも `.samples` が出ていないこと
+4. 撮った画像を **Read で開いて目視**し、(a)サンプル行が1行 (b)右端にフェードが見える (c)検索欄・エリアチップ・地図と重なっていない (d)文字が切れていない、を確認する。
+5. `node scripts/check-all.mjs` を回して25本全緑を確認してからコミット・push。
 
-1. **`isExcludedArticle`(engine.js:427)に「OSM に同名・近接の観光タグ付き要素があるなら除外しない」救済を足す**のが本命。
-   現状 wiki 記事は OSM とのマージ(engine.js:745 付近の `isSamePlace` / `mergeIntoOsm`)より **前**に落とされるため、
-   「OSM に `tourism=attraction` として実在するのに、名前の語で wiki 側が落ちる」ケースを救えません。
-   → `buildOsmItems` の結果(`osmItems`)が確定した後に wiki のフィルタを回す順序へ変更し、
-     除外語に当たった記事でも `osmItems` の中に `isSamePlace` で一致するものがあれば **通す**(タグという構造化証拠を語より優先する)。
-   `osmItems` は engine.js:695/720 で既に確定済みなので、wiki の forEach(engine.js:728〜738)の中から参照できます。段階描画(`sendOsmStage`)の順序は変えないこと。
+## 変更禁止範囲
+- `assets/engine.js` の `rank` / `baseScore` / 重み / 閾値 / 除外ルール
+- `assets/geo.js` 全般(`CATEGORY_RULES`・`buildOverpassQuery`・半径定数を含む)
+- `fixtures/*.json`(再生成しない。Overpass は1回も叩かない)
+- `scripts/check-*.mjs` の**中身**(実行するだけ)
+- `.samples a` の `min-height: 44px`(R13 のタップ領域)
+- `SAMPLE_LINKS` の中身・順序・ラベル文字列(`check-sample.mjs` が5本を前提にしている)
+- `assets/app.js` / `index.html`(今回は CSS のみで解決する。もし CSS だけで無理だと判明したら、そこで手を止めて NIGHTLOG に理由を書き ROADMAP に差し戻すこと)
 
-2. 逆向きの強化として、**wiki 単独候補(OSM に対応要素が無いもの)についてだけ**、
-   `EXTRACT_KEYWORD_NG`(engine.js:197)に R79 の残件で効く語を足すかを検討する。
-   ただし **語を増やすのは最終手段**とし、増やすなら4エリアの before/after を全件目視して誤爆0を確認すること。増やさない判断でも可(その場合は理由を NIGHTLOG に書く)。
+## 難易度・所要目安
+- 難易度: **低**(CSS 数行。`.chips` に完成形の前例があるため写すだけ)
+- 所要目安: 実装5分 + 撮影・目視10分 + check-all 約4分 = **20分程度**
 
-3. `docs/09_研究ノート`(実体は `C:\workspace\claude\旅行先用サイト\計画書一式\09_研究ノート_認知外を提案するアルゴリズム.md` の 191〜193行)の R79 段落に、
-   上記の事実誤認の訂正を **追記**する(元の文は消さず、「2026-09-16 計画役の実測による訂正」として段落を足す)。
-
-### 完了条件(検証可能)
-
-- `node scripts/dump-rank.mjs <area>` を kusatsu / hakone / dogo / beppu の4エリアで before/after 実行し、
-  **cards + more + far の差分を全件目視**。救済で戻ってきた候補が観光対象であること、新たに落ちた候補があれば誤爆0であること。
-- 差分が0件だった場合も「0件だった」ことを NIGHTLOG に事実として書く(空振りを隠さない)。
-- `scripts/check-engine.mjs` に「除外語に当たるが OSM に一致要素があるので通る」ケースを最低2件追加。
-- `node scripts/check-all.mjs` 25本が全緑(約4分)。
-
-### 検証手順(撮影)
-
-`node C:\workspace\tools\shot\shot.mjs "http://localhost:3000/?fixture=<area>" --mobile` を
-kusatsu / hakone / dogo / beppu の4エリアで撮り、**画像を Read で目視**。
-カード30枚・番号ピン30個が判読でき、文字崩れ/重なり/はみ出し/コンソールエラーが無いこと。外部API 0回。
-
-### 変更禁止範囲
-
-- rank の重み・閾値(スコア計算には一切触らない)
-- `fixtures/*.json` の再生成(生タグは既に保持されている。触る理由が無い)
-- `assets/geo.js` の Overpass クエリ(`buildOverpassQuery`)。本番の取得件数と応答時間が変わるため今回は不可
-- `NAME_PROTECT_SUFFIX` / `TITLE_SUFFIX_NG` / `TITLE_KEYWORD_NG` の削除(追加は上記2の条件下でのみ可)
-
-### 難易度・所要目安
-
-opus / 40〜60分(実装20分 + dump-rank 4エリア before/after 目視20分 + check-all 4分 + 撮影・記録)。
-
-**もし 1 の救済でも4エリアで差分が0件だったら**、実装を revert せずコミットしたうえで
-「語ベース除外の残件は fixture 4エリアの範囲では観測できない」ことを研究ノートに記録し、次サイクルへ渡すこと。
+## 補足: これが終わったら次に回る候補
+- R77(状態Bのカードに「全◯件」を出すか検討・撮り比べ)… ユーザーに見える改善の次点
+- R76(4エリアの far 件数比較表)… 文書のみ・R19 の判断材料
+- R75(fixtures サイズ表)/ R72(check 並列化不可の明文化)… 文書のみ

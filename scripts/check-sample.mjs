@@ -88,6 +88,22 @@ async function checkSamplesVisible(browser) {
   });
 }
 
+async function checkSamplesOneLine(browser) {
+  await withPage(browser, async (page, consoleErrors) => {
+    await page.goto(`${BASE}/?demo=zoomout`, { waitUntil: 'load' });
+    await waitFor(1500);
+
+    const tops = await page.locator('.samples > *').evaluateAll((els) => els.map((el) => el.offsetTop));
+    const allSame = tops.length > 0 && tops.every((t) => t === tops[0]);
+    ok(allSame, 'R74. .samples の子要素が全て同じ offsetTop(1行に収まっている)', tops);
+
+    const scrollable = await page.locator('.samples').evaluate((el) => el.scrollWidth > el.clientWidth);
+    ok(scrollable, 'R74. .samples が scrollWidth > clientWidth(横スクロール可能)', scrollable);
+
+    ok(consoleErrors.length === 0, 'R74. コンソールエラー0件', consoleErrors);
+  });
+}
+
 async function checkSampleClickNavigates(browser) {
   await withPage(browser, async (page, consoleErrors) => {
     await page.goto(`${BASE}/?demo=zoomout`, { waitUntil: 'load' });
@@ -168,6 +184,7 @@ async function main() {
   const browser = await chromium.launch();
   try {
     await checkSamplesVisible(browser);
+    await checkSamplesOneLine(browser);
     await checkSampleClickNavigates(browser);
     await checkSamplesHiddenInFixture(browser, '/?fixture=kusatsu', 'd.fixtureのみ');
     await checkSamplesHiddenInFixture(browser, '/?fixture=kusatsu&embed=1', 'e.fixture+embed');

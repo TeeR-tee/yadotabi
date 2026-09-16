@@ -180,15 +180,28 @@ body {
 }
 
 /* R63: 初見向けサンプル導線。地図の高さを削るため最小限の1行に留める */
+/* R74: 5本になり折り返すため、.chips と同じ横スクロールの型に寄せる */
 .samples {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: var(--sp-2);
   margin-top: var(--sp-2);
   font-size: var(--fs-xs);
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
 }
-.samples__label { color: var(--c-text-sub); }
+.samples::-webkit-scrollbar { display: none; }
+.samples__label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--c-text-sub);
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
 .samples a {
   display: inline-flex;
   align-items: center;
@@ -197,6 +210,8 @@ body {
   color: var(--c-primary);
   font-size: var(--fs-xs);
   text-decoration: underline;
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .mapwrap {
@@ -585,7 +600,7 @@ body {
     max-width: 560px;
     margin: 0 auto;
   }
-  .pickbar__row, .chips { max-width: 560px; margin-left: auto; margin-right: auto; }
+  .pickbar__row, .chips, .samples { max-width: 560px; margin-left: auto; margin-right: auto; }
   .chips { margin-top: var(--sp-2); }
   /* 埋め込み枠は親が決めた幅を使い切る。ただし広い枠で写真が巨大化しないよう上限は残す */
   body.is-embed .view--feed { max-width: 720px; }

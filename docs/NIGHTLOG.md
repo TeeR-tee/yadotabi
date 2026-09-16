@@ -455,3 +455,8 @@
 | dogo | 愛媛大学 | 愛媛大学ミュージアム | × 大学の記事 |
 
 名前の包含は「施設名に自治体名・企業名・大学名が含まれている」だけで成立する。重複を潰す用途では誤って寄せてもカードが1枚減るだけだが、救済では誤って寄せると**除外すべき記事が候補に入る**ため安全側が逆を向く。完全一致に絞った結果この3件はいずれも救済されず、4エリアの救済は0件になった。
+
+### 2026-09-16 R74 サンプル導線チップの2行折り返しを横スクロール化で解消
+- やったこと: `.samples` から `flex-wrap: wrap` を削除し `.chips` と同じ `overflow-x:auto` + 右端24pxフェード(mask-image)構成に変更。`.samples__label` と `.samples a` に `flex:0 0 auto; white-space:nowrap;` を追加、`.samples__label` にも `display:inline-flex; align-items:center; min-height:44px;` を足して6要素のoffsetTopを揃えた。PC幅(720px以上)の560px中央寄せ対象に `.samples` を追加(チップ行と左端が揃うことを撮影で確認)。`min-height:44px` は変更していない。
+- 見た目の確認結果: `?demo=zoomout` mobile/desktopとも「サンプル:」〜「おまかせ」が1行に収まり右端がフェード、地図の押し下げなし。`.samples`子要素のoffsetTop実測は修正前 `[129,118,118,118,118,118]`(2行)→修正後は全要素同値(1行)。`?fixture=kusatsu`・`&embed=1` ともデグレなし(カード30枚・番号ピン判読可)。check-sample.mjsにoffsetTop一致+scrollWidth>clientWidthの検査を追加、`node scripts/check-all.mjs` 25本全緑。
+- 次: R77(状態Bのカードに「全◯件」表示検討)が候補。
