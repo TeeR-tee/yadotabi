@@ -226,10 +226,17 @@
    * カテゴリ多様性の判定にも表示ラベルにも使えない。そこで extract / title の語から
    * ざっくり推定する。上から順に評価し、最初に当たったものを採る。
    * 推定できなければ 'other' のまま(無理に当てない)。
+   *
+   * R115: hot_spring だけ否認語 `deny` を持つ。「草津温泉バスターミナル」のように
+   * 名前に「温泉」を含むだけの別種の施設を温泉として出さないため、記事冒頭の定義文
+   * (「〜は…である」)に否認語があれば、その行を採らず次の行へ送る。
+   * 他のカテゴリ行には付けない(誤爆源になるだけで、実測では誤判定が出ていない)。
    */
   var WIKI_CATEGORY_HINTS = [
     { category: 'waterfall', label: '滝', words: ['滝'] },
-    { category: 'hot_spring', label: '温泉', words: ['温泉'] },
+    { category: 'hot_spring', label: '温泉', words: ['温泉'],
+      deny: ['バスターミナル', 'スキー場', '遊園地', '球技場', 'ゴルフ場', '競馬場',
+        '空港', '駅である', '山。', '山である', '岳。', '岳である'] },
     { category: 'castle', label: '城・城跡', words: ['城跡', '城址', '城'] },
     { category: 'place_of_worship', label: '神社・寺院', words: ['神社', '寺院', '大社', '神宮', '寺'] },
     { category: 'museum', label: '美術館・博物館', words: ['美術館', '博物館', '資料館', '記念館'] },
@@ -520,22 +527,50 @@
   }
 
   /**
+   * 否認語を探す範囲。Wikipedia の冒頭文は「〜は、…にある○○である。」と
+   * 自分が何であるかを最初の一文で書くので、そこだけを見る。
+   * 二文目以降まで見ると「隣接するスキー場」のような記述で正当な温泉記事を落とす
+   * (万座プリンスホテルが実例)。保険として120字でも頭打ちにする。
+   */
+  function definitionScope(title, extract) {
+    var head = extract.slice(0, 120);
+    var stop = head.indexOf('。');
+    if (stop !== -1) head = head.slice(0, stop + 1);
+    return title + ' ' + head;
+  }
+
+  /** hint に deny があり、定義文に否認語が含まれるなら true(その hint を採らない)。 */
+  function isDenied(hint, scope) {
+    var k;
+    if (!hint.deny) return false;
+    for (k = 0; k < hint.deny.length; k++) {
+      if (scope.indexOf(hint.deny[k]) !== -1) return true;
+    }
+    return false;
+  }
+
+  /**
    * Wikipedia 記事のカテゴリを title / extract の語から推定する。
    * タイトルを先に見るのは、extract には周辺地名など無関係な語が混ざりやすいため。
+   * ただし名前だけでは種別を誤ることがある(R115)ので、deny を持つ行は記事本文の
+   * 定義文で否認されたら採らず、次の行へ送る。
    * 当たらなければ {category:'other', label:'スポット'}。
    */
   function guessWikiCategory(title, extract) {
     var t = typeof title === 'string' ? title : '';
     var e = typeof extract === 'string' ? extract : '';
+    var scope = definitionScope(t, e);
     var i, j, hint;
     for (i = 0; i < WIKI_CATEGORY_HINTS.length; i++) {
       hint = WIKI_CATEGORY_HINTS[i];
+      if (isDenied(hint, scope)) continue;
       for (j = 0; j < hint.words.length; j++) {
         if (t.indexOf(hint.words[j]) !== -1) return hint;
       }
     }
     for (i = 0; i < WIKI_CATEGORY_HINTS.length; i++) {
       hint = WIKI_CATEGORY_HINTS[i];
+      if (isDenied(hint, scope)) continue;
       for (j = 0; j < hint.words.length; j++) {
         if (e.indexOf(hint.words[j]) !== -1) return hint;
       }

@@ -341,6 +341,83 @@ console.log('\n(a-3) Wikipedia単独のカテゴリ推定 / other は多様性�
 }
 
 // ---------------------------------------------------------------------------
+console.log('\n(r115) 名前の「温泉」に引きずられない(記事冒頭の定義文で否認)');
+{
+  // 4エリアの fixtures から取った実際の冒頭文を使う。
+  // deny=false は「温泉のまま残らねばならない」側(誤爆したら条件が広すぎる)。
+  const R115_CASES = [
+    // 直す側: 名前 or 冒頭文に「温泉」が出るが、定義文の種別は温泉でない
+    { title: '草津温泉バスターミナル',
+      extract: '草津温泉バスターミナル（くさつおんせんバスターミナル）は、群馬県吾妻郡草津町にあるバスターミナルである。施設管理は草津観光公社が行っている。',
+      category: 'other', label: 'スポット' },
+    { title: '草津温泉スキー場',
+      extract: '草津温泉スキー場（くさつおんせんスキーじょう）は、群馬県吾妻郡草津町に位置するスキー場。\n施設は草津町が保有し、',
+      category: 'other', label: 'スポット' },
+    { title: '冠山 (松山市)',
+      extract: '冠山（かんむりやま）は、愛媛県松山市の道後温泉にある小高い山。',
+      category: 'other', label: 'スポット' },
+    { title: '鶴見園',
+      extract: '鶴見園（つるみえん）は、大分県別府市南立石にかつて存在した遊園地。温泉と少女歌劇を呼び物とし、',
+      category: 'other', label: 'スポット' },
+    // 残す側: 定義文の種別が温泉(またはその宿)なので温泉のまま
+    { title: '花敷温泉',
+      extract: '花敷温泉（はなしきおんせん）は、群馬県吾妻郡中之条町（旧国上野国）にある温泉。尻焼温泉、応徳温泉、京塚温泉と共に六合温泉郷を形成する。',
+      category: 'hot_spring', label: '温泉' },
+    { title: '天成園',
+      extract: '天成園（てんせいえん）は、神奈川県足柄下郡箱根町湯本の箱根湯本温泉にある温泉ホテル。万葉倶楽部グループに属する。',
+      category: 'hot_spring', label: '温泉' },
+    { title: '一の湯',
+      extract: '一の湯（いちのゆ）は神奈川県箱根町の塔ノ沢温泉にある、株式会社一の湯が経営する、1630年（寛永7年）創業の老舗温泉旅館である。',
+      category: 'hot_spring', label: '温泉' },
+    { title: '大江戸温泉物語 別府清風',
+      extract: '大江戸温泉物語 別府清風（おおえどおんせんものがたり べっぷせいふう）は、大分県別府市北浜にある温泉ホテルである。',
+      category: 'hot_spring', label: '温泉' },
+    // 否認語は「定義文」だけを見る。二文目の「隣接するスキー場」で温泉宿を落とさない
+    { title: '万座プリンスホテル',
+      extract: '万座プリンスホテル（まんざプリンスホテル）は、群馬県吾妻郡嬬恋村の万座温泉にあるホテル。西武・プリンスホテルズワールドワイドが運営しており、同社が運営する万座温泉スキー場に隣接している。',
+      category: 'hot_spring', label: '温泉' }
+  ];
+
+  const E = loadEngine({
+    ...geoMock(),
+    fetchSpots: () => Promise.resolve([]),
+    // 名前の包含(「草津温泉スキー場」等)で dedupe されないよう 500m 刻みで離す
+    fetchWikiNearby: () => Promise.resolve(R115_CASES.map((c, i) => ({
+      id: 'wp/' + (600 + i), title: c.title, lat: at(300 + i * 500), lon: HOTEL.lon,
+      distanceM: 300 + i * 500, thumbnailUrl: null, extract: c.extract, url: ''
+    })))
+  });
+  const items = await E.collect(HOTEL);
+  const byTitle = Object.fromEntries(items.map(i => [i.name, i]));
+  R115_CASES.forEach(c => {
+    const got = byTitle[c.title];
+    ok(!!got && got.category === c.category && got.categoryLabel === c.label,
+      'R115: ' + c.title + ' → ' + c.label,
+      got && { category: got.category, label: got.categoryLabel });
+  });
+
+  // deny は hot_spring 行だけ。他カテゴリの推定は一切変わらない
+  const E2 = loadEngine({
+    ...geoMock(),
+    fetchSpots: () => Promise.resolve([]),
+    fetchWikiNearby: () => Promise.resolve([
+      // 「スキー場」を含むが城の記事 → castle のまま(deny を持たない行は素通し)
+      { id: 'wp/650', title: '〇〇城', lat: at(800), lon: HOTEL.lon, distanceM: 800,
+        thumbnailUrl: null, extract: '〇〇城は、スキー場の近くにある城である。', url: '' },
+      // 温泉語が無ければ deny は関係なく従来どおり
+      { id: 'wp/651', title: '白糸の滝', lat: at(1400), lon: HOTEL.lon, distanceM: 1400,
+        thumbnailUrl: null, extract: '白糸の滝は、遊園地の跡地にある滝である。', url: '' }
+    ])
+  });
+  const other = Object.fromEntries((await E2.collect(HOTEL)).map(i => [i.name, i]));
+  ok(other['〇〇城'] && other['〇〇城'].categoryLabel === '城・城跡',
+    'R115: deny は hot_spring 行だけ(城は「スキー場」を含んでも城のまま)',
+    other['〇〇城'] && other['〇〇城'].categoryLabel);
+  ok(other['白糸の滝'] && other['白糸の滝'].categoryLabel === '滝',
+    'R115: 滝の推定は変わらない', other['白糸の滝'] && other['白糸の滝'].categoryLabel);
+}
+
+// ---------------------------------------------------------------------------
 console.log('\n(a-4) R18 誤併合: 名前の包含だけで別施設を同一視しない');
 {
   // 「長い名前 ⊃ 短い名前」かつ 150m 以内のペアを並べ、併合されるべきか確認する。
