@@ -231,6 +231,16 @@ body {
   .pin--flash span { animation: none; }
 }
 
+/* R43: 状態Aの宿ピンに hover で出す宿名ツールチップ(長い旅館名で地図幅を割らない) */
+.hoteltip {
+  font-size: 12px;
+  padding: 2px 8px;
+  max-width: 180px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
 /* --------------------------------------------------------------------------
    状態B: 見る
    -------------------------------------------------------------------------- */

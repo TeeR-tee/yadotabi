@@ -456,7 +456,8 @@
         iconSize: [30, 30],
         iconAnchor: [15, 15]
       });
-      var marker = L.marker([h.lat, h.lon], { icon: icon, title: h.name }).addTo(hotelLayer);
+      var marker = L.marker([h.lat, h.lon], { icon: icon }).addTo(hotelLayer);
+      marker.bindTooltip(h.name, { direction: 'top', offset: [0, -14], className: 'hoteltip', permanent: false });
       marker.on('click', function () { selectHotel(h); });
     });
   }
@@ -1219,6 +1220,25 @@
           ]);
         }
         return Promise.resolve([]);
+      };
+    }
+
+    // ?demo=hoteltip: demoStateA は立てず、fetchHotelsInBbox を密集した宿データに差し替える
+    // (状態Aの宿名ツールチップの見た目確認用。外部APIは叩かない)。
+    if (demo === 'hoteltip') {
+      YadoGeo.fetchHotelsInBbox = function (south, west, north, east) {
+        var lat = (south + north) / 2;
+        var lon = (west + east) / 2;
+        var dLat = (north - south) / 6;
+        var dLon = (east - west) / 6;
+        return Promise.resolve([
+          { id: 'demo-hoteltip-1', name: '草津温泉 ホテル紅葉亭', lat: lat, lon: lon, kind: 'hotel' },
+          { id: 'demo-hoteltip-2', name: '湯畑前旅館', lat: lat + dLat, lon: lon + dLon, kind: 'hotel' },
+          { id: 'demo-hoteltip-3', name: '湯畑前旅館別館', lat: lat + dLat * 1.05, lon: lon + dLon * 1.05, kind: 'hotel' },
+          { id: 'demo-hoteltip-4', name: '西の河原ホテル', lat: lat - dLat, lon: lon - dLon, kind: 'hotel' },
+          { id: 'demo-hoteltip-5', name: '草津温泉 ホテルきよさと', lat: lat - dLat * 2, lon: lon + dLon * 2, kind: 'hotel' },
+          { id: 'demo-hoteltip-6', name: '光泉寺前の宿', lat: lat + dLat * 2, lon: lon - dLon * 2, kind: 'hotel' }
+        ]);
       };
     }
 
