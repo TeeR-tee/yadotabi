@@ -191,6 +191,8 @@ git push
 
 `node scripts/check-all.mjs` を実行すると、`scripts/check-*.mjs` 12本と `docs/check.mjs` の計13本を1コマンドで直列実行し、結果を表(PASS/FAIL・所要時間)で確認できます。1本でも失敗すると exit code 1 で終了します。一部の検査は内部でPythonの `python -m http.server` を一時起動するため、Python 3 が必要です。
 
+「もっと遠く」に振り分ける far の閾値(`FAR_DRIVE_MIN`、車60分超)は 60分×500m/分＝30km で、`scripts/make-fixture.mjs` の収集半径(`osmRadiusM`)とは独立に決まっている定数です。収集半径が30kmに満たないエリアでは far が構造上0件になる点に注意してください(実測は [docs/FIXTURES.md](docs/FIXTURES.md) の「far 実測表」を参照)。
+
 ## v1 からの変更点
 
 - ホテル名・泊数・移動手段を入力させるUIをすべて廃止。宿を選んだ瞬間に提案が出る仕組みに変更(入力ゼロ)。

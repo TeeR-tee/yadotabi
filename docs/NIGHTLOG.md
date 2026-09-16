@@ -55,6 +55,7 @@
 - **カテゴリ多様性の減点が青天井で、有名どころ(大涌谷・彫刻の森)ほど不利になる逆転が起きている**。rankの設計思想なので夜は触らなかった。上限を設ける/Wikipedia紐づけは免除/このまま
 - 実APIと固定データでWikipedia件数が食い違う(50件 vs 34件)。深追いするか
 - 小地図のピンを見やすさ優先で最大96pxずらしている方針でよいか
+- **R19 far(車60分超)の是正案、どれを採るか(2026-09-16 R76実測で判断材料は出揃った)**。案A: `FAR_DRIVE_MIN`を収集半径の80%相当に下げる(far は出るがcardsが痩せる)。案B: fixtureの`osmRadiusM`を4エリアとも30000に揃える(hakoneと同条件になるがhakone.json 900KBの肥大がR14と衝突)。案C: farの定義を距離の絶対値でなく候補距離分布の上位X%にする(土地によらず出るがrank側への実装が必要)。詳細は09研究ノート「R76+R19 far の4エリア実測」節。
 
 ### 正直に書いておくこと
 - 自動ループの監視役は独立AIではなく司令塔セッション内の監視機構(cron登録が安全判定で止められたため)。セッションを閉じると止まる
@@ -460,3 +461,8 @@
 - やったこと: `.samples` から `flex-wrap: wrap` を削除し `.chips` と同じ `overflow-x:auto` + 右端24pxフェード(mask-image)構成に変更。`.samples__label` と `.samples a` に `flex:0 0 auto; white-space:nowrap;` を追加、`.samples__label` にも `display:inline-flex; align-items:center; min-height:44px;` を足して6要素のoffsetTopを揃えた。PC幅(720px以上)の560px中央寄せ対象に `.samples` を追加(チップ行と左端が揃うことを撮影で確認)。`min-height:44px` は変更していない。
 - 見た目の確認結果: `?demo=zoomout` mobile/desktopとも「サンプル:」〜「おまかせ」が1行に収まり右端がフェード、地図の押し下げなし。`.samples`子要素のoffsetTop実測は修正前 `[129,118,118,118,118,118]`(2行)→修正後は全要素同値(1行)。`?fixture=kusatsu`・`&embed=1` ともデグレなし(カード30枚・番号ピン判読可)。check-sample.mjsにoffsetTop一致+scrollWidth>clientWidthの検査を追加、`node scripts/check-all.mjs` 25本全緑。
 - 次: R77(状態Bのカードに「全◯件」表示検討)が候補。
+
+### 2026-09-16 R76+R19 far の4エリア実測(文書のみ)
+- やったこと: `scripts/dump-rank.mjs` を4エリア直列実行(外部API0回)。far件数は kusatsu0/dogo0/beppu0・hakoneのみ10件(30003m〜30495mの薄い殻)で、「far は osmRadiusM としきい値30km(=FAR_DRIVE_MIN60分×DRIVE_M_PER_MIN500m/分)の大小関係だけで決まる」仮説が4エリアで成立。表は docs/FIXTURES.md と09研究ノートの両方に同じ値で記録、engine.jsのFAR_DRIVE_MIN直上にコメントを2行追加(値は不変)。
+- 見た目の確認結果: `?fixture=kusatsu`・`?fixture=hakone&demo=far` mobileを撮影・目視、コメント追記のみのためデグレなし(カード枚数・far10件とも従来どおり)。`node scripts/check-all.mjs` 25本全緑。
+- 次: R19の是正3案は朝の相談に起票済み、判断待ち。ROADMAP残りはR14/R64/R72/R75/R77/R78。

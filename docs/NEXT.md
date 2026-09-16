@@ -1,75 +1,104 @@
-# NEXT: R74 サンプル導線チップの折り返しを解消し、チップ行と同じ横スクロールに寄せる
+# NEXT — R76+R19 far の実測表を作り、30km境界集中の構造を数字で示す
 
-## なぜこれを選んだか(1行)
-最新スクリーンショット `screenshots/2026-09-16T03-59-14_localhost_3000_demo_zoomout_mobile.png` を目視したところ、375px で `.samples` が既に**2行に折り返し「おまかせ」だけが下に落ち、44px の空白帯が地図を押し下げている**のを実測で確認できたため(R40 の別府追加でリンクが5本になり顕在化)。初見の人が最初に見る画面の実害であり、`style.css` だけで直せる。
+**判断理由**: 残候補(R14/R19/R64/R72/R75〜R78)のうち、R76 は「文書のみ・外部API0回・4 fixture が全部揃った今だからできる」かつ R19 の判断材料そのものなので、2件まとめて1サイクルで閉じるのが最も効率がよい(R64 は無料枠の確認でユーザー判断が要り、R14 は fixture 再生成で Overpass を叩くリスクがある)。
 
-## 現状(実測・推測ではない)
-- `index.html:44` … `<div class="samples" id="sample-links" hidden></div>`(中身は JS 生成)
-- `assets/app.js:1635` `SAMPLE_LINKS` … kusatsu / hakone / dogo / beppu の **4件**(R40 で beppu 追加済み)
-- `assets/app.js:1641` `renderSampleLinks()` … `<span class="samples__label">サンプル:</span>` + 4本の `<a>` + 末尾に `<a href="?fixture=random">おまかせ</a>` を出力。**合計6要素**(ラベル1+リンク5)
-- `assets/style.css:183` `.samples { display:flex; align-items:center; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-2); font-size: var(--fs-xs); }`
-- `assets/style.css:192` `.samples a { display:inline-flex; align-items:center; min-height:44px; padding:2px 4px; ... }`
-- 崩れの原因は2つの合わせ技: (1) `flex-wrap: wrap` が5本を収めきれず改行、(2) 各 `<a>` が `min-height:44px`(R13 のタップ領域)なので、2行目に1本落ちるだけで**行全体が 44px+gap ぶん背が伸びる**。スクリーンショットでは「おまかせ」の行がほぼ空白に見える。
+---
+
+## ゴール
+
+1. 4エリア(kusatsu / hakone / dogo / beppu)の far を `dump-rank` で実測し、1つの表にまとめる(R76)。
+2. 「far は収集半径の関数でしかない」仮説が4エリアで成り立つかを数字で判定し、R19 の是正案を研究ノートに書く(R19 の**調査完了**まで。rank も far 判定の**閾値変更も今回はしない**)。
+3. コード変更は **`FAR_DRIVE_MIN` の意味づけコメント整理 + README 注記のみ**に留める。
+
+## なぜ「境界集中」が起きるのか(計画役の事前調査・実物の行番号つき)
+
+- `assets/engine.js:33` `var FAR_DRIVE_MIN = 60;`(車60分超が far)
+- `assets/engine.js:26` `var DRIVE_M_PER_MIN = 500;`(車は直線500m/分)
+- したがって **far の実効距離しきい値 = 60 × 500 = 30,000m ちょうど**。
+- `assets/engine.js:944-959` `present()` が `card.driveMin > FAR_DRIVE_MIN` で `far.push()`、`far.slice(0, MAX_FAR)`(`MAX_FAR = 10`、engine.js:31)。
+- 一方 `scripts/make-fixture.mjs:18-23` の `AREAS` は
+  - kusatsu / dogo / beppu = `osmRadiusM` 未指定 → `scripts/make-fixture.mjs:37` の既定 **15000**
+  - hakone のみ **30000** を個別指定
+- **つまり far しきい値(30,000m)は hakone の収集半径と完全に一致し、他3エリアの収集半径の2倍**。よって
+  - 15km エリアでは far は**構造上必ず0件**(30km 超の候補がそもそも fixture に入っていない)
+  - hakone だけ far が出るが、出るのは **30,000m〜30,000m+α の極薄い殻の中の候補だけ**なので境界に張り付く
+- これが R19 の言う「far が30km境界付近に不自然に固まっている」の正体。**バグではなく定数の噛み合わせ**である点を、推測でなく実測値で示すのが今回の成果。
 
 ## 対象ファイル(絶対パス)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\style.css` … **このファイルのみ変更**
-- 検証で使うだけ(無変更): `scripts\check-a11y.mjs` / `scripts\check-sample.mjs` / `scripts\check-all.mjs`
 
-## 実装方針
-`.chips`(`style.css:146`)が既に確立している横スクロールの型に `.samples` を寄せる。`.chips` は
-`overflow-x:auto; scrollbar-width:none; -webkit-overflow-scrolling:touch;` +
-`mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);` +
-`.chips::-webkit-scrollbar { display:none; }` という構成なので、同じものを `.samples` に適用する。
+編集する:
+- `C:\workspace\claude\旅行先用サイト\計画書一式\09_研究ノート_認知外を提案するアルゴリズム.md`(末尾「6. 実験ログ」に `### 2026-09-16 R76+R19 far の4エリア実測` を追記。`## 7. 未解決の問い` の**前**に入れること)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\FIXTURES.md`(「対象エリア表」の直後に far 実測表を追加)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\README.md`(開発者向け節に「far の閾値は 60分×500m/分＝30km で、収集半径と独立に決まっている」旨の注記2〜3行)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\engine.js`(**26〜33行目のコメントのみ**。`FAR_DRIVE_MIN` の直上に「実効距離 = FAR_DRIVE_MIN × DRIVE_M_PER_MIN = 30km。make-fixture の osmRadiusM と噛み合っていない点は docs/FIXTURES.md 参照」を1〜2行。**値は変更しない**)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md`(R76 と R19 を `[x] 2026-09-16` に。R19 は「調査完了・閾値変更は見送り」と理由を本文に追記)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\NIGHTLOG.md`(3行)
 
-1. `style.css:183` の `.samples` から **`flex-wrap: wrap` を削除**し、代わりに以下を足す。
-   - `overflow-x: auto;`
-   - `scrollbar-width: none;`
-   - `-webkit-overflow-scrolling: touch;`
-   - `-webkit-mask-image` と `mask-image` を `.chips` と同じ 24px 右端フェードで指定
-2. `.samples::-webkit-scrollbar { display: none; }` を1行追加(`.chips::-webkit-scrollbar` の書き方に合わせる)。
-3. 横スクロール中に要素が潰れないよう、`.samples__label`(`style.css:191`)と `.samples a`(`style.css:192`)の両方に
-   `flex: 0 0 auto;` と `white-space: nowrap;` を足す(`.chip` が `flex:0 0 auto; white-space:nowrap;` でやっているのと同じ理由)。
-4. `min-height: 44px` は **絶対に下げない**(R13 のタップ領域44px、`check-a11y.mjs:34` が `.samples a` を検査対象にしている)。
-5. PC幅の扱い: `style.css:588` のメディアクエリで `.pickbar__row, .chips { max-width:560px; margin-left:auto; margin-right:auto; }` としているので、**`.samples` も同じ 560px 中央寄せの対象に加える**(加えないとPCで `.samples` だけ左端に張り付いて `.chips` と縦線が揃わない)。加えた結果ずれるようなら加えない判断でよいが、どちらにしたか NIGHTLOG に理由を1行残す。
+読むだけ:
+- `assets/engine.js:26-33`(定数)、`assets/engine.js:930-961`(`present()`)
+- `scripts/make-fixture.mjs:18-40`(`AREAS` と `OSM_RADIUS_M`)
+- `scripts/dump-rank.mjs:100-160`(far 表の出し方)
 
-> 注: `flex-wrap: wrap` を消すと mask の右端フェードで最後の「おまかせ」が薄くなるが、これは `.chips` で既に受け入れている表現なので同じ扱いでよい。指で横に送れることが伝わればよい。
+## 実装方針(手順)
+
+1. 4エリアぶん実測する。**1本ずつ直列で**(dump-rank は自前でポート3000にサーバを立てるため同時実行不可):
+   ```
+   node scripts/dump-rank.mjs kusatsu > %TEMP%\far_kusatsu.md
+   node scripts/dump-rank.mjs hakone  > %TEMP%\far_hakone.md
+   node scripts/dump-rank.mjs dogo    > %TEMP%\far_dogo.md
+   node scripts/dump-rank.mjs beppu   > %TEMP%\far_beppu.md
+   ```
+   外部APIは0回(全て fixture 経由)。出力先はスクラッチパッドでよい(リポジトリに生ログを足さない)。
+2. 各エリアの far 節から **件数 / 最短距離 / 最遠距離 / 距離の分布**を読み取る。`far` 表の距離列をそのまま使う。
+3. 次の5列の表を作る:
+
+   | area | osmRadiusM | far件数 | far最短 | far最遠 |
+   |---|---|---|---|---|
+
+   これに **cards 最遠**も1列足すと「30km の壁」が一目で分かるので推奨(dump-rank の cards 表の最下行から取る)。
+4. 表から仮説を判定して1行で書く。想定される結論は「**far の件数はランキングの性質ではなく `osmRadiusM` と `FAR_DRIVE_MIN×DRIVE_M_PER_MIN` の大小関係だけで決まる**」。**実測が想定と違ったらそのまま事実を書くこと**(数字を結論に合わせない)。
+5. R19 の是正案を研究ノートに**案として**書く(実装はしない)。最低3案を並べ、それぞれの副作用も書く:
+   - 案A: `FAR_DRIVE_MIN` を収集半径の80%相当に下げる(15km エリアなら 24分)→ far が出るようになるが cards が痩せる
+   - 案B: fixture の `osmRadiusM` を4エリアとも 30000 に揃える → hakone と同条件になるが hakone.json が 900KB なので他3つも肥大(R14 と衝突)
+   - 案C: far の定義を「距離の絶対値」ではなく「そのエリアの候補距離分布の上位X%」に変える → 土地によらず必ず far が出るが、実装が rank 側に踏み込む
+   - 各案に「今回採らない理由」を必ず添える。**どれを採るかはみのるんの判断**なので NIGHTLOG の「朝の相談」にも1件起票する。
+6. `assets/engine.js` はコメント追記のみ。**`FAR_DRIVE_MIN` / `DRIVE_M_PER_MIN` / `MAX_FAR` の値は変えない**。
+7. `node --check assets/engine.js` → `node scripts/check-all.mjs`(25本・約4分)→ コミット → push。
 
 ## 完了条件(検証可能)
-1. 375px 幅・`?demo=zoomout` で、**`.samples` の全子要素(`.samples__label` と5本の `.samples a`)の `offsetTop` が全て同値**であること(=1行に収まっている)。Playwright か DevTools で数値を取って NIGHTLOG に貼る。
-2. 同条件で `.samples` の `scrollWidth > clientWidth` であること(=収まらない分は横スクロールで送れる)。
-3. `.samples` 要素自体の高さが、修正前の約2行ぶんから**1行ぶん(おおむね44〜52px)に減っている**こと。before/after の数値を両方記録する。
-4. `node scripts/check-a11y.mjs` が全件OK(特に `.samples a` のタップ領域が5本とも44px以上)。
-5. `node scripts/check-sample.mjs` が全項目PASS(リンク5本・fixture中と embed 中は不可視・random が動く、の既存挙動を壊していない)。
-6. `node scripts/check-all.mjs` が **25本全PASS・exit 0**。
-7. `git diff --stat` が **`assets/style.css` の1ファイルのみ**であること(JS・HTML・fixtures に差分が無いこと)。
 
-## 検証手順(撮影+目視)
-外部API は0回。すべて固定データ/デモパラメータで完結する。
+- [ ] 4エリアの far を実測した数字が、`docs/FIXTURES.md` と研究ノートの両方に同じ値で載っている(片方だけは不可)
+- [ ] 表に `osmRadiusM` 列があり、hakone=30000 / 他3つ=15000 と far 件数の対応が読み取れる
+- [ ] 「far の実効距離 = 60分 × 500m/分 = 30km」の算出根拠が、`engine.js` の行番号つきで研究ノートに書いてある
+- [ ] R19 の是正案が3案以上・各案の副作用つきで書かれ、「今回は実装しない」と明記されている
+- [ ] `git diff` で `assets/engine.js` の変更が**コメント行のみ**であること(`git diff assets/engine.js` を目視。`FAR_DRIVE_MIN` の値に差分が出ていたらやり直し)
+- [ ] `git diff --stat -- fixtures scripts assets/app.js assets/geo.js style.css` が**空**
+- [ ] `node scripts/check-all.mjs` が 25本全PASS・exit 0
+- [ ] `?fixture=kusatsu` と `?fixture=hakone&demo=far` を mobile で撮影し Read で目視、デグレなし(コメント追記だけなので変化が無いことの確認)
 
-1. **before を撮る**(修正前に1枚): `?demo=zoomout` mobile。既存の 03-59-14 の画像でも代用可だが、R40 後の現状を撮り直す方が確実。
-2. style.css を修正。
-3. **after を撮る**:
-   - `?demo=zoomout` mobile(375px) … 主目的。サンプル行が1行に収まり、地図の上端が上に戻っていること
-   - `?demo=zoomout` desktop … PC幅でチップ行とサンプル行の左端が揃っているか(方針5の判断材料)
-   - `?fixture=kusatsu` mobile … `.samples` は非表示のはずなのでデグレ確認(カード30枚・番号ピン1〜30判読可)
-   - `?fixture=kusatsu&embed=1` mobile … 埋め込みでも `.samples` が出ていないこと
-4. 撮った画像を **Read で開いて目視**し、(a)サンプル行が1行 (b)右端にフェードが見える (c)検索欄・エリアチップ・地図と重なっていない (d)文字が切れていない、を確認する。
-5. `node scripts/check-all.mjs` を回して25本全緑を確認してからコミット・push。
+## 検証手順
+
+```
+cd C:\workspace\claude\旅行先用サイト\yadotabi
+node --check assets/engine.js
+git diff assets/engine.js
+git diff --stat -- fixtures scripts assets/app.js assets/geo.js
+node scripts/check-all.mjs
+node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=kusatsu" --mobile
+node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=hakone&demo=far" --mobile
+```
+撮影した2枚は必ず Read で開いて目視すること(撮っただけの報告は不可)。
 
 ## 変更禁止範囲
-- `assets/engine.js` の `rank` / `baseScore` / 重み / 閾値 / 除外ルール
-- `assets/geo.js` 全般(`CATEGORY_RULES`・`buildOverpassQuery`・半径定数を含む)
-- `fixtures/*.json`(再生成しない。Overpass は1回も叩かない)
-- `scripts/check-*.mjs` の**中身**(実行するだけ)
-- `.samples a` の `min-height: 44px`(R13 のタップ領域)
-- `SAMPLE_LINKS` の中身・順序・ラベル文字列(`check-sample.mjs` が5本を前提にしている)
-- `assets/app.js` / `index.html`(今回は CSS のみで解決する。もし CSS だけで無理だと判明したら、そこで手を止めて NIGHTLOG に理由を書き ROADMAP に差し戻すこと)
+
+- `rank()` の重み・閾値・カテゴリ多様性減点(`assets/engine.js`)
+- `FAR_DRIVE_MIN` / `DRIVE_M_PER_MIN` / `MAX_FAR` / `MAX_CARDS` の**値**
+- `fixtures/*.json`(再生成しない。Overpass を1回も叩かない)
+- `scripts/make-fixture.mjs` の `AREAS`(半径を変えない)
+- `scripts/check-*.mjs` の既存本体
+- git stash / reset --hard / checkout でのファイル復元
 
 ## 難易度・所要目安
-- 難易度: **低**(CSS 数行。`.chips` に完成形の前例があるため写すだけ)
-- 所要目安: 実装5分 + 撮影・目視10分 + check-all 約4分 = **20分程度**
 
-## 補足: これが終わったら次に回る候補
-- R77(状態Bのカードに「全◯件」を出すか検討・撮り比べ)… ユーザーに見える改善の次点
-- R76(4エリアの far 件数比較表)… 文書のみ・R19 の判断材料
-- R75(fixtures サイズ表)/ R72(check 並列化不可の明文化)… 文書のみ
+- 難易度: **sonnet**(調査と文書化が主。判断の分かれ目は NEXT.md で潰してある)
+- 所要目安: dump-rank 4本で約5分 + 表作成と文書化15分 + check-all 4分 + 撮影目視5分 = **約30分**

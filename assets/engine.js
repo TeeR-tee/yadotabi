@@ -30,6 +30,9 @@
   var MAX_MORE = 30; // 「もっと見る」で追加展開する分(31〜60件目)
   var MAX_FAR = 10;
   // 車でこれを超えるものは cards から外して far に回す
+  // 実効距離 = FAR_DRIVE_MIN × DRIVE_M_PER_MIN = 30km。この30kmは make-fixture の
+  // osmRadiusM(収集半径)とは独立に決まっており、両者が噛み合っていない場合(収集半径が
+  // 30km未満のエリア)は far が構造上0件になる。噛み合わせの実測は docs/FIXTURES.md 参照。
   var FAR_DRIVE_MIN = 60;
 
   // 要約(Wikipedia extract)の表示上限。超えたら「…」で切る。
