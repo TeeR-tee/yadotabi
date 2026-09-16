@@ -1,125 +1,149 @@
-# NEXT: R120 「かつて」を含まない廃止表現を落とす(R119 の申し送り)
+# NEXT: R123 「Wikipediaに記事がありません」が事実と違うカード26枚を正しい表示に直す
 
-- **タスクID**: R120
-- **難易度**: sonnet(既存 R119 ブロックへの配列1本の追加。設計は本書で確定済み)
-- **所要目安**: 25〜40分(実装10分 + 4エリア突き合わせ10分 + check-all 約4.5分 + 撮影)
+- タスクID: **R123**
+- 難易度: **sonnet**(表示のみ+engine.js 2行。除外ルール・rank は一切触らない)
+- 所要目安: 40〜60分(実装15分 + 26件の全件確認 + 撮影 + check-all 29本で約5分)
 
 ## 目的
 
-R119 は「もう存在しない場所」を落とす経路を入れたが、判定を **「かつて」AND 過去存在語** の
-2語にしたため、**「かつて」を書かずに過去形だけで廃止を述べる記事**が素通りしている。
-作業役からの申し送りどおりの残件で、実測すると **kusatsu 14位「群馬鉄山」**が写真・要約つきで
-現役スポットのようにカードに並んでいる。宿の客が向かっても現地に何も無いのは R119 と同じ実害。
+やどたびの売りは「作りかけを隠さない正直さ」なのに、**カードが事実と違う文を出している**。
+R83 で足した代替文を要約が無いカード全部に出しているため、**Wikipedia 記事が確実に存在する
+有名観光地のカードにまで「Wikipediaに記事がありません」と表示されている**。
+嘘をやめて、実際に持っている情報(記事はあるが本文が無い)に合った1行へ差し替える。
 
-## 実測で判明した前提(2026-09-16 計画役)
+## 実測で判明した前提(計画役が Playwright で4エリア実測・2026-09-16)
 
-`node scripts/dump-rank.mjs kusatsu` の cards 14位:
+### 原因の経路
 
-| 順位 | 名前 | カテゴリ | 距離m | source |
+1. `assets/engine.js:1053-1060`(R17 の救済): OSM 要素が `wikipedia` / `wikidata` タグを
+   持つと、Wikipedia 記事本文と突き合わせできなくても `item.source = 'both'` にする。
+   コメントにも「写真・要約は無いままで、付くのは SOURCE_BOTH の加点だけ」と明記されている。
+2. `assets/app.js:876`
+   `var NO_SUMMARY_TEXT = 'Wikipediaに記事がありません。地図の情報だけで表示しています。';`
+3. `assets/app.js:912-914`
+   ```js
+   var summary = card.summary
+     ? '<p class="feedcard__summary">' + escapeHtml(card.summary) + '</p>'
+     : '<p class="feedcard__summary feedcard__summary--none">' + escapeHtml(NO_SUMMARY_TEXT) + '</p>';
+   ```
+   → `card.summary` が空かどうかしか見ておらず、**記事の存在を示す `wikipedia` タグの有無を見ていない**。
+
+### 件数(cards 上位30枚。カッコ内は more 側)
+
+| エリア | 要約なし | うち**誤表示**(記事はある) | 正しい表示(真に OSM 単独) | more の誤表示 |
 |---|---|---|---|---|
-| 14 | 群馬鉄山 | スポット | 3391 | wiki |
+| kusatsu | 12/30 | **2** | 10 | 0 |
+| hakone | 17/30 | **6** | 11 | 10 |
+| dogo | 20/30 | **8** | 12 | 6 |
+| beppu | 17/30 | **10** | 7 | 5 |
+| 計 | 66 | **26** | 40 | 21 |
 
-fixtures/kusatsu.json の実テキスト(`wiki.query.pages` の extract):
+### 影響を受ける候補の全件リスト(cards 26件・順位は現状)
 
-> 群馬鉄山（ぐんまてつざん）は、群馬県吾妻郡六合村（現・中之条町）に**存在した**鉱山。群馬鉱山とも呼ばれる。
+kusatsu
+- 7位 大滝乃湯 (wikipedia=なし / wikidata=Q53675517)
+- 13位 日晃寺 (wikipedia=なし / wikidata=Q135416971)
 
-`definitionPredicate(definitionScope('', extract))` の結果は
-`群馬県吾妻郡六合村（現・中之条町）に存在した鉱山。` で、**「かつて」が無い**ため
-`assets/engine.js:510` の AND 判定を通過している(実測 `isExcludedArticle` = false)。
+hakone
+- 10位 神奈川県立生命の星・地球博物館 (wikipedia=神奈川県立生命の星・地球博物館)
+- 15位 小田原城天守閣 (wikipedia=小田原城)
+- 16位 小田原城址公園 (wikipedia=小田原城址公園)
+- 23位 小田原フラワーガーデン (wikipedia=小田原フラワーガーデン)
+- 25位 聖岳 (wikipedia=なし / wikidata=Q31515962)
+- 29位 強羅公園 (wikipedia=強羅公園)
 
-4エリア200記事を述部で走査した全ヒット(実測値):
+dogo
+- 9位 愛媛大学ミュージアム (wikipedia=愛媛大学ミュージアム)
+- 10位 松山城 (wikipedia=松山城 (伊予国))
+- 12位 勝山 (wikipedia=城山 (松山市))
+- 13位 城山公園 (wikipedia=城山公園 (松山市))
+- 14位 坂の上の雲ミュージアム (wikipedia=坂の上の雲ミュージアム)
+- 15位 媛彦温泉 (wikipedia=媛彦温泉)
+- 21位 勝岡山 (wikipedia=なし / wikidata=Q31699675)
+- 24位 萬翠荘 (wikipedia=萬翠荘)
 
-| 語 | ヒット | 内訳 |
-|---|---|---|
-| `存在した` | 6件 | 群馬鉄山 / 白根火山ロープウェイ / 愛媛県立道後動物園 / 鶴見園 / キャンプ・チッカマウガ / 別府鉱山 |
-| `存在していた` | 1件 | 草津シズカ山スキー場 |
-| `あった` | 16件 | **湯築城・石垣山城・羽根尾城・長野原城**ほか村・町・廃校 |
+beppu
+- 13位 浜脇温泉 (wikipedia=浜脇温泉)
+- 15位 別府海浜砂湯 (wikipedia=別府海浜砂湯)
+- 16位 別府地獄めぐり (wikipedia=別府地獄めぐり)
+- 17位 大分マリーンパレス水族館「うみたまご」 (wikipedia=なし / wikidata=Q11432633)
+- 20位 大分香りの博物館 (wikipedia=大分香りの博物館)
+- 21位 やまなみの湯 (wikipedia=ひょうたん温泉)
+- 25位 高崎山 (wikipedia=なし / wikidata=Q11669749)
+- 27位 大平山 (wikipedia=大平山 (大分県))
+- 29位 龍巻地獄 (wikipedia=なし / wikidata=Q135237478)
+- 30位 城島高原パーク (wikipedia=なし / wikidata=Q3196520)
 
-## 実装方針
+26件中 **18件は `wikipedia` タグに記事タイトルそのものが入っている**(残り8件は wikidata のみ)。
 
-`assets/engine.js` の R119 定数(`engine.js:275-276`)の直後に単独成立語を1本足す:
+### 要約本文の補充は今回は不可(調査済み)
 
-```js
-var DEFINITION_GONE_SOLO = ['存在した', '存在していた'];
-```
-
-`isExcludedArticle()`(`engine.js:493`)の R119 ブロック(`engine.js:510-514`)の**直前**に、
-`DEFINITION_GONE_SOLO` を述部から探して当たれば `return true` するループを置く。
-位置は既存の AND 判定と同じく **`isProtectedName()` より前**(R119 と同じ理由。保護リストは
-「何であるか」しか見ておらず、閉鎖済み施設は名前だけ種別語のまま残るため)。
-既存の AND 判定・`DEFINITION_GONE_PAST`・`hasOsmTagEvidence()` の救済経路は**1行も変えない**。
-
-### 緩めてはいけない理由(必読)
-
-- **`あった` を `DEFINITION_GONE_SOLO` に入れてはいけない**。実測で `湯築城`「愛媛県松山市道後公園に
-  あった日本の城。」(dogo **4位**の正当な観光対象)・`石垣山城`・`羽根尾城`・`長野原城` を巻き込む。
-  城跡は跡地が整備されていて**現地に行ける**。R119 が AND にしたのはこの1語のためであり、
-  `存在した`/`存在していた` の2語だけを単独成立に切り出すのが安全な最小差分。
-- **走査範囲を `definitionPredicate()`(定義文の述部)から広げてはいけない**。extract 全体を見ると
-  二文目以降の「かつて〇〇が存在した場所に建つ美術館」で現役施設を巻き込む(R117 で確認済みの罠)。
-- **`廃止` を足さない**。唯一のヒット `南別府駐屯地`(「…2022年（令和4年）3月17日に廃止された。」)は
-  名前の `駐屯地`/`病院` 側で**既に除外済み**(実測 `isExcludedArticle`=true)なので差分が出ず、
-  1件も救えない語で条件を広げると根拠が崩れる。
+`wikipedia` タグのタイトルを fixture の geosearch 50件と突き合わせた実測:
+kusatsu 10件中3件一致 / hakone 250件中10件 / dogo 31件中9件 / beppu 32件中4件。
+**上の26件の本文は fixture に入っていない**ので、本文を出すには Wikipedia API の追加呼び出しが必要。
+今回は外部API 0回なので**本文の補充はしない**。文言の是正だけを行う。
 
 ## 対象ファイル(絶対パス)
 
-- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\engine.js`(唯一のコード変更先)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-engine.mjs`(`(r119)` 節=513行目の後に `(r120)` 節を新設。既存ケースは1件も削らない)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md` / `docs\NIGHTLOG.md`(記録)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js`(876行付近・912-914行)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\engine.js`(**1197 `toCard()` の返り値に2フィールド足す1〜2行のみ**)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-nosummary.mjs`(文言・件数の依存を更新)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md` / `docs\NIGHTLOG.md`
 
-## 影響を受ける候補の全件リスト
+## 実装方針
 
-**直す側(判定が false→true に変わるのは、200記事中この1件だけ)**
-
-| エリア | 名前 | 現在の位置 | 述部 |
-|---|---|---|---|
-| kusatsu | 群馬鉄山 | cards **14位** | 群馬県吾妻郡六合村（現・中之条町）に存在した鉱山。 |
-
-**新ルールに当たるが R119 で既に除外済み(画面は不変・6件)**
-
-白根火山ロープウェイ(kusatsu more) / 草津シズカ山スキー場 / 愛媛県立道後動物園(dogo) /
-鶴見園(beppu) / キャンプ・チッカマウガ(beppu) / 別府鉱山(beppu)
-
-**残す側(`あった` 系。1件も落としてはいけない)**
-
-湯築城(dogo **4位**) / 石垣山城(hakone) / 石垣山一夜城歴史公園(hakone) / 羽根尾城(kusatsu) /
-長野原城(kusatsu) / 六合村 (群馬県) / 道後村 / 道後湯之町 / 大窪村 / 早川村 /
-別府駅商業施設(beppu **9位**・現役の駅ビル。「かつて…と総称されていた」だが過去存在語なし)
+1. `engine.js:1197 toCard()` の返り値に `wikipediaTitle: item.wikipediaTitle || null,` と
+   `wikidataId: item.wikidataId || null,` を足す。**これだけ**。rank・除外・present には触らない。
+2. `app.js:876` の隣に2本目の文言を置き、`app.js:912-914` を3分岐にする:
+   - 要約あり → 従来どおり
+   - 要約なし + `card.wikipediaTitle || card.wikidataId` あり →
+     「Wikipediaに記事はありますが、要約をここに出せていません。」程度の**事実だけの1行**
+     (謝罪や推測を書かない。R83 の方針を踏襲)
+   - 要約なし + どちらも無い → 従来の `NO_SUMMARY_TEXT`
+3. クラスは `.feedcard__summary--none`(淡色)を両方に付けたままにし、**CSS は1行も変えない**
+   (見た目の差は出さない。文言だけの是正)。区別が要る場合のみ `data-*` 属性で足す。
+4. `card.wikipediaTitle` を**画面に出さない**(記事名を出すと「押せそう」に見えてリンクが無いのは不親切。
+   出すかどうかは次サイクル以降の判断とし、NIGHTLOG の「朝の相談」に1行残す)。
 
 ## 完了条件
 
-1. 4エリア200記事の `isExcludedArticle` を変更前後で全件突き合わせ、**変わったのが群馬鉄山1件のみ**(誤爆0件)。
-2. `node scripts/dump-rank.mjs` の差分が期待どおり:
-   - **hakone / dogo / beppu は完全無差分**
-   - kusatsu は14位の群馬鉄山が消え、15位以降が1つずつ繰り上がる(繰り上がった候補を**全件目視**し、
-     廃止施設・宿・非観光対象が無いこと・cards が30枚を維持することを確認)
-3. `node scripts/check-engine.mjs` に `(r120)` 節を新設(落とす1件 + `あった` 系の残す対照4件以上 +
-   `存在した` が単独で成立することの確認)。既存ケースは1件も削らない。
-4. `node --check assets/engine.js` OK。
+- 上記26件すべてが新しい文言になり、真に OSM 単独の40件は `NO_SUMMARY_TEXT` のままであること
+  (4エリアを1件ずつ突き合わせて確認する。誤爆0件)
+- `more` 側21件も同じ判定で切り替わること
+- 要約ありのカードは1枚も文言が変わらないこと
+- `?fixture=` 4エリアの cards が30枚のまま・順位が1つも変わらないこと(`dump-rank` 差分ゼロ)
+- `scripts/check-nosummary.mjs` を更新し、**3種類(要約あり / 記事あり要約なし / 真に記事なし)の
+  件数と文言**を機械検査すること(既存の検査項目は1本も削らない)
 
 ## 検証手順
 
-1. `node scripts/dump-rank.mjs kusatsu|hakone|dogo|beppu` を変更前後で取り、差分を比較。
-2. `node scripts/check-engine.mjs` が全 PASS。
-3. 撮影(ローカルサーバ・外部API 0回):
-   - `http://127.0.0.1:3000/index.html?fixture=kusatsu` を **--mobile(375px)** で1枚(群馬鉄山が消え30枚維持)
-   - `http://127.0.0.1:3000/index.html?fixture=hakone` を **--mobile** で1枚(デグレ確認)
-   - 撮った画像を Read で開き、文字崩れ・はみ出し・帰属表示「Leaflet | © OpenStreetMap」が右上に
-     読めること・ピン番号が判読できることを目視する。
-4. **`node scripts/check-all.mjs` が 29本全緑(exit 0)**。これは必須。
+1. `node --check assets/app.js` と `node --check assets/engine.js`
+2. `node scripts/dump-rank.mjs kusatsu|hakone|dogo|beppu` を変更前後で比較し**差分ゼロ**を確認
+3. 撮影(すべて fixture・外部API 0回):
+   - `http://127.0.0.1:3000/?fixture=dogo` を **mobile(375px)** — 10位松山城の文言を確認
+   - `http://127.0.0.1:3000/?fixture=beppu` を **mobile(375px)** — 16位別府地獄めぐり・17位うみたまご
+   - `http://127.0.0.1:3000/?fixture=hakone` を **desktop(1280px)** — 15位小田原城天守閣・折り返し確認
+   - `http://127.0.0.1:3000/?fixture=kusatsu` を **mobile(375px)** — デグレ確認
+   撮影は `node C:\workspace\tools\shot\shot.mjs <URL> --mobile` / PC幅。画像を Read で開いて
+   **文字崩れ・重なり・はみ出し・2行になって詰まっていないか**を目で確認する。
+4. `node scripts/check-nosummary.mjs` 単独で全PASS
+5. **`node scripts/check-all.mjs` が 29本全緑(exit 0)** ← 必須
 
 ## 変更禁止範囲
 
-- **rank の重み・閾値は変更不可**(順位の設計はこのタスクの対象外)。
-- `assets/geo.js` / `fixtures/*.json` は変更不可(再生成もしない)。
-- 既存の `DEFINITION_GONE_MARK` / `DEFINITION_GONE_PAST` の AND 判定、`hasOsmTagEvidence()` の
-  救済経路、`NAME_PROTECT_SUFFIX`、`EXTRACT_KEYWORD_NG` は触らない。
-- `git stash` / `git reset` / `git checkout` でファイルを戻す操作は**禁止**。
-- **外部API 0回**(Overpass / Nominatim / Wikipedia を叩かない。撮影は `?fixture=` のみ)。
+- **rank の重み・閾値は変更不可**(`engine.js` の `WEIGHT` / `CATEGORY_PENALTY` / 各しきい値)
+- **除外ルールは変更不可**(今回は除外の話ではない)
+- `assets/geo.js` と `fixtures/*.json` は変更不可(再生成もしない)
+- `engine.js` の変更は **`toCard()` の返り値に2フィールド足すことだけ**に限る
+- `assets/style.css` は変更しない(文言のみの是正)
+- **外部API 0回**(Overpass / Nominatim / Wikipedia を1回も叩かない。撮影は全て `?fixture=`)
+- **git stash / reset --hard / checkout でファイルを戻す操作は禁止**
 
 ## 終わったら
 
-1. `docs/ROADMAP.md` の R120 行を `- [x] 2026-09-16` に変える。
-2. `docs/NIGHTLOG.md` の**ファイル末尾**の「## サイクル記録」節の末尾に3行追記する(先頭に新しい節を作らない)。
-3. **先にコミット**(1行の日本語メッセージ) → `git push`。
-4. 報告は簡潔に(長文の報告書を書かない)。
+1. `docs/ROADMAP.md` の R123 を `[x] 2026-09-16` に書き換える
+2. `docs/NIGHTLOG.md` の**ファイル末尾**の「## サイクル記録」節の末尾に3行追記
+   (やったこと / 見た目の確認結果 / 次)。ファイル先頭に新しい節を作らない
+3. **先にコミット**(1行の日本語メッセージ)
+4. `git push`
+5. **報告は簡潔に**(長文の報告書を書かない)

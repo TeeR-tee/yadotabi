@@ -1212,6 +1212,8 @@
       driveMin: minutesFor(distanceM, DRIVE_M_PER_MIN),
       links: buildLinks(item, hotel),
       source: item.source || 'osm',
+      wikipediaTitle: item.wikipediaTitle || null, // R123: 要約が無くても記事の存在を示す裏付け
+      wikidataId: item.wikidataId || null, // R123: 同上(wikipediaタグが無い場合の裏付け)
       _debug: item._debug || null // R84: ?debug=1 のときだけ描画する。通常動作では読まれない
     };
   }

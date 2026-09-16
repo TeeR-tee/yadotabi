@@ -1,4 +1,4 @@
-// R83: 要約が無いカードの代替文(NO_SUMMARY_TEXT)の機械検査
+// R83/R123: 要約が無いカードの代替文(NO_SUMMARY_TEXT / HAS_ARTICLE_NO_SUMMARY_TEXT)の機械検査
 // 使い方: node scripts/check-nosummary.mjs
 // 事前に別ターミナルでローカルサーバーを起動しておくか、このスクリプトが
 // 自分で `python -m http.server 3000` を起動して検証後に落とす。
@@ -7,13 +7,17 @@
 // (このプロジェクトに npm install はしない)。check-distance.mjs の作りを踏襲する。
 //
 // 確認項目(?fixture=dogo 上位30枚):
-//   1. 要約なしの20枚すべてに .feedcard__summary--none が付き、テキストが一致
-//   2. 要約ありの10枚には --none が付かない(--none の件数がちょうど20)
+//   1. 真に記事が無い12枚すべてに .feedcard__summary--none が付き、NO_SUMMARY_TEXT と一致
+//      (R123: 20枚だった「要約なし」のうち8枚は wikipedia/wikidata タグを持ち記事が実在するため、
+//      NO_SUMMARY_TEXT ではなく HAS_ARTICLE_NO_SUMMARY_TEXT に切り替わる)
+//   2. 要約ありの10枚には --none が付かない(--none の件数がちょうど20 = 12+8)
 //      R119 で 19→20。要約を持つ「愛媛県立道後動物園」(既に無い施設)が候補から消え、
 //      代わりに要約を持たない「御幸寺山」が30位に繰り上がったため。検査項目は減らしていない。
 //   3. .feedcard__summary の総数が30(要約有無にかかわらず全カードに1本)
 //   4. .feedcard__summary--none の getComputedStyle().color が .feedcard__summary の既定色と異なる
 //   5. コンソールエラー0件
+//   6. R123: 記事が実在する8枚(10位松山城 等)は HAS_ARTICLE_NO_SUMMARY_TEXT を含み、
+//      真に記事が無い12枚は NO_SUMMARY_TEXT ちょうどに一致すること(誤爆0件を1枚ずつ確認)
 
 import { chromium } from 'file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs';
 import { spawn } from 'node:child_process';
@@ -25,6 +29,18 @@ const BASE = `http://127.0.0.1:${PORT}`;
 const PROJECT_ROOT = fileURLToPath(new URL('..', import.meta.url));
 
 const NO_SUMMARY_TEXT = 'Wikipediaに記事がありません。地図の情報だけで表示しています。';
+const HAS_ARTICLE_NO_SUMMARY_TEXT = 'Wikipediaに記事はありますが、要約をここに出せていません。';
+// R123: dogo で記事が実在するのに要約が無い8枚(wikipedia/wikidataタグの裏付けあり)
+const DOGO_HAS_ARTICLE_NAMES = [
+  '愛媛大学ミュージアム',
+  '松山城',
+  '勝山',
+  '城山公園',
+  '坂の上の雲ミュージアム',
+  '媛彦温泉',
+  '勝岡山',
+  '萬翠荘',
+];
 
 let pass = 0;
 let fail = 0;
@@ -76,11 +92,33 @@ async function main() {
     ok(summaryCount === 30, '3. .feedcard__summary の総数が30', summaryCount);
 
     const noneCount = await page.locator('.feedcard__summary--none').count();
-    ok(noneCount === 20, '1/2. .feedcard__summary--none の件数が20', noneCount);
+    ok(noneCount === 20, '2. .feedcard__summary--none の件数が20(12+8)', noneCount);
 
-    const noneTexts = await page.locator('.feedcard__summary--none').allTextContents();
-    const noneTextsMatch = noneTexts.every((t) => t === NO_SUMMARY_TEXT);
-    ok(noneTextsMatch, '1. --none のテキストが全てNO_SUMMARY_TEXTと一致', noneTexts.filter((t) => t !== NO_SUMMARY_TEXT));
+    // R123: カードごとに名前と--none本文を突き合わせ、記事あり8枚/記事なし12枚の文言を確認
+    const cardRows = await page.locator('.feedcard').evaluateAll((cards) =>
+      cards.map((c) => ({
+        name: c.querySelector('.feedcard__name') ? c.querySelector('.feedcard__name').textContent : '',
+        noneText: c.querySelector('.feedcard__summary--none') ? c.querySelector('.feedcard__summary--none').textContent : null,
+      }))
+    );
+    const noneRows = cardRows.filter((r) => r.noneText !== null);
+    const hasArticleRows = noneRows.filter((r) => DOGO_HAS_ARTICLE_NAMES.includes(r.name));
+    const noArticleRows = noneRows.filter((r) => !DOGO_HAS_ARTICLE_NAMES.includes(r.name));
+
+    ok(
+      hasArticleRows.length === 8 && hasArticleRows.every((r) => r.noneText.indexOf(HAS_ARTICLE_NO_SUMMARY_TEXT) === 0),
+      '6a. 記事が実在する8枚がHAS_ARTICLE_NO_SUMMARY_TEXTになっている',
+      hasArticleRows
+    );
+    ok(
+      noArticleRows.length === 12 && noArticleRows.every((r) => r.noneText === NO_SUMMARY_TEXT),
+      '6b. 真に記事が無い12枚がNO_SUMMARY_TEXTちょうどのまま(誤爆0件)',
+      noArticleRows
+    );
+
+    const noneTexts = noneRows.map((r) => r.noneText);
+    const noneTextsMatch = noneTexts.every((t) => t === NO_SUMMARY_TEXT || t.indexOf(HAS_ARTICLE_NO_SUMMARY_TEXT) === 0);
+    ok(noneTextsMatch, '1. --none のテキストが全てNO_SUMMARY_TEXTかHAS_ARTICLE_NO_SUMMARY_TEXTのいずれかと一致', noneTexts);
 
     const colors = await page.evaluate(() => {
       const none = document.querySelector('.feedcard__summary--none');

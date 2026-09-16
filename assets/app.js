@@ -874,6 +874,8 @@
 
   // R83: Wikipedia記事が紐づかないカードに出す代替文(事実のみ・推測や謝罪を書かない)
   var NO_SUMMARY_TEXT = 'Wikipediaに記事がありません。地図の情報だけで表示しています。';
+  // R123: 記事の存在(wikipedia/wikidataタグ)は確認できるが本文を取得できていないカード用
+  var HAS_ARTICLE_NO_SUMMARY_TEXT = 'Wikipediaに記事はありますが、要約をここに出せていません。';
 
   /**
    * R84: rank のスコア内訳を1行にする(`?fixture=…&debug=1` のときだけ呼ばれる)。
@@ -909,8 +911,20 @@
             'data-cat="' + escapeHtml(card.categoryLabel || '') + '" data-emoji="' + escapeHtml(emoji) + '"></button>'
         : placeholderHtml(card, emoji));
 
+    // R123: 要約が無い場合、記事の存在(wikipedia/wikidataタグ)の有無で文言を分ける
+    // (記事はあるのに「記事がありません」と嘘をつかない。card.wikipediaTitle 自体は画面に出さない)
+    var hasArticle = !card.summary && (card.wikipediaTitle || card.wikidataId);
+    var wikipediaUrl = card.wikipediaTitle
+      ? safeUrl('https://ja.wikipedia.org/wiki/' + encodeURIComponent(card.wikipediaTitle.replace(/ /g, '_')))
+      : null;
     var summary = card.summary
       ? '<p class="feedcard__summary">' + escapeHtml(card.summary) + '</p>'
+      : hasArticle
+      ? '<p class="feedcard__summary feedcard__summary--none">' + escapeHtml(HAS_ARTICLE_NO_SUMMARY_TEXT) +
+          (wikipediaUrl
+            ? ' <a href="' + escapeHtml(wikipediaUrl) + '" target="_blank" rel="noopener">Wikipediaで見る</a>'
+            : '') +
+        '</p>'
       : '<p class="feedcard__summary feedcard__summary--none">' + escapeHtml(NO_SUMMARY_TEXT) + '</p>';
 
     return '<article class="card feedcard" data-index="' + index + '">' +

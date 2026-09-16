@@ -143,9 +143,10 @@ console.log('\n(a) 統合・除外・far分離・Cardのフィールド・リン
   ok(!res.cards.some(c => c.name === '遠方の城'), 'far のものは cards に無い');
   ok(res.cards.every(c => c.driveMin <= 60), 'cards は全て driveMin<=60');
 
-  // Card の全フィールド(R84: _debug は ?debug=1 の描画元。通常動作では読まれない)
+  // Card の全フィールド(R84: _debug は ?debug=1 の描画元。通常動作では読まれない。
+  // R123: wikipediaTitle/wikidataId は記事の存在を示す裏付け。画面には出さない)
   eq(Object.keys(saino).sort(),
-    ['_debug','categoryLabel','distanceM','driveMin','id','imageUrl','lat','links','lon','name','source','summary','walkMin'],
+    ['_debug','categoryLabel','distanceM','driveMin','id','imageUrl','lat','links','lon','source','summary','name','walkMin','wikidataId','wikipediaTitle'].sort(),
     'Card のフィールドが仕様どおり');
   eq(Object.keys(saino.links).sort(), ['gmap','instagram','official','tiktok','youtube'], 'links のキー');
 
