@@ -51,7 +51,27 @@ body {
   min-width: 0;
 }
 
-.pickbar__input { width: 100%; }
+.pickbar__input { width: 100%; padding-right: 48px; }
+
+/* 検索欄クリアボタン(×): 入力ゼロ原則には反しない(入力を取り消すだけの操作) */
+.pickbar__clear {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  color: var(--c-text-sub);
+  font-size: 20px;
+  line-height: 1;
+  z-index: 1;
+}
 
 /* 候補のドロップダウン */
 .suggest {
@@ -568,7 +588,8 @@ body.is-embed .view--feed { padding-bottom: var(--sp-4); }
 .topbar__back:focus-visible,
 .suggest__item:focus-visible,
 .far__summary:focus-visible,
-.far__item a:focus-visible {
+.far__item a:focus-visible,
+.pickbar__clear:focus-visible {
   outline: 2px solid var(--c-primary);
   outline-offset: 2px;
   box-shadow: none;

@@ -18,6 +18,9 @@
 //   5. ?demo=recent(空欄)では .suggest__head が0個か1個で、候補行は最近だけ
 //   6. ?demo=suggest(最近なし)では .suggest__head が0個(見出しが浮かない)
 //   7. コンソールエラー0件
+//   8. (R59) ?demo=suggest で #search-clear が visible。クリックで #search-input が
+//      空になり #suggest-list が非表示、フォーカスが #search-input に戻る
+//   9. (R59) ?demo=recent(value空)で #search-clear が hidden
 
 import { chromium } from 'file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs';
 import { spawn } from 'node:child_process';
@@ -143,7 +146,7 @@ async function main() {
       await context.close();
     }
 
-    // --- 6. ?demo=suggest(最近なし) ---
+    // --- 6・8. ?demo=suggest(最近なし・×ボタン) ---
     {
       const context = await browser.newContext({ viewport: { width: 375, height: 812 } });
       const { page, consoleErrors } = await newPage(context);
@@ -151,6 +154,31 @@ async function main() {
       await waitFor(800);
       const headCount = await page.locator('.suggest__head').count();
       ok(headCount === 0, '6. ?demo=suggest で .suggest__head が0個(見出しが浮かない)', headCount);
+
+      const clearVisible = await page.locator('#search-clear').isVisible();
+      ok(clearVisible === true, '8. ?demo=suggest で #search-clear が visible', clearVisible);
+
+      await page.locator('#search-clear').click();
+      await waitFor(300);
+      const inputValue = await page.locator('#search-input').inputValue();
+      ok(inputValue === '', '8. ×クリックで #search-input が空になる', inputValue);
+      const suggestHidden = await page.locator('#suggest-list').evaluate((el) => el.hidden);
+      ok(suggestHidden === true, '8. ×クリックで #suggest-list が非表示になる', suggestHidden);
+      const activeId = await page.evaluate(() => document.activeElement && document.activeElement.id);
+      ok(activeId === 'search-input', '8. ×クリック後のフォーカスが #search-input', activeId);
+
+      allConsoleErrors.push(...consoleErrors);
+      await context.close();
+    }
+
+    // --- 9. ?demo=recent(value空)で #search-clear が hidden ---
+    {
+      const context = await browser.newContext({ viewport: { width: 375, height: 812 } });
+      const { page, consoleErrors } = await newPage(context);
+      await page.goto(`${BASE}/?demo=recent`, { waitUntil: 'load' });
+      await waitFor(800);
+      const clearHidden = await page.locator('#search-clear').evaluate((el) => el.hidden);
+      ok(clearHidden === true, '9. ?demo=recent で #search-clear が hidden', clearHidden);
       allConsoleErrors.push(...consoleErrors);
       await context.close();
     }

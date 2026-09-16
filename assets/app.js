@@ -487,6 +487,11 @@
     suggestItems = [];
   }
 
+  // 検索欄に入力があるときだけ×ボタンを見せる(空白1文字でも「入力あり」扱い)。
+  function syncSearchClear() {
+    els.searchClear.hidden = !(els.searchInput.value.length > 0);
+  }
+
   /**
    * 候補と「最近」をまとめて描く。行の種類は data-act で区別する。
    * `act === 'head'` の行はセクション見出しで、ボタンではなく押せない要素として描く
@@ -797,7 +802,7 @@
     var emoji = emojiFor(card.categoryLabel);
     var imgSrc = demoImgFail && index < 3 ? './__imgfail_test__.png' : card.imageUrl;
     var media = imgSrc && safeUrl(imgSrc)
-      ? '<img class="feedcard__img" src="' + escapeHtml(imgSrc) + '" alt="" loading="lazy" ' +
+      ? '<img class="feedcard__img" src="' + escapeHtml(imgSrc) + '" alt="' + escapeHtml(card.name || 'スポット') + 'の写真" loading="lazy" ' +
           'data-cat="' + escapeHtml(card.categoryLabel || '') + '" data-emoji="' + escapeHtml(emoji) + '">'
       : placeholderHtml(card, emoji);
 
@@ -1420,6 +1425,7 @@
   function applyDemoStateA(demo) {
     if (demo === 'suggest') {
       els.searchInput.value = '草津';
+      syncSearchClear();
       renderSuggest([
         { act: 'hotel', icon: '♨', name: '草津温泉 湯畑の宿 佳乃や',
           sub: '日本、〒377-1711 群馬県吾妻郡草津町草津123-4' },
@@ -1434,6 +1440,7 @@
     }
     if (demo === 'recent') {
       els.searchInput.value = '';
+      syncSearchClear();
       renderSuggest([
         { act: 'hotel', icon: '🕘', name: '草津温泉 湯畑の宿 佳乃や' },
         { act: 'hotel', icon: '🕘', name: 'ホテルヴィレッジ 草津温泉 ベルツの森リゾートアネックス館' },
@@ -1445,6 +1452,7 @@
       // 統合後の姿(入力あり+最近の一致+候補)を撮るための固定配列。
       // 候補行は実クリックでも状態Bへ遷移できるよう hotel 座標を持たせる。
       els.searchInput.value = '草津';
+      syncSearchClear();
       renderSuggest([
         { act: 'head', name: '最近見た宿' },
         { act: 'hotel', icon: '🕘', name: '草津温泉 湯畑の宿 佳乃や',
@@ -1484,6 +1492,7 @@
     var q = (params.get('q') || '').trim();
     if (q.length >= 2) {
       els.searchInput.value = q;
+      syncSearchClear();
       setCurrentChip(currentAreaIndex(q));
       YadoGeo.suggestHotels(q).then(function (results) {
         if (!results.length || state.view !== 'select') return;
@@ -1543,6 +1552,7 @@
     // --- 検索欄 ---
     els.searchInput.addEventListener('input', function () {
       runSuggest(els.searchInput.value);
+      syncSearchClear();
     });
     els.searchInput.addEventListener('focus', function () {
       if (els.searchInput.value.trim().length < 2) showRecent();
@@ -1553,11 +1563,17 @@
         els.searchInput.blur();
       }
     });
+    els.searchClear.addEventListener('click', function () {
+      els.searchInput.value = '';
+      hideSuggest();
+      syncSearchClear();
+      els.searchInput.focus();
+    });
 
     // 候補の外をタップしたら閉じる(候補内のタップより後に走らないよう mousedown は使わない)
     document.addEventListener('click', function (e) {
       if (els.suggest.hidden) return;
-      if (els.suggest.contains(e.target) || e.target === els.searchInput) return;
+      if (els.suggest.contains(e.target) || e.target === els.searchInput || e.target === els.searchClear) return;
       hideSuggest();
     });
 
@@ -1682,6 +1698,7 @@
       viewSelect: document.getElementById('view-select'),
       viewFeed: document.getElementById('view-feed'),
       searchInput: document.getElementById('search-input'),
+      searchClear: document.getElementById('search-clear'),
       suggest: document.getElementById('suggest-list'),
       chips: document.getElementById('area-chips'),
       map: document.getElementById('map'),

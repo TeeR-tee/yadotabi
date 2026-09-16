@@ -26,6 +26,7 @@ const TARGETS = [
   { selector: '.feedcard__link', label: 'リンクチップ', usePseudo: true },
   { selector: '.feedcard__no', label: '番号バッジ', usePseudo: true },
   { selector: '.suggest__item', label: '検索候補の行' },
+  { selector: '.pickbar__clear', label: '検索クリアボタン' },
   { selector: '.far__summary', label: 'もっと遠くの開閉' },
   { selector: '.far__item a', label: 'もっと遠くの各リンク' },
   { selector: '.morebtn', label: 'もっと見る' },

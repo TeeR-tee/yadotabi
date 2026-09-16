@@ -14,6 +14,8 @@
 //   4. 先頭3枚の番号バッジ .feedcard__no が消えていない(1・2・3が読める)
 //   5. ?fixture=kusatsu(フラグ無し)で .feedcard 30枚・.feedcard__ph の枚数が
 //      修正前と同じ(デグレなし)
+//   6. (R57) ?fixture=kusatsu(demo無し)で4枚目以降の .feedcard__img の alt が
+//      全件空でなく、対応するカードの .feedcard__name のテキストを含む
 
 import { chromium } from 'file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs';
 import { spawn } from 'node:child_process';
@@ -122,6 +124,31 @@ async function main() {
     // --- 5. フラグ無しでデグレなし(先に取得したベースラインを検査) ---
     ok(baselineCardCount === 30, '?fixture=kusatsu(フラグ無し)で .feedcard が30枚', baselineCardCount);
     console.log('  参考: フラグ無し時の .feedcard__ph 枚数 = ' + baselinePhCount);
+
+    // --- 6. (R57) alt がスポット名を含む(フラグ無しページの4枚目以降を検査) ---
+    {
+      const context = await browser.newContext({ viewport: { width: 375, height: 812 } });
+      const page = await context.newPage();
+      await page.goto(`${BASE}/?fixture=kusatsu`, { waitUntil: 'load' });
+      await waitFor(2000);
+
+      const cards = page.locator('.feedcard');
+      const cardCount = await cards.count();
+      let allAltOk = true;
+      for (let i = 3; i < cardCount; i++) {
+        const card = cards.nth(i);
+        const imgCount = await card.locator('.feedcard__img').count();
+        if (imgCount === 0) continue; // このカードは元々プレースホルダ
+        const alt = (await card.locator('.feedcard__img').getAttribute('alt')) || '';
+        const name = (await card.locator('.feedcard__name').textContent()) || '';
+        if (!alt.trim() || !alt.includes(name.trim())) {
+          allAltOk = false;
+          console.log(`  NG: ${i + 1}枚目 alt="${alt}" name="${name}"`);
+        }
+      }
+      ok(allAltOk, '6. 4枚目以降の .feedcard__img の alt が空でなくスポット名を含む');
+      await context.close();
+    }
   } finally {
     await browser.close();
     if (serverProc) serverProc.kill();

@@ -344,3 +344,8 @@
 - やったこと: `selectHotel()`で状態Bに入る際`historyPushed`フラグ付きで`history.pushState`(embed時・二重push時はスキップ)、`goBack()`末尾でフラグを戻し、`goBackFromUi()`(戻るボタン用)と`popstate`購読(`bindEvents()`末尾)を追加。`?hotel=`/`?fixture=`直行でもpushStateが1回走るためこの分の戻るで状態Aに出られる仕様を採用(URLは書き換えない)。新規`scripts/check-history.mjs`(18項目)を`check-all.mjs`に追加、20本全PASS。
 - 見た目の確認結果: `?fixture=kusatsu`mobileでカード30枚・番号ピン判読可・デグレなし。check-history内で撮影したgoBack後の状態A(検索欄・エリアチップ・地図)も崩れなし。コンソールエラー0件。
 - 次: R14/R19/R40/R55/R57/R59が残候補。
+
+### 2026-09-16 R57 + R59 カード画像のalt改善 + 検索欄クリアボタン(×)
+- やったこと: `cardHtml()`の`<img>`の`alt`を`escapeHtml(card.name)+'の写真'`に変更(クラス・data属性・loading順は維持)。`index.html`の検索入力直後に`#search-clear`ボタンを追加し、`app.js`に`syncSearchClear()`を新設して`input`ハンドラ・`applyDemoStateA()`の`suggest`/`recent`/`recentmix`各分岐・`?q=`反映箇所すべてから呼び出し、クリックで値クリア+候補閉じ+フォーカス復帰する処理を実装。`style.css`に`.pickbar__clear`(44px・absolute)と`.pickbar__input`の`padding-right`を追加。
+- 見た目の確認結果: `check-imgfail.mjs`にalt検査、`check-a11y.mjs`に`.pickbar__clear`の44px検査、`check-recent.mjs`に×の表示/クリック/フォーカス復帰ケースを追加し`check-all.mjs`20本全PASS。`?demo=suggest`mobileで×が検索欄右端に見え候補リストと重ならず、`?fixture=kusatsu`mobileはカード30枚・番号ピン判読可でデグレなし、`?demo=recent`mobileでは×が出ないことをRead目視で確認、コンソールエラー0件。
+- 次: R14/R19/R40/R55が残候補。
