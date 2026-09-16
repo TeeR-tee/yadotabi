@@ -1,6 +1,6 @@
 # やどたび (v3)
 
-**What this is**: Yadotabi is a static, mobile-first web app that suggests nearby sights around a hotel from just its coordinates — no user input required. **How to try**: open `https://teer-tee.github.io/yadotabi/`, or add `?fixture=kusatsu` to see a demo with no external API calls. **No API keys needed**: it only uses free public APIs (OpenStreetMap / Overpass / Wikipedia), at zero cost.
+**What this is**: Yadotabi is a static, mobile-first web app that suggests nearby sights around a hotel from just its coordinates — no user input required. **How to try**: open `https://teer-tee.github.io/yadotabi/`, or add `?fixture=` with `kusatsu` / `hakone` / `dogo` / `beppu` (or `random` to pick one at runtime) to see a demo with no external API calls; add `&debug=1` alongside `?fixture=` to also show the rank score breakdown on each card. **Embedding**: add `?embed=1` together with `?hotel=` to show only the mini map and the feed, sized for pasting into a hotel's own booking page as an iframe (height auto-resizes). **No API keys needed**: it only uses free public APIs (OpenStreetMap / Overpass / Wikipedia), at zero cost. See the parameter table below (in Japanese) for the full list.
 
 <table>
   <tr>

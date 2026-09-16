@@ -534,3 +534,6 @@
 - R97 印刷用CSSが0行だった状態を確認後、`assets/style.css`末尾に`@media print`を1ブロック追記(地図非表示・topbar固定解除・戻るボタン非表示・lightbox/passivebox非表示・カード分断防止・チップ枠線を薄く)。地図は紙でタイルが読めない懸念のため**消す方針**にし、`.feedmap`ごと非表示にすることでOSM帰属表示も一緒に消えるが地図が無いので規約上問題なし。また`.feed`は元々`flex-direction:column`の1カラム構成だったため、依頼にあった「カード1カラム化」の追加改修は不要だった。
 - 印刷メディア(desktop1280/A4相当794/mobile375)で戻るボタン・地図・passiveboxが消えカードが白背景で幅内に収まることを撮影・目視。通常表示`?fixture=kusatsu`mobileは変更前と同一でデグレなし。`git diff assets/style.css`は`@media print`ブロック25行の追加のみ。`node scripts/check-all.mjs`は27本中27本PASS。
 - 次: ROADMAP残りはR64/R81/R85/R88/R90から計画役が選定。
+- R104 README.md:3の英語段落(3文)を4文に拡張。fixtureがkusatsu/hakone/dogo/beppuの4エリア+randomであること、`?debug=1`はfixture併用時のみ有効なこと、`?embed=1`を`?hotel=`と併用するとiframe埋め込み(高さ自動)ができることを追記し、日本語表を案内する1文で締めた。用語は翻訳せずそのまま使用。
+- `git diff README.md`で日本語行の差分ゼロ・英語段落1行のみの変更を確認。画面変更なしのため撮影省略、`node docs/check.mjs`OK、`node scripts/check-all.mjs`は27本中27本PASS。
+- 次: ROADMAP残りはR64/R81/R85/R88/R90から計画役が選定。
