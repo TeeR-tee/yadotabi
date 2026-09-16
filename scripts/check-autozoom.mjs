@@ -11,6 +11,9 @@
 //   4. 地図ドラッグ起点の0件では自動ズームが起きない(panBy 後に zoom 不変)
 //   5. ?simulate=overpass504 相当の混雑時に zoom が変わらず、文言が「宿ピンの取得が混雑中です。…」のままである
 //   6. コンソールエラー0件・外部ドメインへの fetch 0回
+//   7. R113: 同じエリアチップを3回連打しても Overpass 相当のリクエストが増えない(1回目のみ)
+//   8. R113: 別のエリアチップに切り替えると Overpass 相当のリクエストが増える(ガードが効きすぎていない裏取り)
+//      ※ 7・8 は ?demo=autozoom を使わず、page.route() で overpass-api.de を fulfill しつつ回数を数える(通常モード)。
 
 import { chromium } from 'file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs';
 import { spawn } from 'node:child_process';
@@ -184,6 +187,52 @@ async function main() {
 
       ok(externalRequests.length === 0, '6. 混雑シミュレーション時も外部fetchが0回', externalRequests);
       ok(consoleErrors.length === 0, '6. コンソールエラー0件(混雑)', consoleErrors);
+
+      await context.close();
+    }
+    // --- 7,8(R113): 同じチップ連打で再取得が増えない/別チップでは増える ---
+    {
+      const context = await browser.newContext({ viewport: { width: 375, height: 812 } });
+      const page = await context.newPage();
+      let overpassCount = 0;
+      await page.route('**overpass-api.de/**', (route) => {
+        overpassCount++;
+        route.fulfill({ status: 200, contentType: 'application/json', body: '{"elements":[]}' });
+      });
+      await page.route('**://nominatim.openstreetmap.org/**', (route) => route.fulfill({
+        status: 200, contentType: 'application/json', body: '[]',
+      }));
+
+      // ?demo=zoomout 等の demoStateA 系URLは loadHotelsInView が早期returnして
+      // fetchHotelsInBbox を一切呼ばないため検証にならない。通常モード(?demoなし)で見る。
+      await page.goto(`${BASE}/`, { waitUntil: 'load' });
+      await waitFor(1200);
+      const countAfterInitialLoad = overpassCount;
+
+      const chips = page.locator('.chip');
+      const firstChip = chips.first();
+      await firstChip.click();
+      await waitFor(800);
+      const countAfterFirstClick = overpassCount;
+      ok(countAfterFirstClick > countAfterInitialLoad, '7. 最初のチップ押下でOverpass相当のリクエストが発生', { countAfterInitialLoad, countAfterFirstClick });
+
+      // 同じチップを連打(合計3回)しても増えない
+      await firstChip.click();
+      await waitFor(500);
+      await firstChip.click();
+      await waitFor(500);
+      ok(overpassCount === countAfterFirstClick, '7. 同じチップを3回押してもリクエストが増えない', overpassCount);
+
+      // aria-current は連打後も維持されている(チップ強調は壊れていない)
+      const ariaCount = await page.locator('.chip[aria-current="true"]').count();
+      ok(ariaCount === 1, '7. 連打後も aria-current が1個のまま', ariaCount);
+
+      // 別のチップへ切り替えると増える
+      const countBeforeSecondChip = overpassCount;
+      const secondChip = chips.nth(1);
+      await secondChip.click();
+      await waitFor(800);
+      ok(overpassCount > countBeforeSecondChip, '8. 別チップへ切り替えるとリクエストが増える', { countBeforeSecondChip, overpassCount });
 
       await context.close();
     }

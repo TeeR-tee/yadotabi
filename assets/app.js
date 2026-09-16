@@ -513,9 +513,18 @@
     });
   }
 
-  function flyTo(lat, lon, zoom) {
+  function flyTo(lat, lon, zoom, force) {
     ensureMap();
-    map.setView([lat, lon], zoom || DEFAULT_VIEW.zoom);
+    var z = zoom || DEFAULT_VIEW.zoom;
+    // 直前と同じ座標・同じズームなら何もしない(無駄な再取得を防ぐ)。
+    // force=true は ?demo=autozoom 専用: 初期位置と同じ座標へわざと飛んで0件合流を再現するため。
+    if (!force) {
+      var c = map.getCenter();
+      if (map.getZoom() === z && Math.abs(c.lat - lat) < 1e-6 && Math.abs(c.lng - lon) < 1e-6) {
+        return;
+      }
+    }
+    map.setView([lat, lon], z);
     saveMapView();
     // エリアへ飛んだ直後の0件だけ、1回だけ自動でズームアウトしてよい券を立てる
     // (ドラッグ由来の onMapMoved 経由では立てない)。
@@ -1617,7 +1626,7 @@
       // ?q= ジャンプ等の外部APIを介さず、flyTo() 経由の0件合流だけを再現する
       // (Nominatim を叩かずに済ませるため、初期位置への flyTo で代用する)。
       ensureMap();
-      flyTo(DEFAULT_VIEW.lat, DEFAULT_VIEW.lon, DEFAULT_VIEW.zoom);
+      flyTo(DEFAULT_VIEW.lat, DEFAULT_VIEW.lon, DEFAULT_VIEW.zoom, true);
       return;
     }
 

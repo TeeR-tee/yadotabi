@@ -14,7 +14,7 @@
 |---|---|
 | check-a11y | アクセシビリティ(aria-label 等) |
 | check-attrib | 出典・ライセンス表記の有無 |
-| check-autozoom | 地図の自動ズーム挙動 |
+| check-autozoom | 地図の自動ズーム挙動。R113: 同じエリアチップ連打で再取得が増えないこと/別チップでは増えることも含む |
 | check-chipcurrent | `?q=`/チップ選択時に該当エリアチップが強調されること(R29) |
 | check-debugflag | `?fixture=` 併用時だけ効く `?debug=1` のスコア内訳表示(fixture 無しでは出ないこと) |
 | check-distance | 距離表示・並び順 |
