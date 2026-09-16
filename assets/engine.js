@@ -246,6 +246,36 @@
   ];
 
   /**
+   * R119: 既に閉鎖・解体されて**現地に何も無い**施設を落とすための2語。
+   *
+   * これまでの除外は「**何であるか**」(学校・病院・宿)しか見ておらず、「**まだ在るか**」を
+   * 一度も見ていなかった。そのため閉鎖済みのスキー場・動物園・遊園地が写真と要約つきで
+   * カードに並び、客が向かっても現地に何も無い、という提案として最も直接的な実害が出ていた
+   * (実測: kusatsu 13位 草津シズカ山スキー場 / dogo 12位 愛媛県立道後動物園 /
+   *  beppu 10位 鶴見園 / kusatsu more 4位 白根火山ロープウェイ)。
+   *
+   * 判定は `かつて` と過去存在語の **AND**。**片方だけに緩めてはいけない**。
+   * 「あった」単独にすると `湯築城`「愛媛県松山市道後公園にあった日本の城。」(dogo 4位の
+   * 正当な観光対象)、`石垣山城`・`羽根尾城`・`長野原城`・`道後村`・`道後湯之町`・
+   * `六合村 (群馬県)` を巻き込む。城跡や一夜城歴史公園は「跡地を整備した公園」として
+   * **現地に行ける**ので落としてはいけない。実測でこれらは全て「かつて」を含まないため、
+   * 2語の AND なら誤爆0件になる。
+   *
+   * 「に存在した」単独も足さない: `群馬鉄山`(kusatsu 15位)が該当するが「かつて」を
+   * 含まない。鉱山跡は現地に遺構が残る場合があり、1件のために条件を広げると根拠が崩れる。
+   *
+   * 走査範囲は R117 と同じ definitionPredicate()(定義文の述部)。extract 全体を見ると
+   * 「かつてホテルだった建物を活用した美術館」のような二文目以降で現役施設を巻き込む。
+   * `別府駅商業施設`「かつて…と総称されていた、…併設されている以下の商業施設について
+   * 述べる。」は過去存在語が無いので残る(現役の駅ビルなので残るのが正しい)。
+   *
+   * 救済経路は既存のまま: hasOsmTagEvidence() で OSM に観光タグ付きで実在する要素と
+   * 一致する記事は落ちない(= 現地に何かが残っていれば残る)。
+   */
+  var DEFINITION_GONE_MARK = 'かつて';
+  var DEFINITION_GONE_PAST = ['存在した', '存在していた', 'あった'];
+
+  /**
    * Wikipedia 単独候補のカテゴリ推定表。
    *
    * Wikipedia 記事には OSM のようなタグが無いため、そのままだと全部 'other' になり、
@@ -463,11 +493,30 @@
   function isExcludedArticle(title, extract) {
     var t = typeof title === 'string' ? title.trim() : '';
     if (isExcludedName(t)) return true;
+
+    var e = typeof extract === 'string' ? extract : '';
+    // 定義文の述部。R117(宿)と R119(現存判定)で共用するので、保護の前に一度だけ作る。
+    var predicate = e ? definitionPredicate(definitionScope('', e)) : '';
+
+    // R119: 「かつて」+ 過去存在語の AND で、既に無くなった施設を落とす。
+    // **保護リストより先に**評価する唯一の冒頭文ルール。保護リスト(NAME_PROTECT_SUFFIX)は
+    // 「名前が観光の種別語で終わるなら、種別語ベースの除外に当たっても守る」という
+    // **「何であるか」を守る**仕組みで、「まだ在るか」は一度も見ていない。
+    // 閉鎖済みの施設は名前だけ種別語のまま残るため、保護を先に通すと
+    // `愛媛県立道後動物園`(`動物園` で保護)・`白根火山ロープウェイ`(`ロープウェイ` で保護)が
+    // 冒頭文に到達せず生き残ってしまう(R119 実装時に実測で判明)。
+    // 順序を入れ替えても保護対象が巻き込まれないことは 4エリア200記事の全件突き合わせで確認済み
+    // (湯築城・石垣山城・石垣山一夜城歴史公園・道後村などは「かつて」を含まないため無傷)。
+    if (predicate.indexOf(DEFINITION_GONE_MARK) !== -1) {
+      for (var k = 0; k < DEFINITION_GONE_PAST.length; k++) {
+        if (predicate.indexOf(DEFINITION_GONE_PAST[k]) !== -1) return true;
+      }
+    }
+
     // 名前が保護語で終わるものは冒頭文でも落とさない(保護 → 除外の順を保つ)。
     // isExcludedName と同じ正規化後の文字列で見ないと判断がねじれる。
     if (isProtectedName(stripDisambiguation(t) || t)) return false;
 
-    var e = typeof extract === 'string' ? extract : '';
     if (e) {
       for (var i = 0; i < EXTRACT_KEYWORD_NG.length; i++) {
         if (e.indexOf(EXTRACT_KEYWORD_NG[i]) !== -1) return true;
@@ -476,7 +525,6 @@
       // 上のループと同じく extract 全体を走査すると、二文目以降の「〜ホテルに隣接している」で
       // 観光対象を巻き込む。さらに定義文の主題部(「〇〇ホテル前（まえ）は、」)は記事名の
       // 言い直しなので、そこを見ると名前で落とすのと同じになってしまう。述部に限る。
-      var predicate = definitionPredicate(definitionScope('', e));
       for (var j = 0; j < DEFINITION_LODGING_NG.length; j++) {
         if (predicate.indexOf(DEFINITION_LODGING_NG[j]) !== -1) return true;
       }
