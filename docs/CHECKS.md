@@ -15,7 +15,7 @@
 | check-a11y | アクセシビリティ(aria-label 等) |
 | check-attrib | 出典・ライセンス表記の有無 |
 | check-autozoom | 地図の自動ズーム挙動 |
-| check-chipcurrent | 現在地チップの表示 |
+| check-chipcurrent | `?q=`/チップ選択時に該当エリアチップが強調されること(R29) |
 | check-debugflag | `?fixture=` 併用時だけ効く `?debug=1` のスコア内訳表示(fixture 無しでは出ないこと) |
 | check-distance | 距離表示・並び順 |
 | check-embedbg | embed時の背景表示 |
@@ -29,11 +29,11 @@
 | check-keyboard | キーボード操作対応 |
 | check-lightbox | 画像ライトボックス表示 |
 | check-more | 「もっと見る」展開挙動 |
-| check-nohotels | ホテル指定なし時の挙動 |
+| check-nohotels | 宿0件画面(`?demo=nohotels`)の案内文と、タイル読込失敗時の案内(R101) |
 | check-nosummary | Wikipedia 記事が無いカードの代替1行の表示 |
-| check-passive | passiveイベントリスナー設定 |
-| check-pinflash | 地図ピンの点滅演出 |
-| check-recent | 直近閲覧の反映 |
+| check-passive | 受動ログ(localStorage `yado.passive.v1`)の記録内容 |
+| check-pinflash | カードの番号バッジをタップすると小地図の該当ピンが光ること(R10) |
+| check-recent | 検索候補に「最近見た宿」が見出し付きで統合されること(R32) |
 | check-sample | サンプル導線チップの表示・件数 |
 
 所要目安(R55 実測・NIGHTLOG 2026-09-16 R60+R55、当時20本時点): 合計 **162.8s**、最遅 **check-hotelparam 27.9s**、次点 **check-feednote 12.3s**、僅差で **check-attrib 12.1s**。現在は27本。
