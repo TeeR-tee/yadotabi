@@ -47,6 +47,17 @@ const PAGES = [
   { url: `${BASE}/?fixture=hakone&demo=far`, label: '?fixture=hakone&demo=far(もっと遠く)' },
 ];
 
+// R129: 横向きスマホで1枚目カードが読める高さになっているかの機械検査。
+// 812x375/667x375(横)は可視高さ150px以上、375x812(縦)は基準どおり220pxの地図高さのまま
+// (=横向き対応で縦向きが1pxも変わっていないこと)を確認する。
+const LANDSCAPE_MIN_VISIBLE = 150;
+const PORTRAIT_FEEDMAP_HEIGHT = 220;
+const LANDSCAPE_CASES = [
+  { width: 812, height: 375, label: '812x375(横)', kind: 'landscape' },
+  { width: 667, height: 375, label: '667x375(横・SE)', kind: 'landscape' },
+  { width: 375, height: 812, label: '375x812(縦・デグレ確認)', kind: 'portrait' },
+];
+
 function isPortOpen(port) {
   return new Promise((resolve) => {
     const socket = net.createConnection({ port, host: '127.0.0.1' });
@@ -122,6 +133,43 @@ async function main() {
         }
         const ok = labels.every((label) => !!label);
         console.log(`[${ok ? 'OK' : 'NG'}] ${pageInfo.label} ${target.label} の aria-label: ${JSON.stringify(labels)}`);
+        if (!ok) hasFailure = true;
+      }
+
+      await context.close();
+    }
+
+    // R129: 横向き(高さ500px以下)で1枚目カードが読めるか、縦向きは無変化かを検査
+    const landscapeUrl = `${BASE}/?fixture=kusatsu`;
+    for (const c of LANDSCAPE_CASES) {
+      const context = await browser.newContext({
+        viewport: { width: c.width, height: c.height },
+        isMobile: true,
+        hasTouch: true,
+      });
+      const page = await context.newPage();
+      await page.goto(landscapeUrl, { waitUntil: 'load' });
+      await waitFor(1500);
+
+      const info = await page.evaluate(() => {
+        const feedmap = document.querySelector('.feedmap');
+        const card = document.querySelector('.feedcard[data-index="0"]');
+        const fm = feedmap ? feedmap.getBoundingClientRect() : null;
+        const cr = card ? card.getBoundingClientRect() : null;
+        const vh = window.innerHeight;
+        return {
+          feedmapHeight: fm ? fm.height : null,
+          cardVisible: cr ? Math.max(0, Math.min(cr.bottom, vh) - Math.max(cr.top, 0)) : null,
+        };
+      });
+
+      if (c.kind === 'landscape') {
+        const ok = info.cardVisible !== null && info.cardVisible >= LANDSCAPE_MIN_VISIBLE;
+        console.log(`[${ok ? 'OK' : 'NG'}] ${c.label} 1枚目カードの可視高さ: ${info.cardVisible == null ? '(なし)' : info.cardVisible.toFixed(1)}px (基準${LANDSCAPE_MIN_VISIBLE}px以上)`);
+        if (!ok) hasFailure = true;
+      } else {
+        const ok = info.feedmapHeight !== null && Math.abs(info.feedmapHeight - PORTRAIT_FEEDMAP_HEIGHT) < 0.5;
+        console.log(`[${ok ? 'OK' : 'NG'}] ${c.label} .feedmap 高さ: ${info.feedmapHeight}px (基準${PORTRAIT_FEEDMAP_HEIGHT}pxのまま=デグレなし)`);
         if (!ok) hasFailure = true;
       }
 

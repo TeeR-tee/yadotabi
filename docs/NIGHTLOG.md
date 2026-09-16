@@ -677,3 +677,8 @@
 - R128 `assets/app.js` のみ変更。直前の宿を`lastHotel`に退避し、popstateを`history.state`で分岐(前方の`{yado:'feed'}`エントリなら`lastHotel`で状態Bを再描画、後方なら従来どおり`goBack()`)、二重push防止も`history.state`から導出する`atFeedHistoryEntry()`に統一して`historyPushed`変数を廃止した。
 - NEXT.mdの再現手順をPlaywrightで再実行し実測確認: (1)`goForward()`で`view==='feed'`かつ`#view-feed`表示に復帰、(2)復帰後に別の宿を選び直しても`history.length`が増えない(履歴汚染なし)、(3)そのあと`goBack()`1回で状態Aに戻り、もう1回で`about:blank`へ離脱(効かない戻るが消えた)。撮影`2026-09-17_r128-forward-restored_mobile.png`と`2026-09-17_r128-final-state-a_mobile.png`をRead目視、カード30枚・帰属表示に崩れなし。
 - デグレ確認: 4入口の同一提案・戻るボタン経由の遷移・`?embed=1`の履歴ガードは`?fixture=kusatsu`mobile/desktop/embed撮影で無事。`scripts/check-history.mjs`に進む/戻るの2ケースを追加(既存ケースは削らず、`page.goBack()`後のpush判定を`history.length`から`history.state`ベースに直した箇所あり)、`node scripts/check-all.mjs`は29本中29本PASS(exit 0・合計271.3s)・外部API0回。
+
+### 2026-09-17 R129 横向きで提案が読めない問題を修正
+- やったこと: `assets/style.css` 末尾に `@media (max-height: 500px)` を新設し、小地図を100px、カード写真の比率を16/3に抑えた。横向き固有の指定がこれまで1本も無かったのが原因。
+- 見た目の確認結果: 1枚目カードの可視高さが 812x375・667x375 とも 82px→202px。スポット名・カテゴリ・徒歩/車の分数が画面内に入る。縦向き(375x812・320x568)は小地図220px・カード位置293pxとも変更前と完全一致でデグレなし。帰属表示も横向きで表示されピンとの重なり0件。
+- 次: check-all は29本中28本PASSだが、落ちる1本は毎回入れ替わり(autozoom/links-target/feednote/embedbg)単体では全て合格。各checkが自前でポート3000を起動・停止するため連続実行で解放が間に合わず接続拒否になる環境要因。R130 として起票し、共有サーバ方式への変更を検討する。

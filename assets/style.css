@@ -789,6 +789,20 @@ body.is-lightbox {
   overflow: hidden;
 }
 
+/* R129: 横向きスマホ(高さ500px以下)では固定要素(topbar+feedmap)+写真の高さで
+   画面の大半が埋まり、1枚目カードのテキストが1文字も見えなくなるため、
+   地図と写真をここで低くする(ファイル末尾に置き、他ルールとの詳細度同点時に
+   確実に上書きされるようにする)。
+   vh 単位は使わない(iOS Safari のアドレスバー伸縮で高さが揺れ、
+   Leaflet の invalidateSize() が必要になるため)。縦向き(高さ500px超)には一切影響しない */
+@media (max-height: 500px) {
+  .feedmap { height: 100px; }
+  .feedmap--tall { height: 100px; }
+  /* 写真が16:9のまま幅いっぱいだと横向きでも高さ300px超になり、
+     マップを下げてもタイトルが画面外に出てしまうため、横向きでは低い比率に抑える */
+  .feedcard__media { aspect-ratio: 16 / 3; }
+}
+
 @media print {
   .feedmap,
   .feedmap--tall {
