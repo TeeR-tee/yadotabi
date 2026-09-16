@@ -366,3 +366,8 @@
 - やったこと: 配置A(`.chips`の下に新規1行)/B(チップ行内末尾)/C案の3案のうちA・Bを実装して`?demo=zoomout`mobileで撮り比べ、Bは横スクロールの奥に隠れて画面に出ないため不採用、Aは地図が窮屈にならず文字も読めたため採用。`<a href="?fixture=kusatsu|hakone|dogo">`の素のリンク(JSイベント追加なし)を`renderSampleLinks()`で描画し、`state.embed`または`fixtureNameFromUrl()`が非nullなら`hidden`。新規`scripts/check-sample.mjs`(15項目)を`check-all.mjs`に追加、`check-a11y.mjs`に`.samples a`を追加。
 - 見た目の確認結果: `?demo=zoomout`mobile/desktopとも「サンプル: 草津の例 箱根の例 道後の例」が1行に収まり横スクロールなし、地図は潰れず十分な高さ。`?fixture=kusatsu`mobileでは状態Bに遷移し導線は不可視(テストでも確認)。コンソールエラー0件、`check-all.mjs`21本全PASS。
 - 次: R14/R19/R40が残候補。
+
+### 2026-09-16 R61 状態Aの地図初期位置を「最近見た宿」にフォールバック
+- やったこと: `initialView()`(app.js)を3分岐化(`yado.mapview.v3` > `getRecent()`先頭 > `DEFAULT_VIEW`、ズームは常に既定14)。撮影・検査用に`?demo=initpos`(demoStateA・demoNoSaveView)を追加、localStorage投入はapp.js側で行わずテスト側のaddInitScriptに委ねた。新規`scripts/check-initpos.mjs`(recentのみ/mapview優先/両方無し/recent破損4パターン/URL優先の15項目)を`check-all.mjs`に登録(22本目)。
+- 見た目の確認結果: recent投入後の`?demo=initpos`mobileで道後温泉付近が中心に表示され文字崩れなし、`?fixture=kusatsu`mobileでカード30枚・番号ピン判読可、`?demo=zoomout`mobileも注記含めデグレなしをRead目視。`check-all.mjs`22本全PASS、コンソールエラー0件。
+- 次: R14/R19/R40が残候補。

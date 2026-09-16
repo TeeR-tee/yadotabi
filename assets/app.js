@@ -353,6 +353,13 @@
     if (saved && isFinite(saved.lat) && isFinite(saved.lon) && isFinite(saved.zoom)) {
       return { lat: saved.lat, lon: saved.lon, zoom: saved.zoom };
     }
+    // R61: 地図位置の保存が無ければ「最近見た宿」の先頭にフォールバックする
+    // (一度使った人が前回の続きから始まる体験改善。ズームは既定のまま)。
+    var recent = getRecent();
+    var latest = recent && recent[0];
+    if (latest && isFinite(latest.lat) && isFinite(latest.lon)) {
+      return { lat: latest.lat, lon: latest.lon, zoom: DEFAULT_VIEW.zoom };
+    }
     return { lat: DEFAULT_VIEW.lat, lon: DEFAULT_VIEW.lon, zoom: DEFAULT_VIEW.zoom };
   }
 
@@ -1338,8 +1345,8 @@
     if (params.get('simulate') === 'empty') demoEmpty = true;
     var demo = params.get('demo') || '';
     if (demo === 'far') demoFar = true;
-    if (demo === 'zoomout') demoNoSaveView = true;
-    if (demo === 'suggest' || demo === 'recent' || demo === 'recentmix' || demo === 'zoomout') demoStateA = true;
+    if (demo === 'zoomout' || demo === 'initpos') demoNoSaveView = true;
+    if (demo === 'suggest' || demo === 'recent' || demo === 'recentmix' || demo === 'zoomout' || demo === 'initpos') demoStateA = true;
     if (demo === 'passive') demoPassive = true;
     if (demo === 'imgfail') demoImgFail = true;
     if (demo === 'portrait') demoPortrait = true;
