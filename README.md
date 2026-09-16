@@ -42,6 +42,8 @@
   sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer"></iframe>
 ```
 
+
+`sandbox` は貼り先とやどたびが**別オリジン**(別ドメイン)のときに効く保護です。同じオリジンに置くと `allow-same-origin` により実質無効になります(無害ですが保護にもなりません)。
 `sandbox` のトークンを削ると何が壊れるか(2026-09-16実測、`demo/hotel-page.html` 参照): `allow-same-origin` を外すと fixture のデータ取得が CORS で落ち localStorage も SecurityError になる(カード0枚) / `allow-popups` 系を外すとカードの「行き方」等の外部リンクが反応しなくなる / `sandbox` は貼り先とやどたびが**別オリジン**のときに効く保護で、同じオリジンに置くと `allow-same-origin` により実質無効になります(無害ですが保護にもなりません)。
 
 `?embed=1` だけで宿の指定が無いときは、通常どおり宿を選ぶ画面が出ます(空白になりません)。ローカルでの見え方は `demo/embed-check.html` で確認できます。
