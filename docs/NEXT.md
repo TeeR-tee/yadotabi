@@ -1,79 +1,59 @@
-# NEXT: R61 状態Aの地図初期位置を「最近見た宿」があればそこにする
+# NEXT: R67 check-all の失敗時に「何が落ちたか」をファイルに残す
 
-**判断理由**: R40(別府 fixture)は Overpass を叩くうえ 900KB 級の JSON が増えて R14(軽量化)と衝突する。R61 は外部API 0回・localStorage だけで完結し、既存の `initialView()` に1分岐足すだけで「一度使った人が前回の続きから始まる」入力ゼロの体験改善になるため R61 を選ぶ。
-
-**難易度**: sonnet / **所要目安**: 40〜60分(実装15分・新規check本15分・撮影と check-all 20分)
-
----
+選定理由: 前サイクルで check-hoteltip が1回だけ落ちて再現しなかった(フレーク)が、`stdio:'inherit'` のせいでログがターミナルに流れて消え、原因追跡が不可能だった。次にフレークが出たときに証拠が残ることを優先する(R65 は証拠が無いままでも進められるので後回し)。
 
 ## 対象ファイル(絶対パス)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-all.mjs` ← **このファイルだけを編集する**
+- 出力先(新規・コミット対象外): `C:\workspace\claude\旅行先用サイト\yadotabi\screenshots\fail-<本名>-<時刻>.txt`
+  - `screenshots/` は `.gitignore` 済みなので、失敗ファイルが git に混ざる心配はない。
 
-- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js` — 主対象
-- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-initpos.mjs` — 新規(機械検査)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-all.mjs` — 新規本の登録(22本目)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md` / `docs\NIGHTLOG.md` — 完了記録
+## 調査済みの事実(実装前に読むこと)
+1. `check-all.mjs:42` が `spawnSync(process.execPath, [scriptPath], { stdio: 'inherit', cwd: ROOT })`。
+   **`'inherit'` だと `res.stdout` / `res.stderr` は `null` になる**。これが「失敗しても何も残らない」の直接原因。
+2. 各 `check-*.mjs` は最後に `main().catch((err) => { console.error(...); process.exitCode = 1; })` の形(例: `scripts/check-sample.mjs` の末尾)。
+   つまり**失敗の情報は stdout の `n pass / m fail` 行と stderr の例外**に出ており、`check-all.mjs` 側で捕まえれば足りる。
+   → **各 check 本にスクリーンショット保存を足す必要はない**。ROADMAP R67 本文の「環境変数 `YADO_SHOT_ON_FAIL=1` を渡す方式」は、各本が対応コードを持っていない以上そのままでは効かないので**不採用**。代わりに「落ちた本の出力をテキストで残す」最小案を採る(ROADMAP 本文もその代替案を許容している)。
+3. 表の出力は `check-all.mjs:50-65`。`results` に `{ script, pass, ms }` を積んでいるだけ。
 
-## 現状(実物を読んだ結果)
-
-- `app.js:20` `var DEFAULT_VIEW = { lat: 36.6226, lon: 138.5960, zoom: 14 };`(草津)
-- `app.js:62` `var LS_RECENT = 'yado.recent.v3';` / `app.js:63` `var LS_MAPVIEW = 'yado.mapview.v3';`
-- `app.js:322` `getRecent()` — `lsGet(LS_RECENT)` が配列ならそれを返す。要素は `app.js:329` の `pushRecent()` が作る `{ name, lat, lon, kind }`(先頭が最新)。
-- `app.js:351` `initialView()` — **現在は `yado.mapview.v3` があればそれ、無ければ `DEFAULT_VIEW` の2分岐のみ**。ここが唯一の変更点。
-- `app.js:359` `ensureMap()` が `initialView()` を呼び `L.map(...).setView([view.lat, view.lon], view.zoom)`(362行)。
-- `app.js:1775` `init()` 内 `if (!state.embed) ensureMap();` → その後 `applyEntryPoint()`(1777行)。`?hotel=`/`?q=`/`?fixture=` は `applyEntryPoint()`(1325行)が後から `jumpTo()`(471行)や状態B遷移で上書きするので、**URL指定は自動的に優先される**(initialView 側で URL を見る必要はない)。
-- `app.js:345` `saveMapView()` は `demoNoSaveView` のとき保存しない。
-
-## 実装方針
-
-`initialView()`(app.js:351)を次の3分岐にする。順序が仕様。
-
-1. `yado.mapview.v3`(前回の地図位置)が有効ならそれを返す — **従来どおり最優先**。地図を自分で動かした人の意思を尊重するため。
-2. mapview が無く、`getRecent()` の先頭に有効な `lat`/`lon` があれば `{ lat, lon, zoom: DEFAULT_VIEW.zoom }` を返す — **今回の追加**。ズームは既定のまま(ROADMAP 本文どおり)。
-3. どちらも無ければ `DEFAULT_VIEW`。
-
-補足:
-- 有効判定は既存と揃えて `isFinite()` を使う。`getRecent()` は配列を保証しているが、要素が `null` や座標欠落の場合があるので先頭要素の存在チェックを入れる(`pushRecent` は座標を検証しているが、手で書き込まれた localStorage でも落ちないこと)。
-- `ensureMap()` / `setView` の呼び方・`DEFAULT_VIEW` の値・`saveMapView()` は触らない。
-- 埋め込み(`state.embed`)では `ensureMap()` 自体を呼ばないので影響なし。
-
-### 撮影・検査用フラグ
-
-`applyEntryPoint()`(app.js:1325 付近、`demo === 'recent'` の分岐が 1465 行にある)と同じ場所に `?demo=initpos` を追加する。
-- `demoStateA = true` の対象に加える(外部API 0回・宿ピンを取りに行かない)。
-- `demoNoSaveView = true` にして撮影が localStorage を汚さないようにする。
-- **localStorage への投入は app.js 側では行わない**(既存の `demo=recent` が「保存された履歴を読まない」方針なのと整合させる)。テストは Playwright の `addInitScript` で `yado.recent.v3` を事前投入する。
-
-### `scripts/check-initpos.mjs`(新規・既存 check 本に倣う)
-
-Playwright で `?demo=initpos` を開き、最低5ケース:
-1. `yado.recent.v3` に道後(33.8520, 132.7860)1件、`yado.mapview.v3` なし → 初期 center が道後(誤差 0.01 以内)・zoom が 14。
-2. `yado.recent.v3` と `yado.mapview.v3` の両方あり → **mapview が勝つ**。
-3. どちらも無し → `DEFAULT_VIEW`(36.6226, 138.5960)。
-4. `yado.recent.v3` が `[]` / 壊れた JSON / 座標欠落要素 → `DEFAULT_VIEW` にフォールバックし例外を投げない。
-5. `?q=箱根&demo=initpos`(または `?hotel=`)で recent があっても URL 指定が勝つ。
-center は `YadoApp.getMap().getCenter()`(app.js:1791 で公開済み)から取る。
+## 実装方針(最小)
+1. `import fs from 'node:fs'` を追加(`node:path` の隣、1-9行目の import 群)。
+2. ループ(39-46行目)を変える:
+   - `stdio` を `'inherit'` から **`['ignore', 'pipe', 'pipe']`** にし、`encoding: 'utf8'` を付ける。
+   - 進捗が見えなくなるので、**捕まえた stdout/stderr はその場で `process.stdout.write()` / `process.stderr.write()` にそのまま流す**(従来どおり画面には出る)。
+   - `pass` が false のときだけ、`results` に積むのに加えて下の 3. を呼ぶ。
+3. 新しい純粋寄りの関数を1つ足す(表出力の直前あたり):
+   - `function saveFailLog(script, res, ms)`:
+     - 本名 = `path.basename(script, '.mjs')`(例 `check-hoteltip`)。
+     - 時刻 = `new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)`(例 `2026-09-16T12-03-44`)。ファイル名に `:` を使わない(Windows で不正文字)。
+     - 保存先 = `path.join(ROOT, 'screenshots', 'fail-<本名>-<時刻>.txt')`。`fs.mkdirSync(dir, { recursive: true })` してから書く。
+     - 中身: 1行目に再現コマンド `node <script>`、次に exit code と所要ms、続けて **stdout の末尾 40 行**と **stderr の末尾 40 行**(丸ごとだと巨大になりうるので末尾のみ。行数は定数 `TAIL_LINES = 40` に出す)。
+     - 書き込み自体が失敗しても check-all を落とさない(try/catch で握って `console.warn` するだけ)。
+4. 末尾のサマリ(62-65行目)の後に、失敗が1本以上あったときだけ
+   `失敗ログ: screenshots/fail-xxx-....txt` を FAIL の本の数だけ列挙する行を出す。
+5. それ以外は触らない。表の書式・`process.exitCode` の決め方(48行目 `anyFail`)は現状維持。
 
 ## 完了条件(検証可能)
+- [ ] `SCRIPTS` の1本を一時的に存在しないパス(例 `scripts/check-nonexistent.mjs`)に差し替えて実行すると、
+      `screenshots/fail-check-nonexistent-<時刻>.txt` が生成され、中に再現コマンドと stderr の末尾が入っている。**確認後は必ず元に戻す**。
+- [ ] 成功時(全本 PASS)は `screenshots/` に `fail-*.txt` が1つも増えない(実行前後の `ls screenshots/fail-*.txt` の件数が同じ)。
+- [ ] `node scripts/check-all.mjs` が **22本中22本 PASS・exit 0**。
+- [ ] 実行中の画面出力が従来どおり各本のログを流している(`stdio` 変更で無言にならない)。
+- [ ] `git status -sb` に `screenshots/` 配下が現れない(gitignore 済みの再確認)。
 
-- `node scripts/check-initpos.mjs` が全項目 PASS・exit 0。
-- `node scripts/check-all.mjs` が 22本全 PASS・exit 0。
-- `node --check assets/app.js` 通過。
-- `?fixture=kusatsu` mobile の撮影でカード30枚・番号ピン判読可・コンソールエラー0件(デグレなし)。
-
-## 検証手順(撮影+目視)
-
-1. `node --check assets/app.js`
-2. `node scripts/check-initpos.mjs` → 全PASS
-3. `node scripts/check-all.mjs` → 22本全緑
-4. 撮影(すべて外部API 0回):
-   - `?demo=initpos`(recent を事前投入した状態での初期地図)mobile
-   - `?fixture=kusatsu` mobile(デグレ確認)
-   画像を Read で開き、文字崩れ・重なり・はみ出し・地図の空白がないことを目視する。
-5. ROADMAP の R61 を `[x] 2026-09-16` に、NIGHTLOG に3行追記 → コミット → push。
+## 検証手順
+1. `node --check scripts/check-all.mjs`
+2. `ls screenshots/fail-*.txt 2>/dev/null | wc -l` で実行前の件数を控える。
+3. `node scripts/check-all.mjs` → 22/22 PASS・exit 0 を確認。2. と件数が同じことを確認。
+4. `SCRIPTS` の1行を壊して再実行 → FAIL 表・exit 1・fail ファイル生成を確認し、`cat` で中身を目視。
+5. 壊した1行を戻して `node scripts/check-all.mjs` を再実行し、22/22 PASS に戻ることを確認。
+6. 画面の見た目は変わらないので**撮影は不要**(NIGHTLOG にその理由を1行書く)。
 
 ## 変更禁止範囲
+- 既存 `scripts/check-*.mjs` と `docs/check.mjs` の**中身は1文字も編集しない**(検査内容・件数を変えない)。
+- `assets/`(app.js / engine.js / geo.js / style.css 等)、`fixtures/`、`index.html`、`demo/` は無変更。
+- `SCRIPTS` の並び順・本数を恒久的に変えない(検証で壊すのは一時的、必ず戻す)。
+- git stash / reset --hard / checkout は禁止。
 
-- `assets/engine.js` / `assets/geo.js` / `fixtures/*.json` は一切触らない。
-- `DEFAULT_VIEW` の座標・ズーム値、`saveMapView()`、`jumpTo()`、`applyEntryPoint()` の既存分岐(`hotel`/`q`/`fixture`)のロジック。
-- 既存 `scripts/check-*.mjs` の中身(`check-all.mjs` への1行登録のみ可)。
-- rank の重み・閾値・除外ルール。
+## 難易度 / 所要目安
+- 難易度: **sonnet**(1ファイル・50行以内の追記)
+- 所要目安: 実装10分 + check-all 2回(約3分×2)で **20〜25分**

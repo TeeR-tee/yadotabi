@@ -371,3 +371,8 @@
 - やったこと: `initialView()`(app.js)を3分岐化(`yado.mapview.v3` > `getRecent()`先頭 > `DEFAULT_VIEW`、ズームは常に既定14)。撮影・検査用に`?demo=initpos`(demoStateA・demoNoSaveView)を追加、localStorage投入はapp.js側で行わずテスト側のaddInitScriptに委ねた。新規`scripts/check-initpos.mjs`(recentのみ/mapview優先/両方無し/recent破損4パターン/URL優先の15項目)を`check-all.mjs`に登録(22本目)。
 - 見た目の確認結果: recent投入後の`?demo=initpos`mobileで道後温泉付近が中心に表示され文字崩れなし、`?fixture=kusatsu`mobileでカード30枚・番号ピン判読可、`?demo=zoomout`mobileも注記含めデグレなしをRead目視。`check-all.mjs`22本全PASS、コンソールエラー0件。
 - 次: R14/R19/R40が残候補。
+
+### 2026-09-16 R67 check-all.mjs の失敗時にログをファイルへ保存
+- やったこと: `check-all.mjs`のspawnSyncを`stdio:'inherit'`から`['ignore','pipe','pipe']`に変更しつつ捕まえた出力をその場で画面にも流し、FAILした本だけ`screenshots/fail-<本名>-<時刻>.txt`に再現コマンド・exit code・stdout/stderr末尾40行を保存する`saveFailLog()`を追加。既存check本体・表の書式・exitCode判定は無変更。
+- 見た目の確認結果: 画面出力は従来どおり流れる(見た目に変化なしのため撮影は省略)。1本を存在しないパスに差し替えて実行しFAIL・fail-check-nonexistent-*.txtの生成と中身を目視確認後、元の並びに戻して22本全PASS・fail-*.txt残存0件を確認。
+- 次: R14/R19/R40が残候補。
