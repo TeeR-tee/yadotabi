@@ -528,3 +528,6 @@
 - R89 `scripts/check-hotelparam.mjs` の固定待ち(`waitFor(1500)`×17回)を条件待ちに置換。`waitRendered()`共通ヘルパ(#feed-title描画完了、5000msタイムアウト)を新設し、バッジ可視/日付/状態A(#map の leaflet-container 付与待ち)もそれぞれ専用の条件待ちに変更。タイムアウトは例外を投げず既存の`ok()`判定にFAILとして畳み込む方式にした(全体停止を避けるため)。検査項目・ok()呼び出し数・page.goto回数(17件)は無変更。
 - 実測: 変更前中央値33553ms→変更後中央値8428ms(約75%短縮)、41 pass/0 fail(変更前後で一致)、連続5回すべてPASS(フレークなし)。`?fixture=kusatsu`mobileを目視し番号ピン判読可・カード30枚・コンソールエラー0件でデグレなし。`check-all.mjs`は27本中27本PASS/合計221.2s(前回約244sから短縮)。
 - 次: ROADMAP残りはR64/R81/R85/R88/R90から計画役が選定。
+- R101 状態Aの地図タイル読み込み失敗を1行で伝える。`L.tileLayer(...)`を変数`tiles`で受け`tileerror`を購読、1枚失敗で即出すとネットワーク一過性ノイズになるため**3秒以内に4枚以上失敗**した時だけ`setMapNote(TILE_ERROR_TEXT)`(「地図の背景画像を読み込めませんでした。ピンと提案はそのまま使えます。」の2文形式)をセッション1回だけ出す方式を採用(NEXT.mdの実測では発火回数は未計測だったため、通常のタイル切替や一瞬の途切れでは反応しない安全側のしきい値として自分で決めた)。宿の取得が進むと既存の`setMapNote('')`等で上書きされて消えるが、タイルが復帰しなくても宿の案内の方が新しい情報なので構わない。状態Bの小地図(`app.js:1149`)は`.mapnote`相当の要素が無いため対象外。
+- `page.route()`でtile.openstreetmap.orgを遮断したPlaywrightスクリプトで撮影し、灰色地に白文字で文言が1行に収まり文字崩れ・重なりなしを目視。`scripts/check-nohotels.mjs`に4項目追記(遮断時に文言一致・可視・overpass等fetch0回、通常時は文言が出ないこと)し9 pass/0 fail、`check-all.mjs`は27本中27本PASS。`?fixture=kusatsu`mobileの通常撮影でもデグレなしを確認。
+- 次: ROADMAP残りはR64/R81/R85/R88/R90から計画役が選定。

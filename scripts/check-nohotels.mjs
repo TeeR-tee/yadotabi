@@ -88,6 +88,43 @@ async function main() {
     ok(consoleErrors.length === 0, '4. コンソールエラー0件', consoleErrors);
 
     await context.close();
+
+    // R101: タイルサーバを遮断した状態Aで「地図の背景画像を読み込めませんでした」の1行が出るか、
+    // 通常時(遮断なし)には出ないことを同じ検査ファイル内で確認する。
+    const tileErrorText = '地図の背景画像を読み込めませんでした。ピンと提案はそのまま使えます。';
+
+    const blockedContext = await browser.newContext({ viewport: { width: 375, height: 812 } });
+    const blockedPage = await blockedContext.newPage();
+    const blockedExternalRequests = [];
+    blockedPage.on('request', (req) => {
+      const url = req.url();
+      if (url.includes('overpass') || url.includes('wikipedia')) blockedExternalRequests.push(url);
+    });
+    const blockedConsoleErrors = [];
+    blockedPage.on('console', (msg) => { if (msg.type() === 'error') blockedConsoleErrors.push(msg.text()); });
+    blockedPage.on('pageerror', (err) => blockedConsoleErrors.push(String(err)));
+    await blockedPage.route('**://*.tile.openstreetmap.org/**', (route) => route.abort());
+    await blockedPage.goto(`${BASE}/?demo=nohotels`, { waitUntil: 'load' });
+    await waitFor(3500);
+
+    const blockedNote = blockedPage.locator('.mapnote');
+    const blockedVisible = await blockedNote.evaluate((el) => {
+      return el.offsetParent !== null && getComputedStyle(el).display !== 'none';
+    });
+    ok(blockedVisible, '5. タイル遮断時: .mapnote が可視', blockedVisible);
+    const blockedText = (await blockedNote.textContent() || '').trim();
+    ok(blockedText === tileErrorText, '5. タイル遮断時: .mapnote の本文がタイルエラー文言と一致', blockedText);
+    ok(blockedExternalRequests.length === 0, '5. タイル遮断時: overpass/wikipediaへのfetchが0回', blockedExternalRequests);
+    await blockedContext.close();
+
+    const normalContext = await browser.newContext({ viewport: { width: 375, height: 812 } });
+    const normalPage = await normalContext.newPage();
+    await normalPage.goto(`${BASE}/?demo=nohotels`, { waitUntil: 'load' });
+    await waitFor(3500);
+    const normalNote = normalPage.locator('.mapnote');
+    const normalText = (await normalNote.textContent() || '').trim();
+    ok(normalText !== tileErrorText, '5. 通常時(遮断なし): タイルエラー文言が出ない', normalText);
+    await normalContext.close();
   } finally {
     await browser.close();
     if (serverProc) serverProc.kill();

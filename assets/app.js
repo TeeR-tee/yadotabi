@@ -369,7 +369,20 @@
     var view = initialView();
     map = L.map(els.map, { zoomControl: true }).setView([view.lat, view.lon], view.zoom);
     // タイルレイヤは1回だけ足す(状態を行き来しても重複追加しない)
-    L.tileLayer(TILE_URL, { maxZoom: 19, attribution: TILE_ATTR }).addTo(map);
+    var tiles = L.tileLayer(TILE_URL, { maxZoom: 19, attribution: TILE_ATTR }).addTo(map);
+    tiles.on('tileerror', function () {
+      if (tileErrorNoticed) return;
+      var now = Date.now();
+      if (now - tileErrorWindowStart > TILE_ERROR_WINDOW_MS) {
+        tileErrorWindowStart = now;
+        tileErrorCount = 0;
+      }
+      tileErrorCount += 1;
+      if (tileErrorCount >= TILE_ERROR_THRESHOLD) {
+        tileErrorNoticed = true;
+        setMapNote(TILE_ERROR_TEXT);
+      }
+    });
     hotelLayer = L.layerGroup().addTo(map);
 
     map.on('moveend', onMapMoved);
@@ -390,6 +403,15 @@
   // 直接呼んでいるので、debounce 後の onMapMoved による再取得は無駄な二重発火になる。
   // 1回だけ吸収して構造的に防ぐ(立てたら必ず消費する)。
   var suppressNextMoveEnd = false;
+
+  // R101: 1枚のタイル読み込み失敗はよくある一過性ノイズなので即表示しない。
+  // 短時間(3秒以内)に複数枚(4枚以上)失敗したときだけ「壊れているらしい」と判断して1回だけ出す。
+  var tileErrorNoticed = false;
+  var tileErrorCount = 0;
+  var tileErrorWindowStart = 0;
+  var TILE_ERROR_WINDOW_MS = 3000;
+  var TILE_ERROR_THRESHOLD = 4;
+  var TILE_ERROR_TEXT = '地図の背景画像を読み込めませんでした。ピンと提案はそのまま使えます。';
 
   var onMapMoved = debounce(function () {
     if (suppressNextMoveEnd) { suppressNextMoveEnd = false; return; }
