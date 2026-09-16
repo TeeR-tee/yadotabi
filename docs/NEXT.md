@@ -1,104 +1,86 @@
-# NEXT: R94 状態Aの案内文3種類の粒度を揃える
+# 次の1タスク: R99 `?hotel=` の緯度経度の範囲検査を足す
 
-- **タスクID**: R94
-- **難易度**: sonnet(文言変更＋検査2本の更新のみ。ロジック変更なし)
-- **所要目安**: 25〜40分(うち check-all.mjs 約4分)
+- **タスクID**: R99
+- **難易度**: sonnet(変更は app.js 1行相当+検査追加。設計判断は計画役側で確定済み)
+- **所要目安**: 20〜30分(うち check-all.mjs 27本で約4分)
 
 ## 目的
-状態A(地図画面)でユーザーが最初に見る案内文が3種類あり、**1つ目だけ「次にどうすればよいか」が書かれていない**。
-やどたびは入力ゼロ原則のため、行き止まりに見える文言は「壊れている?」という誤解に直結する。文言を揃えて、
-どの状態でも次の入口(エリアチップ・検索)が見えるようにする。
 
-## 実測で判明した前提(2026-09-16 計画役が grep/Read で確認)
+`?hotel=999,999,テスト` のような地球上に存在しない座標でも状態Bが開いてしまい、提案0件の画面だけが出てユーザーには理由が分からない。範囲外は「`?hotel=` が無かった」ことにして状態A(地図)へ黙ってフォールバックさせ、`?bg=` が既に取っている「不正値は厳格に弾いて黙って無視」の方針に揃える。
 
-### 案内文の全文と出る条件
+## 実測で判明した前提(計画役が今サイクルで確認)
 
-| # | 行 | 全文 | 出る条件 |
-|---|---|---|---|
-| A | `assets/app.js:407` | `この範囲には宿が見つかりませんでした` | `demoStateA` かつ `demoNoHotels`(= `?demo=nohotels`)。撮影専用の再現経路 |
-| B | `assets/app.js:444` | `この範囲には宿が見つかりませんでした`(**Aと完全同一文字列**) | 実取得で `hotels.length === 0` かつ自動ズームアウト(R44)が使えない/使い終わった後 |
-| C | `assets/app.js:456` | `宿ピンの取得が混雑中です。検索やエリアチップから選べます。` | `err.overpassBusy`(Overpass 429/504) |
-| D | `assets/app.js:616` | name=`見つかりませんでした` / sub=`別の名前で探してみてください` | 検索候補が0件(`.mapnote` ではなく `renderSuggest` の行) |
-
-- C と D は「次の行動」を持つが、**A/B だけが持たない**。ROADMAP R94 本文の記述と実測は一致した。
-- 同じ `setMapNote()` の他の文言(参考・今回は変更しない): `app.js:410/416/453` `ズームすると宿が出ます`、
-  `app.js:421` `宿を探しています…`、`app.js:439` `もう少し広い範囲で探しています…`、`app.js:458` `宿を取得できませんでした`。
-- A と B は**同一の文字列リテラルが2箇所に手書きされている**(定数化されていない)。
-
-### 文言を検査している check(先に grep 済み。更新必須)
-
-| ファイル:行 | 現在のアサーション |
-|---|---|
-| `scripts/check-nohotels.mjs:10`(コメント), `:81` | `text === 'この範囲には宿が見つかりませんでした'` |
-| `scripts/check-autozoom.mjs:119` | 同上(ケース3 `?demo=nohotels`) |
-| `scripts/check-autozoom.mjs:150` | 同上(ケース4 ドラッグ後の通常0件バナー) |
-| `scripts/check-autozoom.mjs:182` | `text === '宿ピンの取得が混雑中です。検索やエリアチップから選べます。'`(C。**変更しないので触らない**) |
-
-→ **A/B の文言を変えると check-nohotels 1箇所・check-autozoom 2箇所が FAIL する。実装と同時に必ず直す。**
-
-### 未確認
-- `?demo=autozoom` で B が「自動ズームアウト後にも出る」ことを目視した記録は無い(check-autozoom ケース4は機械検査のみ)。撮影で確かめること。
-
-## 統一後の文言案(実装者はまず撮影して最終決定してよい。変えるなら理由を NIGHTLOG に書く)
-
-推奨: **A・B とも同一の**
-```
-この範囲には宿のデータがありません。エリアチップか検索から選べます。
-```
-- 根拠: C(`混雑中です。検索やエリアチップから選べます。`)と同じ「状況。次の入口。」の2文構成で粒度が揃う。
-- 「見つかりませんでした」→「宿のデータがありません」に変えるのは、やどたびが**OSM のデータを見ているだけ**で
-  「宿が存在しない」と断定はできない、というプロジェクトの正直さ方針に沿うため(ROADMAP R94 本文の案と同じ)。
-- **ユーザーに促す語は既存の入口のみ**: 「エリアチップ」「検索」。新しい操作(泊数入力・絞り込み等)は一切足さない。
-- A と B を同一文言にしてよいか: 実装者が `?demo=nohotels` と `?demo=autozoom` の撮影2枚を見て判断する。
-  分けるべきと判断した場合のみ B を `もう少し広げて探しましたが、宿のデータがありませんでした。エリアチップか検索から選べます。`
-  とし、その理由を NIGHTLOG に残す(既定は同一文言)。
+- `assets/app.js:1333` `hotelFromUrl(params)`。本体は8行:
+  - `:1334` `params.get('hotel')`、無ければ null
+  - `:1336` `raw.split(',')`、`parts.length < 2` なら null
+  - `:1338-1339` `parseFloat(parts[0])` / `parseFloat(parts[1])`
+  - **`:1340` `if (!isFinite(lat) || !isFinite(lon)) return null;` ← ここに範囲検査が無い**(実測。`lat >= -90` 等の比較はファイル全体で0件)
+  - `:1341` 名前は `parts.slice(2).join(',').trim()`
+  - `:1342` `return { id:'url/'+lat+','+lon, name: name || 'この宿の周辺', lat, lon }`
+- `hotelFromUrl()` の呼び出しは実測で5箇所: `app.js:1518`(hasTarget 判定) / `:1540`(hotel 取得) / `:1553`(embed 分岐) / `:1640`(`applyNormalEntryPoint` で urlHotel があれば `selectHotel()` して状態Aを飛ばす) / `:1910`。**null を返せば全箇所が「hotel 指定なし」経路に自然に落ちる**ので、呼び出し側の改修は不要(未確認な副作用は無いと判断したが、実装役は `:1518` と `:1553` の挙動を撮影で確かめること)。
+- 比較対象の既存方針: `app.js:1391` `bgFromUrl()` は `/^[0-9a-fA-F]{6}$/` で厳格に検証し、外れたら `return null`(=黙って無視)。R99 はこれと同じ形。
+- 下流の防御: `app.js:329` と `app.js:677` に `!isFinite(hotel.lat)` のガードはあるが、**範囲検査ではないため 999 は通過する**(実測)。
+- `scripts/check-hotelparam.mjs` は206行。先頭の `checkTitle(browser, path, expectedTitle, label)` ヘルパ(`:60` 付近)で `#feed-title` の文言を見る作り。現在の検査は 1〜5 + a〜h。**単独27秒で27本中もっとも遅い本**(R55 実測)なので、追加ケースは3件に留めて増やしすぎないこと。
 
 ## 対象ファイル(絶対パス)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js`(407 行・444 行)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-nohotels.mjs`(10 行コメント・81 行)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-autozoom.mjs`(119 行・150 行)
+
+- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js`(1行の条件追加のみ)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-hotelparam.mjs`(検査3ケース追加)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md` / `docs\NIGHTLOG.md`(記録)
 
 ## 実装方針
-1. `assets/app.js` の `loadHotelsInView()` の直前(`app.js:401` の上)に定数を1つ置く。
-   同一リテラルの二重管理を断つのが目的で、行数はコメント込み3行以内。
-   例: `var NO_HOTEL_TEXT = 'この範囲には宿のデータがありません。エリアチップか検索から選べます。';`
-2. `app.js:407` と `app.js:444` の `setMapNote('この範囲には宿が見つかりませんでした')` を
-   `setMapNote(NO_HOTEL_TEXT)` に置き換える(2箇所)。**他の setMapNote は1行も変更しない。**
-3. `scripts/check-nohotels.mjs:81` と `scripts/check-autozoom.mjs:119` `:150` の期待文字列を新文言に更新。
-   `check-nohotels.mjs:10` のコメントも揃える。**検査の項目数は減らさない**(比較する文字列を差し替えるだけ)。
-4. `scripts/check-autozoom.mjs:182`(混雑文言 C)は**変更しない**。
+
+1. `assets/app.js:1340` の条件を、範囲外も null にする形へ広げる。定数を切り出さず、その場の比較で足りる:
+
+   ```js
+   // 地球上に無い座標(?hotel=999,999 など)は ?hotel= 無しと同じ扱いにして
+   // 状態Aへ黙ってフォールバックする(?bg= の厳格検証と同じ方針。R99)
+   if (!isFinite(lat) || !isFinite(lon)) return null;
+   if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
+   ```
+   2行に分けて書くか1行にまとめるかは実装役の裁量。**境界値(±90 / ±180 ちょうど)は通す**(有効な座標なので `<` `>` であって `<=` `>=` にしない)。
+2. 名前部分(`app.js:1341`)は**現状どおり何でも受ける**。表示するだけで害が無く、空なら `この宿の周辺` にフォールバック済み。
+3. `scripts/check-hotelparam.mjs` に R99 の3ケースを追加。既存 1〜5 / a〜h のループやヘルパは**編集しない**(新しい呼び出しを足すだけ)。
+   - `?hotel=999,138.5960,テスト` → 状態Aのまま(`#feed-title` が「この宿の周辺」にならない / 状態Bへ遷移していない)
+   - `?hotel=36.6226,999,テスト` → 同上
+   - `?hotel=abc,def,テスト` → 同上(従来の `isFinite` 経路が壊れていないことの回帰)
+   - 併せて `?hotel=36.6226,138.5960,ちょうしゅくの宿`(正常値)が従来どおり状態Bを開くことを既存ケース4で担保していることを確認する。
+   - 判定方法は実装役が決めてよいが、`#feed-title` の文言だけで見分けにくければ状態A側の要素(地図 `#map` の可視、`.chips` の可視など)の可視性で見る。ヘルパを1つ足すのは可。
+4. ファイル冒頭のコメントブロック(`:160` 付近の「確認項目」)にも R99 の3行を追記する(既存の書式に揃える)。
 
 ## 完了条件
-- `app.js` 内に `この範囲には宿が見つかりませんでした` が0件(`grep -n` で確認)。
-- 新文言が `app.js` の定数1箇所にのみ存在し、`setMapNote(NO_HOTEL_TEXT)` が2箇所。
-- `node --check assets/app.js` が通る。
-- `node scripts/check-all.mjs` が **27本全緑**(exit 0)。
-- 撮影2枚を目視し、375px で新文言が3行に落ちない/`.mapnote` が地図やチップ行と重ならないこと。
+
+- `?hotel=999,999,テスト` を開くと状態A(地図+エリアチップ)が出る。状態Bは開かない。
+- `?hotel=36.6226,138.5960,ちょうしゅくの宿` は従来どおり状態Bが開き、見出しが「ちょうしゅくの宿」。
+- `?hotel=90,180,テスト`(境界値)は状態Bが開く(弾かれない)。
+- `node scripts/check-hotelparam.mjs` が全PASS(既存項目を1つも減らさない)。
+- `node scripts/check-all.mjs` が **27本全緑(exit 0)**。
+- `git diff --stat` の対象が `assets/app.js` `scripts/check-hotelparam.mjs` `docs/` のみ。
 
 ## 検証手順
-```
-node --check assets/app.js
-node C:\workspace\tools\shot\shot.mjs "http://localhost:3000/index.html?demo=nohotels" --mobile
-node C:\workspace\tools\shot\shot.mjs "http://localhost:3000/index.html?demo=autozoom" --mobile
-node C:\workspace\tools\shot\shot.mjs "http://localhost:3000/index.html?demo=nohotels" --desktop
-node scripts/check-nohotels.mjs
-node scripts/check-autozoom.mjs
-node scripts/check-all.mjs
-```
-- 撮影URL: `?demo=nohotels`(A) と `?demo=autozoom`(B)。幅は mobile 375px 必須、desktop は A の1枚のみでよい。
-- 撮影は `?demo=` 経由なので **外部API 0回**。本番URLでの撮影は不要。
-- デグレ確認に `?fixture=kusatsu` mobile を1枚(カード30枚・番号ピン判読可・コンソールエラー0件)。
+
+1. `node --check assets/app.js`
+2. `node scripts/check-hotelparam.mjs`(単独27秒。先に単独で回す)
+3. 撮影(すべて `node C:\workspace\tools\shot\shot.mjs <URL> --mobile` / PC幅。外部API 0回を守るため fixture 併用または状態Aのみ):
+   - `http://127.0.0.1:3000/?hotel=999,999,%E3%83%86%E3%82%B9%E3%83%88` を **mobile 375** — 状態Aが出ていること
+   - `http://127.0.0.1:3000/?fixture=kusatsu` を **mobile 375** — デグレ確認(カード30枚・番号ピン判読可・文字崩れ無し・コンソールエラー0件)
+   - `http://127.0.0.1:3000/?fixture=kusatsu` を **desktop 1280** — 同上
+   - 撮った画像は必ず Read で開いて目視する
+4. `node scripts/check-all.mjs` → **27本全緑**
 
 ## 変更禁止範囲
-- `assets/engine.js` / `assets/geo.js` / `fixtures/*.json` は**不可**。
-- rank の重み・閾値・カテゴリ減点は**不可**。
+
+- `assets/engine.js` / `assets/geo.js` / `fixtures/*.json` は**変更不可**。
+- rank の重み・閾値・カテゴリ減点は**変更不可**。
 - `git stash` / `git reset` / `git checkout` でファイルを戻す操作は**禁止**。
-- 外部API **0回**(Overpass/Wikipedia/Nominatim を一切叩かない)。
-- `scripts/check-autozoom.mjs:182` の混雑文言、`ズームすると宿が出ます` 系の文言、`app.js:616` の検索候補0件文言は今回の対象外。
+- 外部API(Overpass / Nominatim / Wikipedia)の呼び出しは**0回**。撮影は fixture か状態Aのみ。
+- 既存 `scripts/check-*.mjs` の**既存検査を減らさない**(追加のみ)。
+- `bgFromUrl()` など他のURLパラメータの検証ロジックには触らない。
 
 ## 終わったら
-1. `docs/ROADMAP.md` の R94 を `- [x] 2026-09-16 R94 …` に更新
-2. `docs/NIGHTLOG.md` の「## サイクル記録」に3行追記(やったこと / 見た目の確認結果 / 次)
-3. **先にコミット**(1行の日本語メッセージ)
-4. `git push`
-5. 報告は簡潔に(長文の報告書を書かない)
+
+1. `docs/ROADMAP.md` の R99 行を `- [x] 2026-09-16 R99 ...` に書き換える。
+2. `docs/NIGHTLOG.md` の「サイクル記録」に3行追記(やったこと / 見た目の確認結果 / 次)。
+3. **先にコミット**(1行の日本語メッセージ)。
+4. `git push`。
+5. 報告は簡潔に(長文の報告書を書かない)。

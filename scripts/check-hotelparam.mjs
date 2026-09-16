@@ -26,6 +26,11 @@
 //   f. ?fixture=hakone / ?fixture=dogo でも同様に日付が出る
 //   g. ?hotel=36.6226,138.5960(fixtureなし)では日付要素も不可視
 //   h. #feed-title は従来どおり「草津温泉」のまま(日付がタイトル側に混入していない)
+//
+// R99: 範囲外座標(緯度-90〜90 / 経度-180〜180 の外)の機械検査
+//   i. ?hotel=999,138.5960,テスト(緯度999) -> 状態A(地図可視・状態Bに遷移しない)
+//   j. ?hotel=36.6226,999,テスト(経度999) -> 同上
+//   k. ?hotel=abc,def,テスト(非数値) -> 同上(従来のisFinite経路の回帰確認)
 
 import { chromium } from 'file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs';
 import { spawn } from 'node:child_process';
@@ -128,6 +133,30 @@ async function checkBadgeDate(browser, path, expectDate, label) {
   await context.close();
 }
 
+// R99: 範囲外座標(?hotel=999,999 など)が状態Aへ黙って落ちることの検査
+async function checkStateA(browser, path, label) {
+  const context = await browser.newContext({ viewport: { width: 375, height: 812 } });
+  const page = await context.newPage();
+  const consoleErrors = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') consoleErrors.push(msg.text());
+  });
+  page.on('pageerror', (err) => consoleErrors.push(String(err)));
+
+  await page.goto(`${BASE}${path}`, { waitUntil: 'load' });
+  await waitFor(1500);
+
+  const mapVisible = await page.locator('#map').evaluate((el) => {
+    return el.offsetParent !== null && getComputedStyle(el).display !== 'none';
+  });
+  ok(mapVisible, label + ': #map が可視(状態A)', mapVisible);
+  const title = (await page.locator('#feed-title').textContent() || '').trim();
+  ok(title !== 'この宿の周辺', label + ': #feed-title が「この宿の周辺」になっていない(状態Bに遷移していない)', title);
+  ok(consoleErrors.length === 0, label + ': コンソールエラー0件', consoleErrors);
+
+  await context.close();
+}
+
 async function main() {
   let serverProc = null;
   const alreadyRunning = await isPortOpen(PORT);
@@ -191,6 +220,11 @@ async function main() {
 
     // h. #feed-title は従来どおり「草津温泉」のまま(日付混入なし)
     await checkTitle(browser, '/?fixture=kusatsu', '草津温泉', 'h.タイトルに日付混入なし');
+
+    // R99: 範囲外座標は?hotel=無しと同じく状態Aへ黙ってフォールバック
+    await checkStateA(browser, '/?hotel=999,138.5960,テスト', 'i.緯度999は状態A');
+    await checkStateA(browser, '/?hotel=36.6226,999,テスト', 'j.経度999は状態A');
+    await checkStateA(browser, '/?hotel=abc,def,テスト', 'k.非数値は状態A(回帰)');
   } finally {
     await browser.close();
     if (serverProc) serverProc.kill();

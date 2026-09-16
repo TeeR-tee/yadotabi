@@ -1338,6 +1338,9 @@
     var lat = parseFloat(parts[0]);
     var lon = parseFloat(parts[1]);
     if (!isFinite(lat) || !isFinite(lon)) return null;
+    // 地球上に無い座標(?hotel=999,999 など)は ?hotel= 無しと同じ扱いにして
+    // 状態Aへ黙ってフォールバックする(?bg= の厳格検証と同じ方針。R99)
+    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
     var name = parts.slice(2).join(',').trim();
     return { id: 'url/' + lat + ',' + lon, name: name || 'この宿の周辺', lat: lat, lon: lon };
   }

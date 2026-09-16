@@ -141,6 +141,11 @@
 
 ## サイクル記録
 
+### 2026-09-16 R99 `?hotel=` の緯度経度の範囲検査
+- やったこと: `app.js:1340` の `hotelFromUrl()` に `lat < -90 || lat > 90 || lon < -180 || lon > 180` を追加し、範囲外なら `?hotel=` 無しと同じ null を返して状態Aへ黙ってフォールバックさせた(`?bg=` の厳格検証と同じ方針)。呼び出し5箇所は無改修で経路に乗ることを実測確認済み。`scripts/check-hotelparam.mjs` に i(緯度999)・j(経度999)・k(非数値の回帰)の3ケースを追加(既存41→追加後は全44 PASS)。
+- 見た目の確認結果: `?hotel=999,138.59,テスト`(fixtureなし)mobile で検索欄・エリアチップ・地図の状態Aが出て状態Bに遷移せず(504で宿ピン取得が混雑中の表示は正常フォールバック)。`?fixture=kusatsu` mobile/desktopともカード30枚・番号ピン判読可・文字崩れ無しでデグレなし。
+- 次: ROADMAP の次点タスクへ。
+
 ### 2026-09-16 R9 別エリア fixture(箱根)追加
 - やったこと: `scripts/make-fixture.mjs` を引数化(`AREAS` 座標テーブル+`process.argv[2]`、app.js と同じ `/^[a-z0-9_-]+$/` で名前検証)。`node scripts/make-fixture.mjs hakone` を1回実行し、収集半径30kmで `fixtures/hakone.json`(overpass elements 4186件・wiki pages 50件)を生成。app.js の固定ヘッダー名 `'草津温泉(固定データ)'` を `json.meta.label` 参照に修正し、kusatsu.json の meta にも `"label":"草津温泉"` を1キー追加。
 - 見た目の確認結果: `?fixture=hakone` mobile/desktop ともヘッダーが「箱根湯本(固定データ)」でカード30件・番号ピンが谷沿いでも判読可能、リンクチップ・徒歩/車行の折り返し崩れなし。`?fixture=hakone&demo=far` をDOM検査したところ「もっと遠く(車1時間以上)10件」が実データで出ており(施設名と🚗分の泣き別れなし)、R2-3 の未確認だった実データ far を確認できた。`?fixture=kusatsu` mobile はカード30枚のままでデグレなし。
