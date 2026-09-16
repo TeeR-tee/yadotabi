@@ -1,113 +1,77 @@
-# NEXT — R40 fixture 4エリア目「別府」の追加
+# NEXT: R79 公共施設が除外ルールを通過して観光候補に残る件の是正(最優先)
 
-**判断理由**: 残候補5件のうち R14/R19 は既存 fixture の再生成(Overpass 再実行)が前提で今サイクルの禁止事項に触れ、R64 は Actions 無料枠の確認と各 check 本の import パス改修で1サイクルに収まらない。R40 は Overpass 1回・新規ファイル追加のみで既存 fixture を壊さず、R19(far 分布)と R71(写真割合)の材料にもなるため選定した。
+難易度: opus / 所要目安: 60〜90分 / 外部API: 0回(fixture のみ)
 
-- 難易度: sonnet
-- 所要目安: 25〜40分(うち Overpass 1回の生成で数分)
-- 外部API: **Overpass 1回・Wikipedia 1系統のみ**(`node scripts/make-fixture.mjs beppu` の1回だけ)。撮影は全て fixture で0回。
+## 背景(前サイクル R40 別府の観察)
 
----
+R35 で `isExcludedName` を OSM 側にも適用したが、**別府の上位30件に公共施設が9件も残っている**。
+`node scripts/dump-rank.mjs beppu` の実測(2026-09-16):
+
+| 順位 | 名前 | source | なぜ通過したか(計画役の見立て) |
+|---|---|---|---|
+| 5 | 別府駅 (大分県) | both | 末尾が `駅` ではなく `(大分県)` のため `TITLE_SUFFIX_NG` の末尾一致を素通り |
+| 9 | ビーコンプラザ | wiki | コンベンションセンター。語が一つも当たらない |
+| 10 | 別府市野口原総合運動場陸上競技場 | wiki | `競技場`/`運動場` が語彙に無い |
+| 11 | 京都大学大学院理学研究科附属地球熱学研究施設 | wiki | 末尾が `施設`。`大学` は部分一致ではなく**末尾一致**の語なので当たらない |
+| 12 | 別府市総合体育館 | wiki | `体育館` が語彙に無い |
+| 14 | 別府市公会堂 | wiki | `公会堂` が語彙に無い |
+| 18 | トキハ別府店 | wiki | 百貨店。`店` が語彙に無い |
+| 19 | 別府郵便電話局電話分室 | wiki | 末尾が `分室`。`郵便局` は末尾一致なので当たらない |
+| 24 | 野口病院管理棟 | wiki | 末尾が `管理棟`。`病院` は末尾一致なので当たらない |
+
+**要点: 落ちていない候補の多くは wiki 単独(source=wiki)で、原因は「OSM に適用できていない」ではなく `TITLE_SUFFIX_NG` が末尾一致のみのため「病院管理棟」「〇〇大学…施設」「別府駅 (大分県)」のように語の後ろに何かが付くと素通りする点**。R35 の修正は正しく効いており、今回足すのは語彙と当て方。
 
 ## 対象ファイル(絶対パス)
 
-1. `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\make-fixture.mjs` — AREAS に beppu を追加
-2. `C:\workspace\claude\旅行先用サイト\yadotabi\fixtures\beppu.json` — 生成される新規ファイル
-3. `C:\workspace\claude\旅行先用サイト\yadotabi\docs\check.mjs` — TARGETS に1行
-4. `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js` — SAMPLE_LINKS に1件
-5. `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-sample.mjs` — **件数アサーションの更新(必須)**
-6. `C:\workspace\claude\旅行先用サイト\yadotabi\docs\FIXTURES.md` — エリア表に1行
-7. `C:\workspace\claude\旅行先用サイト\yadotabi\README.md` — 3か所(29行目・108行目・144行目)
-8. `C:\workspace\claude\旅行先用サイト\計画書一式\09_研究ノート_認知外を提案するアルゴリズム.md` — 観察を1段落(**親リポジトリ管理**)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\engine.js` (本体)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-engine.mjs` (ケース追加)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\dump-rank.mjs` (任意・`more` 出力の追加のみ可)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\NIGHTLOG.md` / `docs\ROADMAP.md` (記録)
 
----
+## 実装方針(実物の行番号つき)
 
-## 実装方針(実物を読んだ上での指示)
+読むべき実物:
+- `assets/engine.js:138` `NAME_PROTECT_SUFFIX`(保護語・末尾一致)
+- `assets/engine.js:148` `TITLE_SUFFIX_NG`(末尾一致で落とす)
+- `assets/engine.js:170` `TITLE_KEYWORD_NG`(部分一致で落とす)
+- `assets/engine.js:180` `EXTRACT_KEYWORD_NG`(冒頭文の部分一致)
+- `assets/engine.js:355` `isProtectedName()` / `:365` `isExcludedName()` / `:389` `isExcludedArticle()`
+- 適用点: wiki 側 `assets/engine.js:691`、OSM 側 `buildOsmItems()` `assets/engine.js:624`
 
-### (1) make-fixture.mjs の AREAS(`scripts/make-fixture.mjs:18-22`)
+方針は**既存定数に足すだけ**。関数の構造(保護 → 除外の順)は変えない。
 
-現状は3行のオブジェクト。ここに1行足すだけ。
+1. `TITLE_KEYWORD_NG`(部分一致)に**公共施設の種別語**を追加する。ここは部分一致なので「管理棟」「附属…施設」「(大分県)」の後置きにも当たる:
+   `体育館` `公会堂` `市民会館` `県民会館` `文化会館` `競技場` `運動場` `武道館` `庁舎` `合同庁舎` `管理棟` `事務所` `出張所` `研究所` `研究施設` `試験場` `浄化センター` `福祉センター` `保健センター` `コンベンションセンター` `貯水池` `分室` `職員` `官公庁`
+   - `センター` 単体は入れない(観光案内センター・ビジターセンターを巻き込むため)。必要な `〇〇センター` は上のとおり**複合語で**入れること。
+2. `TITLE_SUFFIX_NG`(末尾一致)への追加は最小限に: `百貨店` `支所` `分署` `車庫` `営業所`(既存)。`店` 単体は禁止(「〇〇本店」の飲食観光店を巻き込む)。
+3. `NAME_PROTECT_SUFFIX`(保護)に**観光側で誤爆しそうな語**を先に足しておく:
+   `観光案内所` `ビジターセンター` `観光案内センター` `交流センター` `文化ホール` `タワー` `展望` `ロープウェイ` `足湯` `地獄` `砂湯`
+   - 保護は除外より先に評価される(`isExcludedName:367`)ので、ここに入れた語は必ず生き残る。
+4. **駅の後置き対策**: `別府駅 (大分県)` のような曖昧さ回避の括弧付きタイトルは、判定前に `\s*[（(][^）)]*[）)]\s*$` を1回だけ剥がして正規化する小ヘルパ(例 `stripDisambiguation(name)`)を `isExcludedName` の冒頭に入れる。**保護語の判定にも同じ正規化後の文字列を使う**こと。
+5. `EXTRACT_KEYWORD_NG` は冒頭文で確実に落とせるものだけ足す: `体育館である` `公会堂である` `コンベンション` `百貨店である` `研究施設である` `陸上競技場`。
 
-- キー `beppu` / `lat: 33.2846` / `lon: 131.4914` / `label: '別府温泉'`
-- `osmRadiusM` は**指定しない**(既定 15000 が `:36` の `AREAS[AREA].osmRadiusM || 15000` で効く)。別府は市街地型で密度が高く、箱根の 30000 を真似ると要素数が膨らんで hakone.json(900KB)と同じ肥大問題(R14)を新規に作ることになるため。
-- `buildOverpassQuery`(`:54-73`)・`fetchWiki`(`:127-176`)・`main`(`:178-210`)は**一切触らない**。
+**rank の重み・閾値・`geo.js`・`fixtures/*.json` は一切触らない。**
 
-実行は `node scripts/make-fixture.mjs beppu` を**1回だけ**。429/504 で `FALLBACK_RADIUS_M=4000` に落ちて成功した場合は、`docs/FIXTURES.md:45` の方針どおり**その結果を採用せず日を改める**(ROADMAP に残して他タスクへ)。
+## 完了条件(検証可能)
 
-### (2) docs/check.mjs の TARGETS(`docs/check.mjs:12-22`)
+1. `node scripts/dump-rank.mjs beppu` の cards 30件に、上表の9件が**0件**であること(`別府駅 (大分県)` 含む)。
+2. 4 fixture(kusatsu / hakone / dogo / beppu)で before/after の候補一覧を取り、**落ちた候補を全件目視**。観光対象(温泉・神社・寺・美術館・博物館・公園・タワー・展望・地獄・砂湯・道の駅 等)が1件でも落ちていたら `NAME_PROTECT_SUFFIX` に追加して再実行。最終的に**観光対象の誤爆0**。
+3. 差分一覧(エリアごとに「落ちた候補名 / 判定に当たった語 / 観光対象か」)を `docs/NIGHTLOG.md` に表で残す。
+4. `scripts/check-engine.mjs` に今回の語のケースを追加(落とす側6件以上・保護される側6件以上。最低でも「別府市総合体育館→除外」「野口病院管理棟→除外」「別府駅 (大分県)→除外」「観光案内センター→保護」「別府タワー→保護」「別府市美術館→保護」)。
+5. `node scripts/check-all.mjs` が **25本全緑**。
 
-`'fixtures/dogo.json',` の次に `'fixtures/beppu.json',` を追加するだけ。JSON 妥当性と `meta.lat` の検査は `:88` の `path.startsWith('fixtures/')` 分岐が自動で拾うので**分岐の変更は不要**。
+before/after の取り方: 実装前に `node scripts/dump-rank.mjs <area> > %TEMP%\before_<area>.md` を4エリア分、実装後に同じく after を取って差分を見る。`more`(31〜60番)も見たいので、`dump-rank.mjs` に `presented.more` の表を足す小改修は許可する(表示のみ・ロジック無変更)。
 
-### (3) app.js の SAMPLE_LINKS(`assets/app.js:1635-1639`)
+## 検証手順(撮影)
 
-```
-var SAMPLE_LINKS = [
-  { fixture: 'kusatsu', label: '草津の例' },
-  { fixture: 'hakone',  label: '箱根の例' },
-  { fixture: 'dogo',    label: '道後の例' }
-];
-```
-ここに `{ fixture: 'beppu', label: '別府の例' }` を追加する。これだけで:
-- R63 のサンプル導線チップが4本+「おまかせ」の計5本になる
-- R70 の `?fixture=random`(`:1314-1326` の `fixtureNameFromUrl`)が **beppu も抽選対象に含む**(`SAMPLE_LINKS` から選んでいるため自動)
-
-`fixtureNameFromUrl` の正規表現 `/^[a-z0-9_-]+$/`(`:1316`)は `beppu` を通すので**バリデーションの変更は不要**。`renderSamples`(`:1643-1650`)も配列を map しているので変更不要。
-
-### (4) check-sample.mjs の件数アサーション(**ここを忘れると check-all が赤くなる**)
-
-`scripts/check-sample.mjs:77` に
-```
-ok(count === 4, 'a. サンプルリンクが4本', count);
-```
-があり、SAMPLE_LINKS を4件にすると**リンクは5本**になってここが FAIL する。`count === 5` / メッセージ「サンプルリンクが5本」に直し、あわせて `:81-84` の並びに
-```
-ok(hrefs.some((h) => (h || '').includes('fixture=beppu')), 'b. 4本目が fixture=beppu を含む', hrefs);
-```
-を追加(既存の「4本目が fixture=random」は「5本目」に文言修正)。
-`checkSampleClickNavigates`(`:90-110`)は `.samples a` の**先頭**をクリックし `#feed-title === '草津温泉'` を期待しており、草津は先頭のままなので**変更不要**。
-`:134` の `?fixture=random` 検査は「3エリアのいずれか」を見ているので、**beppu も許容値に加える**こと(ファイル冒頭コメント `:11-15` の説明文も同時に更新)。
-
-### (5) 文書(コード変更なし)
-
-- `docs/FIXTURES.md:13-17` の表に `| beppu | 別府温泉 | 33.2846 | 131.4914 | 15000(既定) | 10000 |` を追加。`:11` の行番号参照(`make-fixture.mjs:18-22`)が `18-23` にずれるので直す。
-- `README.md:29` の「`?fixture=hakone`(または `kusatsu` / `dogo`)」に `beppu` を追加。
-- `README.md:108` のパラメータ表の値欄を `kusatsu / hakone / dogo / beppu / random` にし、説明の「3エリアから」を「4エリアから」に。
-- `README.md:144` の「草津・箱根・道後の3エリア」を「草津・箱根・道後・別府の4エリア」に。
-
-### (6) 09 研究ノート(親リポジトリ)
-
-`C:\workspace\claude\旅行先用サイト\計画書一式\09_研究ノート_認知外を提案するアルゴリズム.md` の末尾に**1段落**。観察の軸は「市街地+海沿い」という新条件:
-- `node scripts/dump-rank.mjs beppu` の上位30件を貼り、**海側(東)に候補が無く陸側に偏る**かどうか
-- 市街地型の公共施設混入が R35 の除外ルールで落ちているか(道後との比較)
-- far(車1時間以上)の件数 — 草津0件・道後0件・箱根10件に対して別府がどうなるか(**R19 の材料**)
-
-コミットは**このファイルだけ**を `git -C C:/workspace add "claude/旅行先用サイト/計画書一式/09_研究ノート_認知外を提案するアルゴリズム.md"` → commit。親リポジトリで他のファイルを add しないこと。
-
----
-
-## 完了条件(すべて検証可能)
-
-1. `fixtures/beppu.json` が存在し、`meta.area === 'beppu'` / `meta.label === '別府温泉'` / `meta.osmRadiusM === 15000` / `meta.generatedAt` がある
-2. `?fixture=beppu` でカードが **10枚以上**(道後と同程度の30枚を期待。10枚未満なら座標か半径を疑い、再生成せず NIGHTLOG に事実を記録して相談へ)
-3. `node scripts/check-all.mjs` が **25本全緑・exit 0**(check-sample の件数修正込み)
-4. `node docs/check.mjs` が全OK・exit 0(beppu.json 行を含む)。※本番未 push の間は beppu.json 行だけ 404 になるので、**push 後にもう一度**実行して緑を確認する
-5. `node scripts/dump-rank.mjs beppu` が上位30件を出力する
-6. ヘッダーが「別府温泉」+「固定データ YYYY-MM-DD 取得」バッジ
-7. `?fixture=kusatsu` / `?fixture=hakone` / `?fixture=dogo` が**従来どおり**(カード枚数・1位カード名が不変)
-
-## 検証手順(撮影+目視)
-
-`node C:\workspace\tools\shot\shot.mjs <URL> --mobile` と PC幅で撮り、画像を Read で開いて目視する。
-
-1. `?fixture=beppu` mobile — カード枚数・番号ピンが判読できるか・文字崩れ/はみ出し
-2. `?fixture=beppu` desktop — 同上
-3. `?demo=zoomout` mobile — サンプルチップが**5本**に増えて**横スクロールで全部読めるか**(ここが今回いちばん崩れやすい。1行に収まらず改行して他要素に被るなら NIGHTLOG に記録し、幅の調整は別タスクに切る)
-4. `?fixture=kusatsu` mobile — デグレなし確認
-5. コンソールエラー0件を各画面で確認
+- `node C:\workspace\tools\shot\shot.mjs "http://localhost:3000/?fixture=beppu" --mobile`
+- `node C:\workspace\tools\shot\shot.mjs "http://localhost:3000/?fixture=kusatsu" --mobile`
+- 撮った画像を必ず Read で開き、カードが30枚あること・上位に公共施設が見えないこと・文字崩れ/重なりが無いことを目視する。
+- 候補が減りすぎて30枚に満たないエリアが出たら、それは除外しすぎのサインなので保護語を見直す(枚数減も NIGHTLOG に記録)。
 
 ## 変更禁止範囲
 
-- `assets/engine.js` / `assets/geo.js` — **一切触らない**(rank の重み・閾値・除外ルール・Overpass クエリすべて)
-- `fixtures/kusatsu.json` / `hakone.json` / `dogo.json` — **再生成禁止**(Overpass を叩き直さない)
-- `make-fixture.mjs` の `buildOverpassQuery` / `fetchWiki` / `fetchOverpass` / `main`
-- 既存 check 本の検査ロジック(件数アサーションと beppu 追記以外)
-- `style.css` — サンプルチップの幅調整は今回やらない(3の撮影で問題が出たら起票のみ)
+- rank の重み・閾値(`score` 計算、カテゴリ多様性の減点)
+- `assets/geo.js`
+- `fixtures/*.json`(再生成しない。Overpass を叩かない)
+- 既存の `check-*.mjs` の**他の本**の中身

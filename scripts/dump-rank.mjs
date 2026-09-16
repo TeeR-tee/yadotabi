@@ -132,6 +132,7 @@ async function main() {
       }
       return {
         cards: attachScore(presented.cards),
+        more: attachScore(presented.more || []),
         far: attachScore(presented.far),
       };
     });
@@ -140,6 +141,13 @@ async function main() {
     console.log(buildTable(result.cards));
     console.log('\n集計:');
     console.log(buildSummary(result.cards));
+
+    console.log(`\n# ${area} more(31件目以降・${result.more.length}件)\n`);
+    if (result.more.length > 0) {
+      console.log(buildTable(result.more));
+    } else {
+      console.log('(0件)');
+    }
 
     console.log(`\n# ${area} far(車60分超・上位${result.far.length}件)\n`);
     if (result.far.length > 0) {
