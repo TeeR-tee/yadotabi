@@ -1,94 +1,97 @@
-# NEXT — R82 + R77(2サイクル分をまとめて1本。どちらも表示と検査だけ)
+# NEXT: R87 状態Bのスケルトン(読み込み中の骨組み)の見た目確認
 
-難易度: **sonnet** / 所要目安: **20〜30分**
+- **タスクID**: R87
+- **難易度**: sonnet
+- **所要目安**: 25〜40分
+- **前提**: 外部API 0回。fixture のみ。
 
-## なぜこの2件か(判断理由)
-R64 は GitHub Actions の無料枠確認がみのるん判断寄り、R81 は Overpass を1回叩く5エリア目で同僚検証前は4エリアで十分、R85 は営業先が国内予約サイト想定なので優先度が低い。残る R82(1行)と R77(表示可否の判断)はどちらも engine/geo/fixtures に触れず機械検査で閉じられるので、この2件を1サイクルでまとめる。
+## なぜ R86 ではなく R87 なのか(計画役の実測)
 
----
+ROADMAP の推奨は R86(「もっと見る」押下時のスクロール位置飛び)だったが、**計画役が Playwright で実測した結果 R86 の前提が誤りだったため今回は選ばない**。
 
-## R82 状態Bの「戻る」ボタンの aria-label
+実測(`?fixture=kusatsu`、ローカルサーバ、`#more-btn` を `scrollIntoView({block:'center'})` してから click):
 
-### 実測で判明した前提(計画役が確認済み。作業役は鵜呑みにせず再確認すること)
-**`index.html:56` には既に `aria-label="地図に戻る"` が付いている。**
+| 幅 | 押す前 scrollY | 押した後 scrollY | 差 | カード枚数 |
+|---|---|---|---|---|
+| mobile 375x812 | 11213 | 11213 | **0px** | 30 → 60 |
+| desktop 1280x900 | 13936 | 13936 | **0px** | 30 → 60 |
 
-```html
-<button class="topbar__back" id="back-btn" type="button" aria-label="地図に戻る">←</button>
+押下前に画面内に見えていたカード番号は `["29","30"]`、押下後は `["29","30","31"]` で、**31番が押したボタンのあった位置にそのまま現れる**。先頭へ飛んでいない。
+
+理由も実測で判明した。ROADMAP は「`renderFeed()` が `els.feedList.innerHTML` を丸ごと書き換えるから飛ぶ」と書いているが、
+- `assets/app.js:1057` の `els.feedList.innerHTML = html;` は**追記される 31〜60 枚目より上(既存30枚)の高さを変えない**ため、上のコンテンツの総高さが不変 = スクロール位置がずれない。
+- 「もっと見る」ボタンは `feedList` の中ではなく**別コンテナ `#feed-more`**(`assets/app.js:1062-1066`)にあり、ハンドラ(`assets/app.js:1851-1858`)も `renderFeed()` を呼ぶだけでスクロール操作を一切しない。
+- `window.scrollTo(0,0)` は `assets/app.js:1311`(状態A→Bの遷移時)にしか無く、「もっと見る」経路では走らない。
+
+よって R86 は**実装不要**。作業役は R86 を「調査の結果ズレないことを実測で確認したので対処不要」として ROADMAP に記録すること(下の完了条件参照)。
+
+## 目的(R87)
+
+`renderFeed()` の読み込み中分岐で実カードの後ろに積まれるスケルトン(骨組み)を**まだ一度も撮影していない**ので、実際に目で見て崩れが無いかを確認する。崩れていれば style.css のみで直し、問題なければ「確認した」事実を NIGHTLOG に残して閉じる。
+
+## 実測で判明した前提
+
+- `skeletonHtml()` は `assets/app.js:760-772`。`SKELETON_COUNT = 4`(`assets/app.js:59`)枚を出す。1枚は `.feedcard--skeleton` の中に `.feedcard__media.skel` 1つ + `.skel--line.skel--w70` / `.skel--line.skel--w40` / `.skel--line` の3本。
+- 積む箇所は `assets/app.js:1054` の `if (loading) html += skeletonHtml();`。`loading` は `assets/app.js:1037` で `stage` が `loading|osm|wiki` のとき真。
+- 「もっと見る」は読み込み中は出さない(`assets/app.js:1062` の `loading ? '' : moreHtml(...)`)ので、スケルトンと同時には出ない。
+- CSS は `assets/style.css:526-546`。`.skel` に `animation: skel-shimmer 1.4s ease infinite`(:531-533)、`.feedcard--skeleton .feedcard__media` は `aspect-ratio: 16 / 9`(:535)、`.skel--line` は `height:14px`(:536)、`.skel--w70` は `height:18px`(:537)。
+- **`prefers-reduced-motion: reduce` でシマーを止める指定は既に `assets/style.css:544-546` に `.skel { animation: none; }` として存在する**(ROADMAP の項目(c)は既存実装の確認になる見込み。未確認: 実際に効いているかは撮影で見ること)。
+- 遅延注入は `?slow=osm800,wiki1500`。読み取りは `assets/app.js:1354-1360`(`slowDelaysFromUrl`)→ `assets/app.js:1448-1449` で `YadoGeo.setSlowDelays()`、注入は `assets/geo.js:1278` 付近。fixture と併用できる(R15 で実装済み)。
+- 実カードの高さは写真ありカードで概ね一定だが、**写真なしカード(kusatsu にも一定数ある)は `.feedcard__media` が絵文字プレースホルダになる**ため、スケルトンの 16/9 メディアと高さが揃うとは限らない。未確認: 実際の差分px は撮影で測ること。
+
+## 対象ファイル(絶対パス)
+
+- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\style.css`(崩れていた場合のみ変更)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md`
+- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\NIGHTLOG.md`
+
+## 実装方針
+
+1. まず**撮影して目視**。コードは見てから変える。変更ゼロで閉じる結末も正解。
+2. 見るべき点:
+   - (a) 骨組み1枚の高さが実カード1枚と大きく違って、Wikipedia 到着時に画面がガタッと飛ばないか。`.feedcard--skeleton` の実高さと直前の実カードの実高さを `getBoundingClientRect().height` で数値でも取り、NIGHTLOG に両方の px を書く。
+   - (b) 骨組みと実カードの境目が分かるか(骨組みが実カードに見えて「壊れた要約」と誤解されないか)。
+   - (c) `prefers-reduced-motion: reduce` でシマーが止まるか。Playwright なら `browser.newContext({ reducedMotion: 'reduce' })`、撮影スクリプトで指定できなければ DevTools 相当が使えないので、`getComputedStyle(el).animationName` が `none` になることを一時スクリプトで数値確認してよい(その場合も通常撮影1枚は撮る)。
+3. 直す場合の許容範囲は **`assets/style.css:526-546` のブロック内の数値(height / aspect-ratio / margin)だけ**。`skeletonHtml()` の DOM 構造・`SKELETON_COUNT`・`renderFeed()` のロジックは変えない(ロジック無変更が ROADMAP の条件)。
+4. `.skel` の `animation: none;`(:545)は削除・変更しない。
+
+## 完了条件
+
+- `?fixture=kusatsu&slow=osm800,wiki1500` の mobile / desktop でスケルトンが写った撮影が `screenshots/` に残っている(最低2枚)。
+- 上記 (a)(b)(c) の3点について、**実測値または目視の結論**が NIGHTLOG に書かれている(「問題なし」だけでなく骨組みと実カードの高さ px を必ず併記)。
+- 崩れていた場合は style.css のみで修正し、修正後の撮影も残す。崩れていなければ style.css は無変更で `git diff --stat -- assets` が空。
+- **`node scripts/check-all.mjs` が 27本全緑**(必須)。
+- ついでに R86 を「実測により対処不要」として ROADMAP に記録する(この NEXT.md の実測表を1〜2行に要約して ROADMAP の R86 本文末尾に追記し、`[x] 2026-09-16` にする)。コードは書かない。
+
+## 検証手順
+
 ```
+# 撮影(外部API 0回)
+node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=kusatsu&slow=osm800,wiki1500" --mobile
+node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=kusatsu&slow=osm800,wiki1500"
+# デグレ確認(スケルトンが消えた通常状態)
+node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=kusatsu" --mobile
 
-つまり ROADMAP R82 の本文「`aria-label` を1つ足すだけ」は**事実誤認**で、実装済み。残っている作業は「**機械検査が無いので、将来うっかり消えても誰も気づかない**」という回帰防止だけ。
-
-### 対象ファイル(絶対パス)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-a11y.mjs`
-- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md`(R82 を `[x] 2026-09-16` に。**本文に「既に実装済みで、今回足したのは検査だけ」と1行訂正を添える**)
-
-### 実装方針(行番号つき)
-`check-a11y.mjs` は現在タップ領域44pxしか測っていない(`TARGETS` は 24〜34行、計測ループは末尾の `for (const target of TARGETS)` 内)。ここに**別立ての検査**を1つ足す。既存の高さ検査のループは一切書き換えない。
-
-1. `TARGETS`(34行の `];` の直後)に、新しい定数を足す:
-   ```js
-   // aria-label が空でないことを確かめる対象(高さ検査とは別立て)
-   const LABEL_TARGETS = [
-     { selector: '.topbar__back', label: '戻るボタン' },
-   ];
-   ```
-2. 各ページの `for (const target of TARGETS)` ループが終わった直後・`await context.close();` の**手前**に、同じ `page` を使う短いループを足す:
-   - `page.evaluate` で `document.querySelectorAll(selector)` を `el.offsetParent !== null` で絞り、各要素の `getAttribute('aria-label')` を配列で返す。
-   - 表示要素0件なら既存の書式に合わせて `[SKIP]` を出して continue(状態Aのページでは戻るボタンは非表示なので必ず SKIP になる)。
-   - 全件が空文字/null でなければ `[OK]`、1件でも空なら `[NG]` + `hasFailure = true`。
-   - ログ書式は既存行に揃える: `` console.log(`[${ok ? 'OK' : 'NG'}] ${pageInfo.label} ${target.label} の aria-label: ${JSON.stringify(labels)}`) ``
-3. `check-all.mjs` は check-a11y を既に呼んでいるので**登録の変更は不要**。
-
-### 完了条件
-- `node scripts/check-a11y.mjs` が `?fixture=kusatsu` で `[OK] … 戻るボタン の aria-label: ["地図に戻る"]` を出し、状態Aの4ページでは `[SKIP]` になる。
-- `index.html:56` の `aria-label="…"` を一時的に消すと `[NG]` + exit 1 になることを1回確認し、**必ず元に戻す**(壊れたまま push しない)。
-- 既存の44px検査が全件 OK のまま(件数・最小pxの行が減っていない)。
-
----
-
-## R77 カードに「何件中」を出すか決める
-
-### 実測で判明した前提
-`assets/engine.js:980 present()` は `cards.slice(0, MAX_CARDS)` / `more = cards.slice(MAX_CARDS, MAX_CARDS + MAX_MORE)` で切っており、**`present()` は「切る前の総数」を呼び出し側に返していない**。far は別枠(`FAR_DRIVE_MIN` 超過)なので「全◯件」の◯が何を指すかが自明でない。
-
-一方 `assets/app.js:1078` の `#feed-note` は既に `noteHtml()`(app.js:983 付近)が「暫定版です」の注記で使っており、`app.js:961 moreHtml()` は展開前に **`もっと見る（残り◯件）`** と残数を、展開後に **`◯番以降は地図に表示していません。`**(R60)を出している。
-
-### この事実からの推奨(作業役はこれを検証して決めること)
-**「出さない」を採る**のが筋が良い。理由は3つ:
-1. 「残り30件」は `moreHtml()` が既に出しており、**30 + 残り30 = 全60** はユーザーが足し算するまでもなく「まだある」ことが伝わっている。情報の二重化になる。
-2. 「全◯件」を正しく出すには `present()` の戻り値に総数を足す改修が要る(= engine.js の変更)。ROADMAP R77 は「表示のみ・engine/rank は触らない」と明記しており、**engine を触らずに正確な総数は出せない**。不正確な数(例: 30+30=60 固定)を出すのは、このプロジェクトが守ってきた「正直さ」に反する。
-3. `#feed-note` は R47 の「提案の作り方」注記が既に2行を占めており、375px で行数が増えると小地図とカード1枚目の間が間延びする。
-
-ただし**必ず撮り比べてから結論を書く**こと(推奨を鵜呑みにしない)。
-
-### 対象ファイル(絶対パス)
-- 撮り比べのみ。**コードは原則変更しない**(「出す」判断に転んだ場合のみ `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js` の `noteHtml()` を変更可。その場合も engine.js は不可)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\NIGHTLOG.md`(結論と理由を記録)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md`(R77 を `[x] 2026-09-16` に。**採否と理由を本文に残す**)
-
-### 検証手順
-1. `?fixture=kusatsu` mobile(375px)を撮影 = 現状(A案: 出さない)。
-2. 一時的に `noteHtml()` の先頭へ「上位30件を表示中（全60件）」の1行を差し込んで撮影 = B案。**撮り終わったら必ず元に戻す**。
-3. 2枚を Read で目視し、`#feed-note` の行数・カード1枚目との間隔・375px での折り返しを比較。
-4. 採否を NIGHTLOG に「理由つきで」書く。
-
----
-
-## 共通の検証(両方まとめて最後に1回)
-```
 node --check assets/app.js
-node scripts/check-a11y.mjs
-node scripts/check-all.mjs      # 27本・約4分・全緑(exit 0)であること
-node scripts/dump-rank.mjs kusatsu   # ランキングに差分が出ていないこと
+node scripts/check-all.mjs      # 27本全緑が必須
 ```
-撮影は `node C:\workspace\tools\shot\shot.mjs <URL> --mobile` を使い、**保存された画像を必ず Read で開いて目視する**(報告だけして画像が無い事故が過去2回あった)。
+
+- ローカルサーバは `start-server.bat`、またはプロジェクト直下で `python -m http.server 3000`。
+- 撮影タイミングがシビア(osm800ms / wiki1500ms の間しかスケルトンが出ない)なので、捕まえられないときは `?slow=osm3000,wiki6000` のように遅延を伸ばしてよい(パラメータの値を変えるだけで実装は変えない)。
+- 撮影した画像は必ず Read で開いて目視する。数値だけで済ませない。
 
 ## 変更禁止範囲
-- `assets/engine.js`、`assets/geo.js`、`fixtures/*.json` は**1行も触らない**。
-- rank の重み・閾値・除外ルール・Overpass クエリは触らない。
-- 既存 `scripts/check-*.mjs` の**既存の検査ロジックは書き換えない**(check-a11y への追記は「足す」のみ)。
-- git stash / reset --hard / checkout でファイルを戻す操作は禁止。
-- 外部API は0回(fixture のみ)。
+
+- `assets/engine.js` / `assets/geo.js` / `fixtures/*.json` は変更不可。
+- rank の重み・閾値は変更不可。
+- `git stash` / `git reset` / `git checkout` でファイルを戻す操作は禁止。
+- 外部API 0回(Overpass / Wikipedia を叩かない。fixture のみ)。
+- 既存 `scripts/check-*.mjs` の検査内容を減らさない。
 
 ## 終わったら
-実装 → 撮影・目視 → check-all 全緑 → ROADMAP を `[x]` に(R82 は「既に実装済みだった」訂正つき、R77 は採否と理由つき) → NIGHTLOG に3行 → **先にコミット** → `git push`。報告は簡潔に(長文の報告書は書かない)。
+
+1. `docs/ROADMAP.md` の R87 を `[x] 2026-09-16` に(R86 も上記のとおり `[x] 2026-09-16` + 実測要約を追記)。
+2. `docs/NIGHTLOG.md` のサイクル記録に3行(やったこと / 見た目の確認結果 / 次)。
+3. **先にコミット**(1行の日本語メッセージ)。
+4. `git push`。
+5. 報告は簡潔に(長文の報告書を書かない)。

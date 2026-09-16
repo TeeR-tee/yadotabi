@@ -19,6 +19,9 @@
 - R82 実測したら `index.html:56` に `aria-label="地図に戻る"` は既に実装済み(ROADMAP本文は事実誤認)だったため、`scripts/check-a11y.mjs` に別立ての `LABEL_TARGETS` ループを追加し戻るボタンの aria-label 検査のみ新設。既存の44px計測ループは無編集。
 - R77 `?fixture=kusatsu` mobile で `#feed-note` を撮り比べ。現状(出さない)と「上位30件を表示中（全60件）」を足したB案の2枚を目視した結果、「残り30件」は `moreHtml()` が既に表示しておりB案は情報の二重化かつ行数増で間延びするだけ、かつ正確な総数はengine.js改修なしには出せない(R77はengine不可)ため**不採用**。app.jsは変更なし(撮影用の一時差し込みは撮影後に必ず元へ戻し済み・`git diff --stat -- assets` 空を確認)。
 - 次: ROADMAP残りはR64(GitHub Actions無料枠・朝の相談寄り)/R81(Overpass1回・同僚検証前は4エリアで十分)/R85(国内予約サイト想定で優先度低)。すべて判断寄りのため計画役が朝の相談経由で選定。
+- R87 状態Bのスケルトン(読み込み中の骨組み)を`?fixture=kusatsu&slow=osm3000,wiki9000`のmobile/desktopで撮影・目視。(a)骨組み高さ312.3px・実カード高さ370.7px(差約58px、カード間余白で自然に区切られガタつき軽微)(b)灰色グラデーションのスケルトンと白背景の実カードの境目は明確(c)`prefers-reduced-motion: reduce`で`getComputedStyle(el).animationName`が`none`になることを実測、既存のシマー停止実装が機能している。3点とも崩れなしのためstyle.cssは無変更で閉じた。ついでにR86(もっと見るのスクロール位置維持)も計画役の実測により実装不要と判明したため合わせてクローズ。
+- 撮影は`screenshots/`に4枚保存(mobile/desktopのスケルトン状態、mobile全体、デグレ確認用の通常状態)。`node scripts/check-all.mjs`は27本中27本PASS(1回目はcheck-nohotels.mjsが環境要因のERR_NO_BUFFER_SPACEで一過性FAIL、単体再実行と2回目の通しで全緑を確認済み)。
+- 次: ROADMAP残りはR64(GitHub Actions無料枠・朝の相談寄り)/R81(Overpass1回)/R85(英語デモページ)/R88(埋め込み高さ上限見直し)/R89(check-all高速化)/R90(iframe lazy)から計画役が選定。
 
 ## 朝のまとめ(2026-09-16 06:10 司令塔が記入)
 
