@@ -549,3 +549,6 @@
 - R108 `noQueryHitText`に`QUERY_ECHO_MAX=20`を追加し入力値を先頭20字+「…」に切り詰め(文言後半・`NO_HOTEL_TEXT`は無変更)。`check-hotelparam.mjs`の`checkQueryNoHit`は期待文字列組み立てにも同じ切り詰めを適用し、100字`q`のケースを1件追加(51文字以内を機械検査)、既存17件のgotoは無削減。
 - `?q=`100字をmobile/desktopで撮影し黒帯が2行に収まり草津の地図が読めることを目視、`?fixture=kusatsu`mobileもデグレなし。`check-hotelparam.mjs`は53 pass/0 fail、`node scripts/check-all.mjs`は28本中28本PASS。`git diff --stat -- assets/style.css index.html fixtures demo`は空。
 - 次: ROADMAP残りはR64/R81/R85/R88/R90/R109(iframe属性一貫性検査)/R110(受動ログの古いエントリ掃除)から計画役が選定。
+- R110 受動ログ`yado.passive.v1`に90日の期限掃除を追加。`app.js:294-295`に`PASSIVE_MAX_AGE_DAYS=90`と`PASSIVE_MAX_AGE_MS`を定数化し、`passivePush()`(`app.js:302`)の書き込み時に`t`が90日より古いレコードのみ落とす1行フィルタを追加(件数上限200件は従来どおり別枠で維持)。90日は旅行検討サイクル(数週間〜2ヶ月)+季節1つ分を残す目安として`docs/passive-log.md`の「rank検証の材料」目的と突き合わせて採用。実測での訂正: ROADMAP本文にあった「R61(`initialView()`)が何ヶ月も前の宿を初期位置に使う」は事実誤認で、R61が読むのは`yado.recent.v3`(受動ログとは別キーで`t`を持たない)であり今回の掃除の対象外。
+- `?fixture=kusatsu&demo=passive`で91日前/89日前/`t`なしの3種を仕込んだ機械検査(`scripts/check-passive.mjs`に追加、既存項目は無削減)で91日前のみ消え89日前と`t`なしは残ることを確認、`.passivebox`の総件数表示とも整合。`?fixture=kusatsu`mobileの通常表示もカード30枚・文字崩れなしでデグレ無しを目視。`node scripts/check-all.mjs`は28本中28本PASS、`git diff --stat`で対象外ファイル(style.css/index.html/fixtures/demo/geo.js)は無変更。
+- 次: ROADMAP残りはR64/R81/R85/R88/R90/R109(iframe属性一貫性検査)から計画役が選定。

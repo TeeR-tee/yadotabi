@@ -143,6 +143,40 @@ async function main() {
       await context.close();
     }
 
+    // 7: 90日より古いレコードは書き込み時に落ちる(t が無いものは残す)
+    {
+      const context = await browser.newContext({ viewport: { width: 375, height: 812 } });
+      const page = await context.newPage();
+      const DAY = 86400000;
+      await page.addInitScript(({ key, day }) => {
+        const now = Date.now();
+        const seed = [
+          { t: now - 91 * day, type: 'tap', tag: 'old91' },
+          { t: now - 89 * day, type: 'tap', tag: 'recent89' },
+          { type: 'tap', tag: 'no-t' },
+        ];
+        window.localStorage.setItem(key, JSON.stringify(seed));
+      }, { key: PASSIVE_KEY, day: DAY });
+
+      await page.goto(`${BASE}/?fixture=kusatsu&demo=passive`, { waitUntil: 'load' });
+      await page.waitForFunction(() => document.querySelectorAll('.feedcard[data-index]').length >= 30, null, { timeout: 15000 });
+
+      // カードを1枚タップして passivePush を発火させる(掃除は書き込み時にのみ走る)
+      await page.locator('.feedcard[data-index="0"]').click();
+      await waitFor(300);
+
+      const list = await readPassive(page);
+      const tags = (list || []).map((e) => e.tag).filter(Boolean);
+      check('(a) 91日前のエントリが消える', !tags.includes('old91'), `残っているtag=${tags.join(',')}`);
+      check('(b) 89日前のエントリは残る', tags.includes('recent89'), `残っているtag=${tags.join(',')}`);
+      check('(c) t が無いエントリは残る(判断できないものは消さない)', tags.includes('no-t'), `残っているtag=${tags.join(',')}`);
+
+      const box = await page.locator('.passivebox').textContent().catch(() => '');
+      check('.passivebox の総件数がold1件消えた分だけ減っている(残2+新規1=3件)', /総件数\s*3/.test(box || ''), `box=${box}`);
+
+      await context.close();
+    }
+
     // 6: localStorage を封じても壊れない
     {
       const context = await browser.newContext({ viewport: { width: 375, height: 812 } });

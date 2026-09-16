@@ -291,11 +291,15 @@
 
   var PASSIVE_KEY = 'yado.passive.v1';
   var PASSIVE_MAX = 200;
+  var PASSIVE_MAX_AGE_DAYS = 90;
+  var PASSIVE_MAX_AGE_MS = PASSIVE_MAX_AGE_DAYS * 86400000;
 
   /** type: 'view' | 'tap' | 'link' | 'seen'。lsGet/lsSet 経由で例外を握りつぶす。 */
   function passivePush(type, data) {
     var list = lsGet(PASSIVE_KEY);
     if (!Array.isArray(list)) list = [];
+    var cutoff = Date.now() - PASSIVE_MAX_AGE_MS;
+    list = list.filter(function (e) { return e && (typeof e.t !== 'number' || e.t >= cutoff); });
     var entry = { t: Date.now(), type: type };
     for (var k in data) { if (data.hasOwnProperty(k)) entry[k] = data[k]; }
     list.push(entry);
