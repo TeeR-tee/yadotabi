@@ -452,6 +452,9 @@ body {
   font-size: var(--fs-lg);
   font-weight: 700;
   line-height: var(--lh-tight);
+  /* 長いラテン文字の連続(例 MinatoyamaJouato)でもカード枠からはみ出さない。
+     日本語名は任意位置で折り返せるので影響なし。省略はしない(情報を隠さない方針)。 */
+  overflow-wrap: anywhere;
 }
 
 .feedcard__meta {

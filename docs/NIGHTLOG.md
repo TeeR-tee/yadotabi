@@ -141,6 +141,11 @@
 
 ## サイクル記録
 
+### 2026-09-16 R100 カード見出しの折り返し方針統一
+- やったこと: `dump-rank.mjs` を4エリアで回して cards+more(上位30〜60件)の最長名を実測(dogo 62字「友情のシンボル ゴールドマイナー像の説明」/hakone 54字「わんぱくらんど 小田原こどもの森公園」/kusatsu 62字「湯けむりに ふすぼりもせぬ 月の貌 小林一茶」/beppu 59字「大分マリーンパレス水族館「うみたまご」」で、いずれも日本語。NEXT.md想定の`MinatoyamaJouato`級ラテン連続は上位に無かった)。予防目的として `assets/style.css:450` の `.feedcard__name` に `overflow-wrap: anywhere` を1行追加(コメント込み3行)。`.suggest__name`/`.topbar__title` は省略方針のままで触っていない(カード見出しは情報を隠さない方針なので折り返しで統一)。
+- 見た目の確認結果: 変更前後とも Playwright で `.feedcard__name` の `scrollWidth > clientWidth` は0件(dogo)。変更前の `Matsuyama Castle` 等の英語見出しも枠内に収まっていた。変更後 `?fixture=dogo` mobile/desktop・`?fixture=hakone` mobile を撮影し目視で見出し欠け無し。`?fixture=kusatsu` mobile のデグレ確認でも日本語見出しの折り返し位置に不自然さなし。
+- 次: ROADMAP の次点タスクへ。
+
 ### 2026-09-16 R99 `?hotel=` の緯度経度の範囲検査
 - やったこと: `app.js:1340` の `hotelFromUrl()` に `lat < -90 || lat > 90 || lon < -180 || lon > 180` を追加し、範囲外なら `?hotel=` 無しと同じ null を返して状態Aへ黙ってフォールバックさせた(`?bg=` の厳格検証と同じ方針)。呼び出し5箇所は無改修で経路に乗ることを実測確認済み。`scripts/check-hotelparam.mjs` に i(緯度999)・j(経度999)・k(非数値の回帰)の3ケースを追加(既存41→追加後は全44 PASS)。
 - 見た目の確認結果: `?hotel=999,138.59,テスト`(fixtureなし)mobile で検索欄・エリアチップ・地図の状態Aが出て状態Bに遷移せず(504で宿ピン取得が混雑中の表示は正常フォールバック)。`?fixture=kusatsu` mobile/desktopともカード30枚・番号ピン判読可・文字崩れ無しでデグレなし。
