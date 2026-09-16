@@ -117,20 +117,23 @@
 
 ### `?demo=`の値一覧
 
-10個すべて `assets/app.js` の `demoStateA` 系分岐で完結し、外部APIは叩きません。
+12個すべて `assets/app.js` の `?demo=` 分岐で完結し、外部APIは叩きません(`autozoom` と `hoteltip` は
+宿の取得関数をダミーデータに差し替えることで再現しています)。
 
-| 値 | 何が再現されるか |
-|---|---|
-| `far` | 現在地から遠い提案がある状態 |
-| `zoomout` | 地図の保存位置を復元しない状態(状態Aも同時に有効) |
-| `suggest` | 検索候補が出ている状態A |
-| `recent` | 最近見たエリアがある状態A |
-| `recentmix` | 最近見たエリアが複数混在する状態A |
-| `passive` | パッシブ通知(受け身の提案)が出ている状態 |
-| `imgfail` | 画像取得に失敗したときのフォールバック表示 |
-| `nohotels` | 状態Aで周辺に宿が1件もない状態 |
-| `autozoom` | 宿0件→自動で1段引く→2回目で宿が見つかる、の自動ズーム挙動を再現(ダミーの宿データに差し替え) |
-| `hoteltip` | 状態Aで宿ピンが密集し、名前ツールチップが重なる見た目を確認する状態(ダミーの宿6件に差し替え) |
+| 値 | 何が再現されるか | 使っている検査 |
+|---|---|---|
+| `far` | 現在地から遠い提案がある状態 | check-a11y.mjs / check-feednote.mjs |
+| `zoomout` | 地図の保存位置を復元しない状態(状態Aも同時に有効) | check-chipcurrent.mjs / check-keyboard.mjs / check-sample.mjs |
+| `initpos` | 状態Aの初期位置の検査用(地図の保存位置を復元せず状態Aで開く。`zoomout` と同じ2フラグが立つ) | check-initpos.mjs |
+| `suggest` | 検索候補が出ている状態A | check-chipcurrent.mjs / check-recent.mjs |
+| `recent` | 最近見たエリアがある状態A | check-initpos.mjs / check-recent.mjs |
+| `recentmix` | 最近見たエリアが複数混在する状態A | check-a11y.mjs / check-recent.mjs |
+| `passive` | パッシブ通知(受け身の提案)が出ている状態 | なし(目視専用) |
+| `imgfail` | 画像取得に失敗したときのフォールバック表示 | check-imgfail.mjs |
+| `portrait` | カード先頭3枚の写真を縦長ダミー画像(400×800)に差し替え、縦長写真の見切れを確認する | check-imgfail.mjs |
+| `nohotels` | 状態Aで周辺に宿が1件もない状態 | check-autozoom.mjs / check-nohotels.mjs |
+| `autozoom` | 宿0件→自動で1段引く→2回目で宿が見つかる、の自動ズーム挙動を再現(ダミーの宿データに差し替え) | check-autozoom.mjs |
+| `hoteltip` | 状態Aで宿ピンが密集し、名前ツールチップが重なる見た目を確認する状態(ダミーの宿6件に差し替え) | check-hoteltip.mjs |
 
 ## ファイル構成
 

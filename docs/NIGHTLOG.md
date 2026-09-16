@@ -1,6 +1,9 @@
 # 夜間ログ(みのるんが朝に読む)
 
 ## サイクル記録
+- R91 README の `?demo=` 値一覧を実装に合わせて修正。app.jsをgrepで再実測し12値(far/zoomout/initpos/suggest/recent/recentmix/passive/imgfail/portrait/nohotels/autozoom/hoteltip)を確認、README.mdの「10個すべて」を「12個すべて」に直し表を3列(値/何が再現されるか/使っている検査)・12行に拡張。portraitの縦長ダミー画像サイズ(400×800)もapp.js:801で実測確認。
+- デグレ確認撮影(`?fixture=kusatsu` mobile)でカード30枚・番号ピン判読可・文字崩れなし・コンソールエラー0件を目視。`node docs/check.mjs`(README画像リンク含む)と`node scripts/check-all.mjs`は27本中27本PASS、`git diff --stat -- assets fixtures scripts index.html demo`は空でREADME.md以外への波及なしを確認。
+- 次: R89(check-all.mjs高速化・hotelparam分割)または朝の相談待ちのR2-1以外の未着手項目(R92・R93・R94・R95)から計画役が選定。
 - R88 埋め込み高さ通知の受信側上限を暫定100000pxから実測ベースの60000pxへ変更。計画役が4エリア×2幅×2状態(30枚/60枚展開後)を実測し、最大値は kusatsu desktop 60枚展開後の34075px(ROADMAP旧文言「例20000px」は事実誤認・R48当時と同じ罠だった)。実測最大の約1.8倍を採用し `demo/hotel-page.html` の表示用コピーと実スクリプトの2箇所を60000で揃え、根拠コメントを追加。`assets/app.js`(送信側)は無変更(`git diff --stat -- assets` 空)。
 - `?fixture=kusatsu&embed=1` のデモページを mobile/desktop で目視、iframe内に二重スクロールなくカードが最後まで表示。`node scripts/check-embedheight.mjs` 8件PASS(「もっと見る」展開後も高さがさらに増える検査が上限60000pxで引き続きPASS)、`node scripts/check-all.mjs` 27本中27本PASS。ついでにR90(`loading="lazy"`)が`demo/hotel-page.html:213`に既に実装済みであることを実測確認しROADMAPを[x]に。
 - 次: R89(check-all.mjs高速化・hotelparam分割)または朝の相談待ちのR2-1以外の未着手項目(R91〜R95)から計画役が選定。
