@@ -546,3 +546,6 @@
 - R107 `scripts/check-firstcard.mjs`を新設し`?fixture=kusatsu&perf=1`の`first-card-painted`ms(console/`#perf-box`の既存2経路、app.js無変更)を標準出力に記録、しきい値`FIRST_CARD_MAX_MS=200`(実測中央値24msの約8倍、CI揺らぎで赤くしない方針)で判定。`check-all.mjs`に28本目として登録し、`check-all.mjs`本数コメント・`docs/CHECKS.md`表と本数表記・`docs/FIXTURES.md`の「27本全緑」を28本に更新(grep確認済み、AUTOPILOT/README.mdに27本表記なし)。
 - 単体連続5回すべてPASS(実測ms: 24/24/108/26/24、中央値24ms、200ms上限に対し十分な余裕を確認)、`node scripts/check-all.mjs`は28本中28本PASS(合計237.5s)。`git diff --stat -- assets index.html fixtures demo`は空(アプリ本体無変更)、画面変更なしのため撮影は省略。
 - 次: ROADMAP残りはR64/R81/R85/R88/R90/R108(`?q=`長さ上限)/R109(iframe属性一貫性検査)/R110(受動ログの古いエントリ掃除)から計画役が選定。
+- R108 `noQueryHitText`に`QUERY_ECHO_MAX=20`を追加し入力値を先頭20字+「…」に切り詰め(文言後半・`NO_HOTEL_TEXT`は無変更)。`check-hotelparam.mjs`の`checkQueryNoHit`は期待文字列組み立てにも同じ切り詰めを適用し、100字`q`のケースを1件追加(51文字以内を機械検査)、既存17件のgotoは無削減。
+- `?q=`100字をmobile/desktopで撮影し黒帯が2行に収まり草津の地図が読めることを目視、`?fixture=kusatsu`mobileもデグレなし。`check-hotelparam.mjs`は53 pass/0 fail、`node scripts/check-all.mjs`は28本中28本PASS。`git diff --stat -- assets/style.css index.html fixtures demo`は空。
+- 次: ROADMAP残りはR64/R81/R85/R88/R90/R109(iframe属性一貫性検査)/R110(受動ログの古いエントリ掃除)から計画役が選定。

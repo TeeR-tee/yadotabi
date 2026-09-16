@@ -188,7 +188,9 @@ async function checkQueryNoHit(browser, q, label) {
 
   await page.goto(`${BASE}/?q=${encodeURIComponent(q)}`, { waitUntil: 'load' });
 
-  const expectedText = '「' + q + '」は見つかりませんでした。エリアチップか検索から選べます。';
+  // R108: app.js の QUERY_ECHO_MAX(20字)切り詰めに合わせて期待文字列を組み立てる
+  const shownQ = q.length > 20 ? q.slice(0, 20) + '…' : q;
+  const expectedText = '「' + shownQ + '」は見つかりませんでした。エリアチップか検索から選べます。';
   let timedOut = false;
   try {
     await page.waitForFunction((text) => {
@@ -202,6 +204,8 @@ async function checkQueryNoHit(browser, q, label) {
   const text = timedOut ? '' : (await note.textContent() || '').trim();
   ok(!timedOut && visible === true, label + ': .mapnoteが可視', timedOut ? 'timeout' : visible);
   ok(!timedOut && text === expectedText, label + ': 本文が一致', timedOut ? 'timeout' : text);
+  // R108: 長いqを渡しても案内文が規定の長さ(51字)以内に切り詰められていること
+  ok(!timedOut && text.length <= 51, label + ': 本文が51文字以内(R108切り詰め)', timedOut ? 'timeout' : text.length);
 
   const mapVisible = await page.locator('#map').evaluate((el) => {
     return el.offsetParent !== null && getComputedStyle(el).display !== 'none';
@@ -320,6 +324,9 @@ async function main() {
 
     // R105: ?q= が0件のとき .mapnote に案内文が出る
     await checkQueryNoHit(browser, 'そんちょうざいしないちめい', 'l.q0件でmapnote表示');
+
+    // R108: 長い?q=でも案内文が規定の長さ以内(切り詰め確認)
+    await checkQueryNoHit(browser, 'あ'.repeat(100), 'm.長いqでも案内文が規定長以内');
   } finally {
     await browser.close();
     if (serverProc) serverProc.kill();

@@ -423,9 +423,13 @@
   // A/Bで共有する0件文言(二重管理を避けるため定数化)
   var NO_HOTEL_TEXT = 'この範囲には宿のデータがありません。エリアチップか検索から選べます。';
 
+  // R108: 案内文に出す入力値の上限(20字で .mapnote が 114px/地図の18%に収まる実測値)
+  var QUERY_ECHO_MAX = 20;
+
   // R105: ?q= の地名が1件も見つからないときの案内(R94 の「状況。次にできること。」形式)
   function noQueryHitText(q) {
-    return '「' + q + '」は見つかりませんでした。エリアチップか検索から選べます。';
+    var shown = q.length > QUERY_ECHO_MAX ? q.slice(0, QUERY_ECHO_MAX) + '…' : q;
+    return '「' + shown + '」は見つかりませんでした。エリアチップか検索から選べます。';
   }
 
   function loadHotelsInView() {
