@@ -585,10 +585,30 @@
   }
 
   /**
+   * 公式サイトURL のホスト名(先頭の `www.` は剥がす)。不正なURLなら null。
+   * 「https://www.matsuyamajo.jp/」と「https://matsuyamajo.jp」を同じとみなすため。
+   */
+  function websiteHost(url) {
+    if (typeof url !== 'string' || !url) return null;
+    try {
+      var host = new URL(url).hostname.toLowerCase();
+      return host.indexOf('www.') === 0 ? host.slice(4) : host;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /** 名前が純ASCII(=英語表記)かどうか。日本語が1文字でも混ざれば false。 */
+  function looksAscii(name) {
+    return typeof name === 'string' && /^[\x20-\x7E]+$/.test(name);
+  }
+
+  /**
    * 同じ場所かどうか。
    * (1) 正規化した名前が一致する、または
    * (2) 150m 以内で、一方の名前が他方を含み、かつ差分が施設語でない
    *     (「湯畑源泉」と「湯畑」は同じ。「天成園足湯」と「天成園」は別物)
+   * (3) 日英表記ゆれの救済(下の isSameNameLanguagePair を参照)
    */
   function isSamePlace(a, b) {
     // OSM 要素が wikipedia タグで記事を名指ししているときは、それが最も確かな一致。
@@ -605,12 +625,40 @@
     if (na === nb) return true;
     var d = distanceBetween(a.lat, a.lon, b.lat, b.lon);
     if (d > DEDUPE_NEAR_M) return false;
-    // 包含が成立しないなら別物
+    // 包含が成立するなら、差分が「敷地内の別施設」を表す語でない限り同じ場所
     var longer = na.length >= nb.length ? na : nb;
     var shorter = na.length >= nb.length ? nb : na;
-    if (longer.indexOf(shorter) === -1) return false;
-    // 包含していても、差分が「敷地内の別施設」を表す語なら別物として扱う
-    return !diffLooksLikeFacility(longer.split(shorter));
+    if (longer.indexOf(shorter) !== -1) {
+      return !diffLooksLikeFacility(longer.split(shorter));
+    }
+    // 最後の救済: 日本語名と英語名で文字が1つも共通しないペア
+    return isSameNameLanguagePair(a, b);
+  }
+
+  /**
+   * 日英の表記ゆれで同じ場所が2件に割れているときの救済。
+   *
+   * 道後の松山城が「松山城」(historic=castle / contact:website=www.matsuyamajo.jp) と
+   * 「Matsuyama Castle」(historic=castle / website=matsuyamajo.jp) の2要素に割れており、
+   * 文字が1つも共通しないため既存の包含判定では絶対に潰せなかった。
+   *
+   * 誤爆(別施設どうしの併合)は写真・要約が化けるぶんカードの重複より実害が大きいので、
+   * 4エリア総当たりの実測で誤爆0だった条件だけを採る。**4条件すべての AND**:
+   *   1. 公式サイトのホスト名が一致(www. は無視)
+   *   2. カテゴリが一致(items は主タグ文字列を持たず category しか無いため。
+   *      historic=castle どうしは両方 'castle' に落ちるので主タグ一致と同義になる)
+   *   3. 片方が純ASCII名・もう片方が日本語名(＝日英ペアであること)
+   *   4. DEDUPE_NEAR_M(150m)以内 ← 呼び出し元の isSamePlace で確認済み
+   *
+   * 3 を外すと「宮永岳彦記念美術館」↔「弘法の里湯」(同じ市の公式サイト)や
+   * うみたまごの館内施設が全部1件に潰れる。**この条件は緩めないこと。**
+   */
+  function isSameNameLanguagePair(a, b) {
+    var ha = websiteHost(a.website);
+    var hb = websiteHost(b.website);
+    if (!ha || !hb || ha !== hb) return false;
+    if (!a.category || !b.category || a.category !== b.category) return false;
+    return looksAscii(a.name) !== looksAscii(b.name);
   }
 
   /**

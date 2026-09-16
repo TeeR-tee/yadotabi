@@ -26,7 +26,8 @@ function eq(actual, expected, label) {
 
 /** engine.js を新しいサンドボックスに読み込み、YadoGeo を差し替える */
 function loadEngine(geoMock) {
-  const sandbox = { console, setTimeout, clearTimeout, Promise, Date, Math, JSON };
+  // URL はブラウザにも Node にもある標準グローバル。engine.js の websiteHost が使う。
+  const sandbox = { console, setTimeout, clearTimeout, Promise, Date, Math, JSON, URL };
   sandbox.window = sandbox;
   sandbox.YadoGeo = geoMock;
   vm.createContext(sandbox);
@@ -806,6 +807,106 @@ console.log('\n(r84) _debug の有無で cards/more/far が不変(内訳は並�
     if (Math.abs(d.total - expected) > 1e-9) penaltyConsistent = false;
   });
   ok(penaltyConsistent, 'total === base + categoryPenalty(内訳の合計が合っている)');
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n(r114) 日英表記ゆれの救済(ホスト一致+カテゴリ一致+日英ペア+150m以内の AND)');
+{
+  // collect() に OSM だけを渡し、ペアが1件に統合されるか2件のまま残るかを見る。
+  async function collectNames(spots) {
+    const E = loadEngine({
+      ...geoMock(),
+      fetchSpots: () => Promise.resolve(JSON.parse(JSON.stringify(spots))),
+      fetchWikiNearby: () => Promise.resolve([])
+    });
+    const items = await E.collect(HOTEL, CTX);
+    return items.map((x) => x.name).sort();
+  }
+
+  // 1. 効くケース: 道後の松山城(fixtures/dogo.json の実データ相当・79m離れ)
+  //    「松山城」(contact:website 由来) と「Matsuyama Castle」(website) は
+  //    文字が1つも共通しないため既存3経路では潰れない。
+  const castlePair = [
+    { id: 'node/611661255', name: '松山城', lat: 33.845651, lon: 132.7657463,
+      category: 'castle', categoryLabel: '城・城跡', distanceM: 1000,
+      website: 'https://www.matsuyamajo.jp/', wikipediaTitle: null, wikidataId: 'Q981357' },
+    { id: 'node/12827570072', name: 'Matsuyama Castle', lat: 33.844972, lon: 132.7659941,
+      category: 'castle', categoryLabel: '城・城跡', distanceM: 1080,
+      website: 'https://matsuyamajo.jp', wikipediaTitle: null, wikidataId: null }
+  ];
+  eq(await collectNames(castlePair), ['松山城'],
+    '松山城 と Matsuyama Castle は1件に統合され、短い日本語名が残る');
+
+  // 2. 誤爆しないケース その1: hakone 宮永岳彦記念美術館 ↔ 弘法の里湯
+  //    42m・同じ city.hadano.kanagawa.jp だが、どちらも日本語名でカテゴリも違う。
+  const hadanoPair = [
+    { id: 'way/160552662', name: '宮永岳彦記念美術館', lat: 35.2296, lon: 139.2203,
+      category: 'museum', categoryLabel: '美術館・博物館', distanceM: 5000,
+      website: 'https://www.city.hadano.kanagawa.jp/kanko-bunka-sports/bunka-geijutsu/1/index.html' },
+    { id: 'way/160552663', name: '弘法の里湯', lat: 35.22996, lon: 139.22047,
+      category: 'public_bath', categoryLabel: '温泉・入浴', distanceM: 5040,
+      website: 'https://www.city.hadano.kanagawa.jp/kanko/onsen/2674.html' }
+  ];
+  eq(await collectNames(hadanoPair), ['宮永岳彦記念美術館', '弘法の里湯'],
+    '宮永岳彦記念美術館 と 弘法の里湯 は併合されない(日英ペアでない)');
+
+  // 3. 誤爆しないケース その2: beppu うみたまごの館内施設
+  //    全部 umitamago.jp で至近だが、どれも日本語名なので救済に落ちてはいけない。
+  const umitamagoGroup = [
+    { id: 'way/182406175', name: '大分マリーンパレス水族館「うみたまご」', lat: 33.2571, lon: 131.5195,
+      category: 'aquarium', categoryLabel: '水族館', distanceM: 8000, website: 'https://www.umitamago.jp/' },
+    { id: 'node/12895774908', name: 'あそびーち', lat: 33.25716, lon: 131.51958,
+      category: 'attraction', categoryLabel: '観光スポット', distanceM: 8010, website: 'https://www.umitamago.jp/' },
+    { id: 'node/12895774909', name: 'パフォーマンスエリア・イルカプール', lat: 33.25719, lon: 131.51961,
+      category: 'attraction', categoryLabel: '観光スポット', distanceM: 8015, website: 'https://www.umitamago.jp/' }
+  ];
+  eq((await collectNames(umitamagoGroup)).length, 3,
+    'うみたまごの館内施設3件は3件のまま残る(日英ペアでない)');
+
+  // 4. カテゴリが違えば、日英ペアでホストが同じでも併合しない(AND の各条件が効いている)
+  const crossCategory = [
+    { id: 'node/x1', name: '松山城', lat: 33.845651, lon: 132.7657463,
+      category: 'castle', categoryLabel: '城・城跡', distanceM: 1000, website: 'https://www.matsuyamajo.jp/' },
+    { id: 'node/x2', name: 'Matsuyama Castle Ropeway', lat: 33.844972, lon: 132.7659941,
+      category: 'attraction', categoryLabel: '観光スポット', distanceM: 1080, website: 'https://matsuyamajo.jp' }
+  ];
+  eq((await collectNames(crossCategory)).length, 2, 'カテゴリが違えば日英ペアでも併合しない');
+
+  // 5. 公式サイトのホストが違えば併合しない
+  const otherHost = [
+    { id: 'node/y1', name: '松山城', lat: 33.845651, lon: 132.7657463,
+      category: 'castle', categoryLabel: '城・城跡', distanceM: 1000, website: 'https://www.matsuyamajo.jp/' },
+    { id: 'node/y2', name: 'Matsuyama Castle', lat: 33.844972, lon: 132.7659941,
+      category: 'castle', categoryLabel: '城・城跡', distanceM: 1080, website: 'https://example.com/' }
+  ];
+  eq((await collectNames(otherHost)).length, 2, '公式サイトのホストが違えば併合しない');
+
+  // 6. 公式サイトが片方に無ければ併合しない
+  const noWebsite = [
+    { id: 'node/z1', name: '松山城', lat: 33.845651, lon: 132.7657463,
+      category: 'castle', categoryLabel: '城・城跡', distanceM: 1000, website: 'https://www.matsuyamajo.jp/' },
+    { id: 'node/z2', name: 'Matsuyama Castle', lat: 33.844972, lon: 132.7659941,
+      category: 'castle', categoryLabel: '城・城跡', distanceM: 1080, website: null }
+  ];
+  eq((await collectNames(noWebsite)).length, 2, '片方に公式サイトが無ければ併合しない');
+
+  // 7. 150m を超えれば併合しない(DEDUPE_NEAR_M の境界)
+  const tooFar = [
+    { id: 'node/w1', name: '松山城', lat: 33.845651, lon: 132.7657463,
+      category: 'castle', categoryLabel: '城・城跡', distanceM: 1000, website: 'https://www.matsuyamajo.jp/' },
+    { id: 'node/w2', name: 'Matsuyama Castle', lat: 33.845651 + 300 / 111000, lon: 132.7657463,
+      category: 'castle', categoryLabel: '城・城跡', distanceM: 1300, website: 'https://matsuyamajo.jp' }
+  ];
+  eq((await collectNames(tooFar)).length, 2, '300m離れていれば併合しない(150m超)');
+
+  // 8. 不正なURLで例外を投げない(websiteHost の try/catch)
+  const badUrl = [
+    { id: 'node/v1', name: '松山城', lat: 33.845651, lon: 132.7657463,
+      category: 'castle', categoryLabel: '城・城跡', distanceM: 1000, website: 'not a url' },
+    { id: 'node/v2', name: 'Matsuyama Castle', lat: 33.844972, lon: 132.7659941,
+      category: 'castle', categoryLabel: '城・城跡', distanceM: 1080, website: 'not a url' }
+  ];
+  eq((await collectNames(badUrl)).length, 2, '不正なURLは例外を投げず併合もしない');
 }
 
 console.log('\n==== ' + pass + ' pass / ' + fail + ' fail ====');

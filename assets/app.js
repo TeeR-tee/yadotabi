@@ -1316,6 +1316,21 @@
       }
       // ズーム・中心が確定してからでないと containerPoint が正しく取れない
       var fixedPoints = [feedMap.latLngToContainerPoint(L.latLng(hotel.lat, hotel.lon))];
+      // OSM帰属表示(右上)は消せない必須表示なので、ピン側を避けさせる。
+      // 位置は setPosition('topright') 済みだが、どのピンがそこに来るかは
+      // 提案結果しだいで変わる(R114 で道後の並びが1つ繰り上がった際に実際に重なった)。
+      // 箱の下辺中央を「動かない点」として nudgeOverlaps に渡し、円状退避に乗せる。
+      var attribEl = feedMap.getContainer().querySelector('.leaflet-control-attribution');
+      if (attribEl) {
+        var mapRect = feedMap.getContainer().getBoundingClientRect();
+        var aRect = attribEl.getBoundingClientRect();
+        if (aRect.width > 0 && aRect.height > 0) {
+          fixedPoints.push(L.point(
+            aRect.left - mapRect.left + aRect.width / 2,
+            aRect.top - mapRect.top + aRect.height / 2
+          ));
+        }
+      }
       // marker は setLatLng で動かすので、元の緯度経度(state.cards)を基準に計算する
       var markerPoints = spotMarkers.map(function (m, i) {
         var c = state.cards[i];
