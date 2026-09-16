@@ -1319,16 +1319,21 @@
       // OSM帰属表示(右上)は消せない必須表示なので、ピン側を避けさせる。
       // 位置は setPosition('topright') 済みだが、どのピンがそこに来るかは
       // 提案結果しだいで変わる(R114 で道後の並びが1つ繰り上がった際に実際に重なった)。
-      // 箱の下辺中央を「動かない点」として nudgeOverlaps に渡し、円状退避に乗せる。
+      // R117: 中央1点だけを「動かない点」にすると、退避は半径 HOTEL_DIST の円でしか
+      // 効かないため、横長(実測 140x14px)の箱の**左端側**にピンが潜り込めてしまう。
+      // 箱の幅に沿って等間隔に点を並べ、箱全体で押しのける(縦は中央でよい。
+      // 円の半径が箱の高さを十分に覆うため)。間隔は HOTEL_DIST 以下にして穴を作らない。
       var attribEl = feedMap.getContainer().querySelector('.leaflet-control-attribution');
       if (attribEl) {
         var mapRect = feedMap.getContainer().getBoundingClientRect();
         var aRect = attribEl.getBoundingClientRect();
         if (aRect.width > 0 && aRect.height > 0) {
-          fixedPoints.push(L.point(
-            aRect.left - mapRect.left + aRect.width / 2,
-            aRect.top - mapRect.top + aRect.height / 2
-          ));
+          var aLeft = aRect.left - mapRect.left;
+          var aMidY = aRect.top - mapRect.top + aRect.height / 2;
+          var steps = Math.max(1, Math.ceil(aRect.width / 24));
+          for (var s = 0; s <= steps; s++) {
+            fixedPoints.push(L.point(aLeft + (aRect.width * s) / steps, aMidY));
+          }
         }
       }
       // marker は setLatLng で動かすので、元の緯度経度(state.cards)を基準に計算する

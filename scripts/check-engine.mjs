@@ -359,23 +359,27 @@ console.log('\n(r115) 名前の「温泉」に引きずられない(記事冒頭
     { title: '鶴見園',
       extract: '鶴見園（つるみえん）は、大分県別府市南立石にかつて存在した遊園地。温泉と少女歌劇を呼び物とし、',
       category: 'other', label: 'スポット' },
-    // 残す側: 定義文の種別が温泉(またはその宿)なので温泉のまま
+    // 残す側: 定義文の種別が温泉なので温泉のまま
     { title: '花敷温泉',
       extract: '花敷温泉（はなしきおんせん）は、群馬県吾妻郡中之条町（旧国上野国）にある温泉。尻焼温泉、応徳温泉、京塚温泉と共に六合温泉郷を形成する。',
       category: 'hot_spring', label: '温泉' },
+    // ここから下の4件は R115 時点では「温泉ラベルのまま残す」側だったが、R117 で
+    // 「そもそも他社の宿なので候補に出さない」に変わった(ケースは消さず期待値を移す)。
+    // lodging:true = 候補ごと消えるのが正しい。R115 が見ていた「定義文だけを見る」
+    // 性質は、二文目にスキー場が出る万座プリンスホテルが名前でなく定義文で落ちること、
+    // および下の (r117) 節の対照ケースで引き続き検査している。
     { title: '天成園',
       extract: '天成園（てんせいえん）は、神奈川県足柄下郡箱根町湯本の箱根湯本温泉にある温泉ホテル。万葉倶楽部グループに属する。',
-      category: 'hot_spring', label: '温泉' },
+      lodging: true },
     { title: '一の湯',
       extract: '一の湯（いちのゆ）は神奈川県箱根町の塔ノ沢温泉にある、株式会社一の湯が経営する、1630年（寛永7年）創業の老舗温泉旅館である。',
-      category: 'hot_spring', label: '温泉' },
+      lodging: true },
     { title: '大江戸温泉物語 別府清風',
       extract: '大江戸温泉物語 別府清風（おおえどおんせんものがたり べっぷせいふう）は、大分県別府市北浜にある温泉ホテルである。',
-      category: 'hot_spring', label: '温泉' },
-    // 否認語は「定義文」だけを見る。二文目の「隣接するスキー場」で温泉宿を落とさない
+      lodging: true },
     { title: '万座プリンスホテル',
       extract: '万座プリンスホテル（まんざプリンスホテル）は、群馬県吾妻郡嬬恋村の万座温泉にあるホテル。西武・プリンスホテルズワールドワイドが運営しており、同社が運営する万座温泉スキー場に隣接している。',
-      category: 'hot_spring', label: '温泉' }
+      lodging: true }
   ];
 
   const E = loadEngine({
@@ -391,6 +395,11 @@ console.log('\n(r115) 名前の「温泉」に引きずられない(記事冒頭
   const byTitle = Object.fromEntries(items.map(i => [i.name, i]));
   R115_CASES.forEach(c => {
     const got = byTitle[c.title];
+    if (c.lodging) {
+      ok(!got, 'R115→R117: ' + c.title + ' は宿なので候補から消える',
+        got && { category: got.category, label: got.categoryLabel });
+      return;
+    }
     ok(!!got && got.category === c.category && got.categoryLabel === c.label,
       'R115: ' + c.title + ' → ' + c.label,
       got && { category: got.category, label: got.categoryLabel });
@@ -415,6 +424,82 @@ console.log('\n(r115) 名前の「温泉」に引きずられない(記事冒頭
     other['〇〇城'] && other['〇〇城'].categoryLabel);
   ok(other['白糸の滝'] && other['白糸の滝'].categoryLabel === '滝',
     'R115: 滝の推定は変わらない', other['白糸の滝'] && other['白糸の滝'].categoryLabel);
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n(r117) 他社の宿(ホテル・旅館)を候補から落とす(定義文で判定)');
+{
+  // やどたびは「宿の周り」を出すサイトなので、候補に他社の宿が並んではいけない。
+  // 判定は R115 と同じ definitionScope(記事冒頭の一文)。名前では落とさない。
+  // drop=true が落ちる側、drop=false が残る側(1件でも巻き込んだら条件が広すぎる)。
+  const R117_CASES = [
+    // --- 落とす側: 4 fixture の実測7件の定義文をそのまま使う ---
+    { title: '天成園', drop: true,
+      extract: '天成園（てんせいえん）は、神奈川県足柄下郡箱根町湯本の箱根湯本温泉にある温泉ホテル。万葉倶楽部グループに属する。' },
+    { title: '一の湯', drop: true,
+      extract: '一の湯（いちのゆ）は神奈川県箱根町の塔ノ沢温泉にある、株式会社一の湯が経営する、1630年（寛永7年）創業の老舗温泉旅館である。' },
+    { title: 'ヒルトン小田原リゾート&スパ', drop: true,
+      extract: 'ヒルトン小田原リゾート&スパ（Hilton Odawara Resort & Spa）とは、神奈川県小田原市にあるヒルトングループのリゾートホテル。' },
+    { title: '杉乃井ホテル', drop: true,
+      extract: '杉乃井（すぎのいホテル）は、大分県別府市の別府八湯のひとつ観海寺温泉にある大型リゾートホテルである。' },
+    { title: '大江戸温泉物語 別府清風', drop: true,
+      extract: '大江戸温泉物語 別府清風（おおえどおんせんものがたり べっぷせいふう）は、大分県別府市北浜にある温泉ホテルである。' },
+    { title: '万座プリンスホテル', drop: true,
+      extract: '万座プリンスホテル（まんざプリンスホテル）は、群馬県吾妻郡嬬恋村の万座温泉にあるホテル。西武・プリンスホテルズワールドワイドが運営しており、同社が運営する万座温泉スキー場に隣接している。' },
+    { title: '渋峠ホテル', drop: true,
+      extract: '渋峠ホテル（しぶとうげホテル）は、長野県下高井郡山ノ内町と群馬県吾妻郡中之条町の境にある渋峠に位置するホテルである。' },
+    // --- 残す側1: 宿語が二文目以降にしか出ない観光対象(走査範囲が定義文だけである証拠) ---
+    { title: '渋峠', drop: false,
+      extract: '渋峠（しぶとうげ）は、群馬県と長野県の境にある峠である。国道最高地点として知られ、渋峠ホテルに隣接している。' },
+    { title: '〇〇美術館', drop: false,
+      extract: '〇〇美術館は、神奈川県にある美術館である。かつてホテルだった建物を活用しており、隣には旅館が並ぶ。' },
+    // --- 残す側2: 名前に宿語を含むが本文が別物(名前だけで落とさない証拠) ---
+    { title: '〇〇ホテル前', drop: false,
+      extract: '〇〇ホテル前（まえ）は、神奈川県箱根町にある展望台である。' },
+    // --- 残す側3: 本物の温泉記事(定義文が「温泉である」「温泉。」) ---
+    { title: '草津温泉', drop: false,
+      extract: '草津温泉（くさつおんせん）は、群馬県吾妻郡草津町（旧国上野国）にある温泉。日本三名泉の一つに数えられる。' },
+    { title: '尻焼温泉', drop: false,
+      extract: '尻焼温泉（しりやきおんせん）は、群馬県吾妻郡中之条町（旧国上野国）にある温泉。川底から温泉が湧き出る川風呂で知られる。' },
+    { title: '花敷温泉', drop: false,
+      extract: '花敷温泉（はなしきおんせん）は、群馬県吾妻郡中之条町（旧国上野国）にある温泉。尻焼温泉、応徳温泉、京塚温泉と共に六合温泉郷を形成する。' }
+  ];
+
+  const E = loadEngine({
+    ...geoMock(),
+    fetchSpots: () => Promise.resolve([]),
+    // 名前の包含(「渋峠ホテル」⊃「渋峠」等)で dedupe されないよう 500m 刻みで離す
+    fetchWikiNearby: () => Promise.resolve(R117_CASES.map((c, i) => ({
+      id: 'wp/' + (700 + i), title: c.title, lat: at(300 + i * 500), lon: HOTEL.lon,
+      distanceM: 300 + i * 500, thumbnailUrl: null, extract: c.extract, url: ''
+    })))
+  });
+  const got = new Set((await E.collect(HOTEL)).map(i => i.name));
+  R117_CASES.forEach(c => {
+    if (c.drop) ok(!got.has(c.title), 'R117 落とす: ' + c.title);
+    else ok(got.has(c.title), 'R117 残す: ' + c.title);
+  });
+
+  // 日帰り入浴施設は OSM 由来で extract を持たないため走査対象外 = 必ず残る。
+  // 「天成園 屋上浴場」「天成園足湯」は記事「天成園」が消えても観光対象として残るのが正しい。
+  const E2 = loadEngine({
+    ...geoMock(),
+    fetchWikiNearby: () => Promise.resolve([]),
+    fetchSpots: () => Promise.resolve([
+      { id: 'node/4585443307', name: '天成園 屋上浴場', lat: at(400), lon: HOTEL.lon,
+        category: 'public_bath', categoryLabel: '共同浴場', distanceM: 400 },
+      { id: 'node/13779829434', name: '天成園足湯 (天の足湯)', lat: at(900), lon: HOTEL.lon,
+        category: 'public_bath', categoryLabel: '共同浴場', distanceM: 900 },
+      { id: 'node/4585443308', name: '箱根湯寮', lat: at(1400), lon: HOTEL.lon,
+        category: 'public_bath', categoryLabel: '共同浴場', distanceM: 1400 },
+      { id: 'node/4585443309', name: '大滝乃湯', lat: at(1900), lon: HOTEL.lon,
+        category: 'public_bath', categoryLabel: '共同浴場', distanceM: 1900 }
+    ])
+  });
+  const baths = new Set((await E2.collect(HOTEL)).map(i => i.name));
+  ['天成園 屋上浴場', '天成園足湯 (天の足湯)', '箱根湯寮', '大滝乃湯'].forEach(n => {
+    ok(baths.has(n), 'R117 残す(日帰り入浴施設・OSM由来): ' + n);
+  });
 }
 
 // ---------------------------------------------------------------------------
