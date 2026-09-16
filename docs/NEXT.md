@@ -1,119 +1,76 @@
-# NEXT: R57 + R59(カード画像の alt をスポット名に / 検索欄のクリアボタン)
+# NEXT: R60 +（おまけ）R55 の記録
 
-**選定理由**: 残るバックログのうち R14・R19・R40 は fixture 再生成(Overpass 呼び出し)を伴い、R55 は計測が主目的、R60 は地図ピン設計に踏み込む。R57 と R59 はどちらも数行で完結し、機械検査で完了を確認でき、既存の描画ロジックに一切触らないため1サイクルにまとめて安全に入る。
+- **タスクID**: R60（主）+ R55（記録のみ）
+- **難易度**: sonnet
+- **所要目安**: 25〜35分（実装10分 / 検査追加10分 / 撮影・目視10分）
 
-難易度: **sonnet** / 所要目安: **20〜30分**(実装10分・テスト追加10分・撮影と check-all 10分)
+## 選定理由（1行）
+R14/R19/R40 は fixture 再生成（Overpass を叩く）が絡み夜間に回すには重いので、外部API 0回で完結し実害（押しても光るピンが無い番号バッジ）を消せる R60 を選び、調査で「表はもう出ている」と分かった R55 を記録だけ同梱する。
 
 ---
 
-## 対象ファイル(絶対パス)
+## R60: 「もっと見る」展開後、31番以降は地図にピンが無いことを明記する
 
+### 現状（実物を読んだ結果）
 - `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js`
-- `C:\workspace\claude\旅行先用サイト\yadotabi\index.html`
+  - `moreHtml(more, open)` — **847〜851行**。`open` が真ならボタンを出さず **空文字を返すだけ**。展開後この領域は空になる。
+  - `renderFeed()` の展開部分 — **938〜941行**。`state.moreOpen` が真のとき `state.more` を `cardHtml(c, i + state.cards.length)` で連結する（＝番号は 31 以降）。
+  - `renderFeed()` の more 反映 — **950〜955行**。`els.feedMore.hidden = !more; els.feedMore.innerHTML = more;`
+  - クリックハンドラ — **1679〜1681行**（`#more-btn`）。
+- `C:\workspace\claude\旅行先用サイト\yadotabi\index.html` — **66行** `<div id="feed-more" hidden></div>`、**70行** `<div id="feed-note" hidden></div>`。
+- 小地図のピンは `renderFeedMap()` が `state.cards`（＝30件）のみを描くため、31番以降に対応するピンは存在しない。
+
+### 実装方針（注記で済ませる。ピンは足さない）
+ROADMAP の判断どおり**ピンは追加しない**（`nudgeOverlaps` の負荷と重なりが倍近くになり、R8 で作り込んだ分離が壊れるリスクが実利を上回るため）。
+
+1. `moreHtml(more, open)`（app.js:847）を、`open` が真のときに**空文字ではなく注記1行を返す**よう変更する。
+   - 例: `if (open) return '<p class="morenote">31番以降は地図に表示していません。</p>';`
+   - 番号の 31 は直書きせず `state.cards.length + 1` 相当を使えるよう、必要なら `moreHtml(more, open, startNo)` の第3引数を足して `renderFeed()`（app.js:951）から `state.cards.length + 1` を渡す。カードが30枚未満のエリアでも数字が嘘にならないようにすること。
+   - `more.length === 0` のときは従来どおり空文字（先頭の `if (!more.length) return '';` は維持）。
+2. `renderFeed()` 側（app.js:950〜955）は**既存のまま**で動く（`more` が空文字でなくなるので `hidden` が外れ `#feed-more` に入る）。展開ボタンと同じ場所＝展開領域の直前に出るので、ROADMAP の「展開領域の先頭」の意図を満たす。
+3. `C:\workspace\claude\旅行先用サイト\yadotabi\assets\style.css` に `.morenote` を追加。`.feednote`（657行付近）と同じ淡色・小さめの文字で、`.morebtn`（599行）の余白感を踏襲する。新規色トークンは作らず既存変数を使う。
+4. 番号バッジのタップ対象から31以降を外す案は**採らない**（R10 のフラッシュ導線は `state.cards` のピンにしか当たらず既に無反応のため、挙動変更なしで注記だけ足す方が影響が小さい）。
+
+### 対象ファイル（絶対パス・これ以外は触らない）
+- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js`
 - `C:\workspace\claude\旅行先用サイト\yadotabi\assets\style.css`
-- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-a11y.mjs`
-- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-imgfail.mjs`
-- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md` / `docs\NIGHTLOG.md`(記録)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-more.mjs`
+- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md` / `docs\NIGHTLOG.md`（記録）
 
-## 変更禁止範囲
-
-`assets/engine.js` / `assets/geo.js` / `fixtures/*.json` は**一切触らない**。rank の重み・除外ルール・カードの並びは変更しない。
-
----
-
-## R57: カード画像の alt をスポット名にする
-
-### 実物確認(計画役が確認済み)
-
-`app.js:796` の `cardHtml(card, index)` 内、**`app.js:800`**:
-
-```
-? '<img class="feedcard__img" src="' + escapeHtml(imgSrc) + '" alt="" loading="lazy" ' +
-```
-
-現状 `alt=""`(空)で確定。画像なし時は `placeholderHtml()`(app.js:780)が `.feedcard__ph` を返す分岐。
-
-### 実装方針
-
-`alt=""` を `alt="<スポット名>の写真"` に変える。`card.name` を `escapeHtml()` に通すこと(既存の `card.name` 出力は app.js:813 と同じ扱い)。
-
-- **セレクタは変えない**: `class="feedcard__img"` はそのまま維持する。`scripts/check-imgfail.mjs:98` が `.feedcard__img` の count を見ているので、クラス名・属性順を崩さない。`data-cat` / `data-emoji` / `loading="lazy"` も残す(app.js:1595 の error 委譲がこれらを使う)。
-- `card.name` が空のときは `alt="スポットの写真"` 等にフォールバックせず、単に空にならないよう `escapeHtml(card.name || 'スポット') + 'の写真'` とする。
-- 画像なしカード(`.feedcard__ph`)は `<span aria-hidden="true">` の絵文字のみで、今回は対象外(変更しない)。
+### 変更禁止範囲
+- `assets\engine.js`、`assets\geo.js`、`fixtures\*.json`、`app.js` の `nudgeOverlaps()`（R8 の密集分離）。
+- rank の重み・閾値、`renderFeedMap()` のピン生成ロジック（ピンは足さない）。
 
 ---
 
-## R59: 検索欄のクリアボタン(×)
+## R55: check-all.mjs の所要時間（記録のみ・コード変更なし）
 
-### 実物確認(計画役が確認済み)
+`C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-all.mjs` を読んだ結果、**各本の所要msの表（49〜54行）と、合計・最遅の要約行（60〜63行）は既に実装済み**。よって ROADMAP の「既に出ているなら合計と最遅の記録を NIGHTLOG に残すだけ」に該当する。
 
-- `index.html:35-39`: `.pickbar__search` > `input#search-input.input.pickbar__input` + `div#suggest-list.suggest`。
-- `style.css:48`: `.pickbar__search { position: relative; }` — **すでに relative なので × を absolute で重ねられる**。`.pickbar__input { width: 100% }`(style.css:54)。
-- `app.js:1544-1555`(`bindEvents()` 内): `input` / `focus` / `keydown(Escape)` の3ハンドラ。
-- `app.js:484` `hideSuggest()`、`app.js:496` `renderSuggest()`。
-- `app.js:1684` `els.searchInput` / `app.js:1685` `els.suggest` の取得箇所。
-
-### 実装方針
-
-1. **index.html:38 の直後**(input と `#suggest-list` の間)に追加:
-   `<button type="button" class="pickbar__clear" id="search-clear" aria-label="検索欄を空にする" hidden>×</button>`
-2. **app.js:1684 付近** の `els` に `searchClear: document.getElementById('search-clear')` を追加。
-3. **app.js に純粋寄りの関数 `syncSearchClear()` を新設**(`hideSuggest()` の近く、app.js:484 の手前あたり):
-   ```
-   els.searchClear.hidden = !(els.searchInput.value.length > 0);
-   ```
-   (`trim()` は使わない。空白1文字でも「入力がある」として消せる方が自然)
-4. **呼び出し箇所**(ここが要点):
-   - `app.js:1544` の `input` ハンドラ内、`runSuggest()` の後に `syncSearchClear()`。
-   - **`applyDemoStateA()`(app.js:1420)の `suggest` / `recent` / `recentmix` の各分岐で `els.searchInput.value = ...` した直後にも `syncSearchClear()` を呼ぶ**。撮影用デモは `value` を直接代入していて `input` イベントが飛ばないため、これを忘れると `?demo=suggest` で × が出ない(= 撮影で確認できない)。`demo=recent` は value が `''` なので × は出ない(正しい)。
-   - `app.js:1486` 付近の `?q=` 反映箇所でも value を入れているので、同様に `syncSearchClear()` を呼ぶ。
-5. **クリック時の挙動**(`bindEvents()` の検索欄ブロックに追加):
-   ```
-   els.searchClear.addEventListener('click', function () {
-     els.searchInput.value = '';
-     hideSuggest();
-     syncSearchClear();
-     els.searchInput.focus();
-   });
-   ```
-   フォーカスは検索欄に戻す(候補は開き直さない = `showRecent()` は呼ばない)。
-6. **document の click ハンドラ(app.js:1558-1562)に例外を足す**: 現状 `els.suggest.contains(e.target) || e.target === els.searchInput` 以外で `hideSuggest()` するが、× 自身のハンドラで既に閉じているので追加は必須ではない。ただし `e.target === els.searchClear` も除外条件に足しておくと順序依存が消えて安全。
-7. **style.css に `.pickbar__clear` を追加**(`.pickbar__input` の直後、style.css:54 付近):
-   - `position: absolute; right: 4px; top: 50%; transform: translateY(-50%);`
-   - `width: 44px; height: 44px;`(**タップ領域44pxを実寸で満たす**。`.feedcard__link` のような `::after` 方式は不要)
-   - `display: flex; align-items: center; justify-content: center;`
-   - `background: none; border: 0; cursor: pointer; color: var(--c-text-sub)` 等、既存トークンを使う
-   - `z-index` は `.suggest`(style.css:57 の absolute)より下でよいが、input より上になるよう確認する
-   - **input の右 padding を 44px 分広げる**(`.pickbar__input` に `padding-right: 48px` 相当)。長い入力が × の下に潜らないこと。ただし `.input` 共通クラスを壊さないよう `.pickbar__input` 側だけで指定する。
-   - `:focus-visible` のアウトラインは既存方針(style.css:569 付近の強調)に合わせる。
-
-**入力ゼロ原則との整合**: × は入力を**増やさず取り消す**だけの操作なので原則に反しない(ROADMAP R59 の記述どおり)。
+- やること: 今サイクルの `node scripts/check-all.mjs` の出力から、**合計秒数・最遅の本・遅い上位3本**を NIGHTLOG に1行で書き残す。
+- `--only` 引数や `PLAYWRIGHT_*` の追加は**今回やらない**（最適化は測ってから、という R55 本文の方針どおり。数字が残れば R55 は完了扱いでよい）。
 
 ---
 
-## 完了条件(すべて機械/目視で検証可能)
+## 完了条件（検証可能）
+1. `scripts\check-more.mjs` に注記のケースを追加し、全 PASS。
+   - 展開前: `#feed-more` 内に `.morenote` が**存在しない**（`#more-btn` のみ）。
+   - `#more-btn` クリック後: `.morenote` が1つ存在し、`textContent` に「31」と「地図」を含む。
+   - 展開後も `#more-btn` が消えていること（既存ケース4を維持）。
+   - コンソールエラー0件（既存ケース5を維持）。
+2. `node scripts\check-all.mjs` が **20本全PASS・exit 0**。
+3. `node --check assets\app.js` が通る。
+4. NIGHTLOG に check-all の合計秒数・最遅・遅い上位3本が記録されている（R55）。
 
-1. `scripts/check-imgfail.mjs` に **「`.feedcard__img` の `alt` が全件空でなく、対応するカードの `.feedcard__name` のテキストを含む」** ケースを追加し PASS(先頭3枚は `.feedcard__ph` に差し替わるため、**4枚目以降の残った `.feedcard__img`** を対象にする。`?fixture=kusatsu`(demo無し)ページでも全30枚を検査する)。
-2. `scripts/check-imgfail.mjs` の既存13項目が引き続き全 PASS(`.feedcard__img` セレクタが壊れていないこと)。
-3. `scripts/check-a11y.mjs` の `TARGETS`(check-a11y.mjs:23)に `{ selector: '.pickbar__clear', label: '検索クリアボタン' }` を追加し、`?demo=suggest` ページで 44px 以上で PASS。`?demo=zoomout`(入力なし)では要素が hidden なので**計測対象0件でもスキップ扱いになり NG にならない**ことを確認する(なっていなければ hidden を除外する分岐を足す)。
-4. `scripts/check-recent.mjs` または `scripts/check-chipcurrent.mjs`(実在する方。無ければ check-a11y に集約)に、**× のケース**を追加:
-   - `?demo=suggest` で `#search-clear` が visible
-   - × をクリックすると `#search-input` の value が `''`、`#suggest-list` が hidden、`document.activeElement` が `#search-input`
-   - `?demo=recent`(value が空)で `#search-clear` が hidden
-5. `node scripts/check-all.mjs` が **全本 PASS・exit 0**(本数は現状から増減しない想定。新規スクリプトを足した場合は `check-all.mjs` に登録して本数を1つ増やす)。
-6. `node --check assets/app.js` が通る。
+## 検証手順（撮影・外部API 0回）
+1. `node scripts\check-all.mjs`（出力の表を控える＝R55の材料）。
+2. 撮影: `?fixture=kusatsu` を mobile で開き、**「もっと見る」を押した後**のフルページを1枚（`2026-09-16_r60-expanded_mobile.png` 等）。
+   - Playwright でクリックしてから撮る必要があるので、`check-more.mjs` 内で `page.screenshot({ fullPage: true })` を1枚保存する形でも可。
+3. 画像を Read で目視し、(a) 注記が30枚目のカードと31枚目のカードの間に1行で収まっている、(b) 文字のはみ出し・折り返し崩れが無い、(c) カード枚数が増えている、を確認。
+4. デグレ確認として `?fixture=kusatsu`（展開前）mobile を1枚。注記が出ていないこと。
+5. `?fixture=kusatsu&embed=1` でも位置が崩れないことを1枚で確認（埋め込みでも小地図は出るので注記は出す判断でよい）。
 
-## 検証手順(撮影)
-
-1. `node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?demo=suggest" --mobile` — **× が検索欄の右端に見え、候補リスト・エリアチップと重なっていない**ことを Read で目視。
-2. `node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=kusatsu" --mobile` — カード30枚・番号ピン1〜30判読可でデグレなし(R57 は表示が変わらないので**見た目が前回と同じ**ことが合格)。
-3. `node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?demo=recent" --mobile` — × が**出ていない**ことを目視。
-4. コンソールエラー0件。
-5. 外部APIは叩かない(全て fixture / demo)。
-
-## 記録とコミット
-
-- `docs/ROADMAP.md` の R57・R59 を `[x] 2026-09-16` に。
-- `docs/NIGHTLOG.md` に3行(やったこと / 見た目の確認結果 / 次)。
-- **実装が終わったらまず先にコミットし、報告は簡潔に**(長文の報告書を書かない)。コミットメッセージは1行の日本語。`git push` まで行う。
-- git stash / reset --hard / checkout でファイルを戻す操作は禁止。
+## 記録
+- ROADMAP の R60・R55 を `[x] 2026-09-16` に。
+- NIGHTLOG に3行（やったこと / 見た目の確認結果 / 次）＋ R55 の数字。
+- コミット→push（先にコミット、報告は簡潔に）。

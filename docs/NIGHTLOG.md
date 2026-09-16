@@ -349,3 +349,9 @@
 - やったこと: `cardHtml()`の`<img>`の`alt`を`escapeHtml(card.name)+'の写真'`に変更(クラス・data属性・loading順は維持)。`index.html`の検索入力直後に`#search-clear`ボタンを追加し、`app.js`に`syncSearchClear()`を新設して`input`ハンドラ・`applyDemoStateA()`の`suggest`/`recent`/`recentmix`各分岐・`?q=`反映箇所すべてから呼び出し、クリックで値クリア+候補閉じ+フォーカス復帰する処理を実装。`style.css`に`.pickbar__clear`(44px・absolute)と`.pickbar__input`の`padding-right`を追加。
 - 見た目の確認結果: `check-imgfail.mjs`にalt検査、`check-a11y.mjs`に`.pickbar__clear`の44px検査、`check-recent.mjs`に×の表示/クリック/フォーカス復帰ケースを追加し`check-all.mjs`20本全PASS。`?demo=suggest`mobileで×が検索欄右端に見え候補リストと重ならず、`?fixture=kusatsu`mobileはカード30枚・番号ピン判読可でデグレなし、`?demo=recent`mobileでは×が出ないことをRead目視で確認、コンソールエラー0件。
 - 次: R14/R19/R40/R55が残候補。
+
+### 2026-09-16 R60 + R55 「もっと見る」展開後の地図注記 + check-all所要時間の記録
+- やったこと: `moreHtml(more, open, startNo)`に第3引数を追加し、展開時は空文字ではなく`<p class="morenote">31番以降は地図に表示していません。</p>`(番号は`state.cards.length + 1`で算出)を返すよう変更、`style.css`に`.morebtn`踏襲の`.morenote`を追加、`check-more.mjs`に展開前0件・展開後1件+テキスト検査を追加(20本全PASS)。R55は表がすでに実装済みだったため記録のみ。
+- 見た目の確認結果: `?fixture=kusatsu`mobileで展開後クロップ撮影し、注記が30番カードと31番カードの間(feednoteの直前)に1行で収まり折り返し崩れなし、展開前は`.morenote`が0件でデグレなしをRead目視、コンソールエラー0件。
+- R55の数字: `check-all.mjs`合計162.8s・20本全PASS、最遅`scripts/check-hotelparam.mjs`27.9s、次点`scripts/check-feednote.mjs`12.3s・`scripts/check-attrib.mjs`12.1s。
+- 次: R14/R19/R40が残候補。

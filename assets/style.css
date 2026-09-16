@@ -620,6 +620,13 @@ body.is-embed .view--feed { padding-bottom: var(--sp-4); }
   outline: 2px solid var(--c-primary);
   outline-offset: 2px;
 }
+.morenote {
+  margin: 0 var(--sp-3) var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
+  font-size: var(--fs-sm);
+  line-height: 1.7;
+  color: var(--c-text-faint);
+}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

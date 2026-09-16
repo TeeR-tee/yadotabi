@@ -844,9 +844,11 @@
    * フィード末尾の「もっと見る」行。展開済みならボタンは出さない
    * (カード本体は renderFeed 側で state.more を連結して描く)。
    */
-  function moreHtml(more, open) {
+  function moreHtml(more, open, startNo) {
     if (!more.length) return '';
-    if (open) return '';
+    if (open) {
+      return '<p class="morenote">' + escapeHtml(String(startNo)) + '番以降は地図に表示していません。</p>';
+    }
     return '<button type="button" class="morebtn" id="more-btn">もっと見る（残り' + more.length + '件）</button>';
   }
 
@@ -948,7 +950,7 @@
     perfMarkFirstCard();
 
     // 「もっと見る」は読み込み中は出さない(スケルトンと並ぶと意味が分からないため)
-    var more = loading ? '' : moreHtml(state.more, state.moreOpen);
+    var more = loading ? '' : moreHtml(state.more, state.moreOpen, state.cards.length + 1);
     if (els.feedMore) {
       els.feedMore.hidden = !more;
       els.feedMore.innerHTML = more;

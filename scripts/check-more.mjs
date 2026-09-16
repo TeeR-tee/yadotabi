@@ -12,6 +12,7 @@
 //   3. 展開後の31枚目のカードの番号バッジが「31」である
 //   4. 展開後は #more-btn が消えている
 //   5. コンソールエラー0件
+//   R60: 展開前は .morenote が存在せず、展開後は1つ存在し「31」と「地図」を含む
 
 import { chromium } from 'file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs';
 import { spawn } from 'node:child_process';
@@ -77,6 +78,9 @@ async function main() {
     const moreBtnCountBefore = await moreBtn.count();
     ok(moreBtnCountBefore === 1, '#more-btn が存在する', moreBtnCountBefore);
 
+    const moreNoteCountBefore = await page.locator('.morenote').count();
+    ok(moreNoteCountBefore === 0, '展開前は .morenote が存在しない', moreNoteCountBefore);
+
     // 2. click して展開
     await moreBtn.click();
     await waitFor(300);
@@ -84,8 +88,15 @@ async function main() {
     const expandedCount = await page.locator('.feedcard').count();
     ok(expandedCount > 30, '.feedcard の枚数が30枚より増える', expandedCount);
 
+    // R60: 展開後の注記
+    const moreNote = page.locator('.morenote');
+    const moreNoteCountAfter = await moreNote.count();
+    ok(moreNoteCountAfter === 1, '展開後は .morenote が1つ存在する', moreNoteCountAfter);
+    const moreNoteText = moreNoteCountAfter === 1 ? await moreNote.textContent() : '';
+    ok(moreNoteText.includes('31') && moreNoteText.includes('地図'), '.morenote に「31」と「地図」を含む', moreNoteText);
+
     // 撮影(展開後): 目視用にフルページを保存する
-    const shotPath = path.join(PROJECT_ROOT, 'screenshots', dateStamp() + '_r16-expanded_mobile.png');
+    const shotPath = path.join(PROJECT_ROOT, 'screenshots', dateStamp() + '_r60-expanded_mobile.png');
     await page.screenshot({ path: shotPath, fullPage: true });
     console.log('  撮影: ' + shotPath);
 
