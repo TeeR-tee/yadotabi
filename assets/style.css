@@ -179,6 +179,26 @@ body {
   font-weight: 600;
 }
 
+/* R63: 初見向けサンプル導線。地図の高さを削るため最小限の1行に留める */
+.samples {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+  font-size: var(--fs-xs);
+}
+.samples__label { color: var(--c-text-sub); }
+.samples a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 2px 4px;
+  color: var(--c-primary);
+  font-size: var(--fs-xs);
+  text-decoration: underline;
+}
+
 .mapwrap {
   position: relative;
   flex: 1 1 auto;

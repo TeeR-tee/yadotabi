@@ -1,76 +1,71 @@
-# NEXT: R60 +（おまけ）R55 の記録
+# NEXT: R63 状態Aの下に「サンプルを見る」デモ導線
 
-- **タスクID**: R60（主）+ R55（記録のみ）
-- **難易度**: sonnet
-- **所要目安**: 25〜35分（実装10分 / 検査追加10分 / 撮影・目視10分）
+## なぜこれを選んだか(1行)
+残候補のうち R14/R19/R40 は fixture 再生成や rank 分布の調査で1サイクルに収まらず、R62 は目視のみで成果が「確認した」で終わりがちなのに対し、R63 は**初見の人が宿を選ばないと何も起きない**という本番URLの最大の入口問題を、表示のみ・ロジック変更なしで解消できるため。
 
-## 選定理由（1行）
-R14/R19/R40 は fixture 再生成（Overpass を叩く）が絡み夜間に回すには重いので、外部API 0回で完結し実害（押しても光るピンが無い番号バッジ）を消せる R60 を選び、調査で「表はもう出ている」と分かった R55 を記録だけ同梱する。
-
----
-
-## R60: 「もっと見る」展開後、31番以降は地図にピンが無いことを明記する
-
-### 現状（実物を読んだ結果）
-- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js`
-  - `moreHtml(more, open)` — **847〜851行**。`open` が真ならボタンを出さず **空文字を返すだけ**。展開後この領域は空になる。
-  - `renderFeed()` の展開部分 — **938〜941行**。`state.moreOpen` が真のとき `state.more` を `cardHtml(c, i + state.cards.length)` で連結する（＝番号は 31 以降）。
-  - `renderFeed()` の more 反映 — **950〜955行**。`els.feedMore.hidden = !more; els.feedMore.innerHTML = more;`
-  - クリックハンドラ — **1679〜1681行**（`#more-btn`）。
-- `C:\workspace\claude\旅行先用サイト\yadotabi\index.html` — **66行** `<div id="feed-more" hidden></div>`、**70行** `<div id="feed-note" hidden></div>`。
-- 小地図のピンは `renderFeedMap()` が `state.cards`（＝30件）のみを描くため、31番以降に対応するピンは存在しない。
-
-### 実装方針（注記で済ませる。ピンは足さない）
-ROADMAP の判断どおり**ピンは追加しない**（`nudgeOverlaps` の負荷と重なりが倍近くになり、R8 で作り込んだ分離が壊れるリスクが実利を上回るため）。
-
-1. `moreHtml(more, open)`（app.js:847）を、`open` が真のときに**空文字ではなく注記1行を返す**よう変更する。
-   - 例: `if (open) return '<p class="morenote">31番以降は地図に表示していません。</p>';`
-   - 番号の 31 は直書きせず `state.cards.length + 1` 相当を使えるよう、必要なら `moreHtml(more, open, startNo)` の第3引数を足して `renderFeed()`（app.js:951）から `state.cards.length + 1` を渡す。カードが30枚未満のエリアでも数字が嘘にならないようにすること。
-   - `more.length === 0` のときは従来どおり空文字（先頭の `if (!more.length) return '';` は維持）。
-2. `renderFeed()` 側（app.js:950〜955）は**既存のまま**で動く（`more` が空文字でなくなるので `hidden` が外れ `#feed-more` に入る）。展開ボタンと同じ場所＝展開領域の直前に出るので、ROADMAP の「展開領域の先頭」の意図を満たす。
-3. `C:\workspace\claude\旅行先用サイト\yadotabi\assets\style.css` に `.morenote` を追加。`.feednote`（657行付近）と同じ淡色・小さめの文字で、`.morebtn`（599行）の余白感を踏襲する。新規色トークンは作らず既存変数を使う。
-4. 番号バッジのタップ対象から31以降を外す案は**採らない**（R10 のフラッシュ導線は `state.cards` のピンにしか当たらず既に無反応のため、挙動変更なしで注記だけ足す方が影響が小さい）。
-
-### 対象ファイル（絶対パス・これ以外は触らない）
+## 対象ファイル(絶対パス)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\index.html`
 - `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js`
 - `C:\workspace\claude\旅行先用サイト\yadotabi\assets\style.css`
-- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-more.mjs`
-- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md` / `docs\NIGHTLOG.md`（記録）
+- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-a11y.mjs`(セレクタ追加)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-sample.mjs`(新規)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-all.mjs`(21本目として登録)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md` / `docs\NIGHTLOG.md`
 
-### 変更禁止範囲
-- `assets\engine.js`、`assets\geo.js`、`fixtures\*.json`、`app.js` の `nudgeOverlaps()`（R8 の密集分離）。
-- rank の重み・閾値、`renderFeedMap()` のピン生成ロジック（ピンは足さない）。
+## 実物の構造(調査済み・これを前提に実装する)
+- `index.html:31-49` が状態A。`<header class="pickbar">` の中に `.pickbar__row`(検索欄)と `index.html:43` の `<div class="chips" id="area-chips">` があり、その**外側の兄弟**として `index.html:45-48` の `<div class="mapwrap">`(`#map` + `.mapnote`)が続く。
+- `assets/app.js:23` `var AREAS = [...]`(20件・座標直書き)。`assets/app.js:1514` `renderChips()` が `els.chips.innerHTML` にボタンを流し込む。クリックは `assets/app.js:1599-1608` の `els.chips.addEventListener('click', ...)` で `flyTo()` するだけ。
+- `assets/app.js:1705` の `els` 定義に要素を追加し、`assets/app.js:1720` `renderChips()` の直後で新導線を描く。
+- `assets/style.css:146-156` `.chips`(`display:flex` / `overflow-x:auto` / 右端24pxの mask)、`assets/style.css:158-173` `.chip`(`min-height:44px`)。`.mapwrap` は `flex:1 1 auto; min-height:0`(`assets/style.css:183` 付近)なので、**pickbar に要素を足すと地図の高さがその分だけ削られる**。ここが今回の設計上の争点。
 
----
+## 実装方針
+### 配置の3案(必ず撮り比べる)
+| 案 | 置き方 | 地図の高さへの影響 |
+|---|---|---|
+| A | `.chips` の**下**に新しい1行 `<div class="samples" id="sample-links">` を追加 | 高さが約28〜32px減る |
+| B | `.chips` の**行内・末尾**に既存チップと同じ flex 子として差し込む(区切り線付き) | 影響ゼロ。ただし横スクロールの奥に隠れて初見に届かない恐れ |
+| C | `.mapwrap` 内の**地図上オーバーレイ**(`.mapnote` と同じ `position:absolute` の作り、左下か上部中央) | 影響ゼロ。ただし Leaflet の帰属表示・`.mapnote` と重なる恐れ(R31/R2 で一度踏んだ) |
 
-## R55: check-all.mjs の所要時間（記録のみ・コード変更なし）
+作業役は**3案すべてを実装してではなく、まず A を実装して撮影 → B・C は CSS/配置だけ差し替えて撮影**し、mobile 375px の3枚を Read で目視比較したうえで採用案を決め、理由を NIGHTLOG に1行残すこと。初期推奨は **A**(初見に確実に届く。地図は `?demo=zoomout` で見て30px削れても破綻しないはず)だが、撮影で地図が窮屈なら C に切り替えてよい。
 
-`C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-all.mjs` を読んだ結果、**各本の所要msの表（49〜54行）と、合計・最遅の要約行（60〜63行）は既に実装済み**。よって ROADMAP の「既に出ているなら合計と最遅の記録を NIGHTLOG に残すだけ」に該当する。
+### 中身
+- ラベルは「サンプル:」の淡色プレフィクス + `草津の例` / `箱根の例` / `道後の例` の3リンク。
+- **リンク(`<a href>`)で実装する**(ボタンではない)。`href` は `?fixture=kusatsu` / `?fixture=hakone` / `?fixture=dogo`。GitHub Pages のサブパス配下なので**絶対パスを書かない**(`?fixture=kusatsu` のクエリのみの相対指定にすること。R3 でサブパス問題を踏んでいる)。
+- 出す条件: `state.embed` が真のとき、および `fixtureNameFromUrl()` が非 null のときは**出さない**(`hidden` を立てる)。判定は `init()` で URL を読んでいる `assets/app.js:1722-1728` の既存パターンを流用し、`renderChips()` の直後に `renderSampleLinks()` を呼ぶ。
+- タップ領域 44px を満たすこと(`.samples a { min-height:44px; display:inline-flex; align-items:center }`)。淡色は `var(--c-text-sub)`、サイズは `var(--fs-xs)`。
+- JS のイベントハンドラは**足さない**。素の `<a>` の遷移に任せる(= ロジック変更ゼロ)。
+- 表示のみ。`AREAS` は触らない。
 
-- やること: 今サイクルの `node scripts/check-all.mjs` の出力から、**合計秒数・最遅の本・遅い上位3本**を NIGHTLOG に1行で書き残す。
-- `--only` 引数や `PLAYWRIGHT_*` の追加は**今回やらない**（最適化は測ってから、という R55 本文の方針どおり。数字が残れば R55 は完了扱いでよい）。
+## 完了条件(検証可能なものだけ)
+1. `scripts/check-a11y.mjs` の `TARGETS`(`scripts/check-a11y.mjs:23-34`)に `{ selector: '.samples a', label: 'サンプル導線' }` を追加し、`PAGES` の `?demo=zoomout`(状態A)で最小 44px 以上の OK が出る。
+2. 新規 `scripts/check-sample.mjs`(`scripts/check-hotelparam.mjs` の作りを踏襲・Playwright は `file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs`)で以下が全 PASS:
+   - a. `?demo=zoomout`(状態A)で `.samples` が可視(`offsetParent !== null` かつ `getComputedStyle().display !== 'none'`)、リンクが3本。
+   - b. 3本の `href` がそれぞれ `fixture=kusatsu` / `hakone` / `dogo` を含む。
+   - c. 1本目をクリック(またはその href へ遷移)すると `#view-feed` が可視・`#view-select` が不可視になり、`#feed-title` が「草津温泉」、`.feedcard` が 30 枚。
+   - d. `?fixture=kusatsu` では `.samples` が**不可視**(fixture 中は出さない)。
+   - e. `?fixture=kusatsu&embed=1` でも `.samples` が不可視。
+   - f. 各ケースでコンソールエラー0件。
+3. `scripts/check-all.mjs` の一覧(`scripts/check-all.mjs:13-31`)に `scripts/check-sample.mjs` を追加し、**21本すべて PASS・exit 0**。
+4. mobile 375px の `?demo=zoomout` で、導線行が1行に収まり横スクロールが出ず、地図が潰れていない(撮影で目視)。
 
----
+## 検証手順
+```
+node --check assets/app.js
+node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?demo=zoomout" --mobile   # 案A/B/Cの3枚
+node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=kusatsu" --mobile # 導線が出ていないこと
+node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:3000/?fixture=kusatsu&embed=1" --mobile # 同上
+node scripts/check-a11y.mjs
+node scripts/check-sample.mjs
+node scripts/check-all.mjs
+```
+撮った画像は必ず `Read` で開いて目視する(文字崩れ・重なり・はみ出し・地図の潰れ)。
 
-## 完了条件（検証可能）
-1. `scripts\check-more.mjs` に注記のケースを追加し、全 PASS。
-   - 展開前: `#feed-more` 内に `.morenote` が**存在しない**（`#more-btn` のみ）。
-   - `#more-btn` クリック後: `.morenote` が1つ存在し、`textContent` に「31」と「地図」を含む。
-   - 展開後も `#more-btn` が消えていること（既存ケース4を維持）。
-   - コンソールエラー0件（既存ケース5を維持）。
-2. `node scripts\check-all.mjs` が **20本全PASS・exit 0**。
-3. `node --check assets\app.js` が通る。
-4. NIGHTLOG に check-all の合計秒数・最遅・遅い上位3本が記録されている（R55）。
+## 変更禁止範囲
+- `assets/engine.js` / `assets/geo.js`(rank・重み・閾値・収集ロジック)
+- `fixtures/*.json`(再生成も禁止。Overpass を叩かない)
+- 既存 `check-*.mjs` の中身(`check-a11y.mjs` の TARGETS 追加と `check-all.mjs` のリスト追加のみ例外)
+- `AREAS` の並び・ラベル・座標
+- git stash / reset --hard / checkout でのファイル復旧
 
-## 検証手順（撮影・外部API 0回）
-1. `node scripts\check-all.mjs`（出力の表を控える＝R55の材料）。
-2. 撮影: `?fixture=kusatsu` を mobile で開き、**「もっと見る」を押した後**のフルページを1枚（`2026-09-16_r60-expanded_mobile.png` 等）。
-   - Playwright でクリックしてから撮る必要があるので、`check-more.mjs` 内で `page.screenshot({ fullPage: true })` を1枚保存する形でも可。
-3. 画像を Read で目視し、(a) 注記が30枚目のカードと31枚目のカードの間に1行で収まっている、(b) 文字のはみ出し・折り返し崩れが無い、(c) カード枚数が増えている、を確認。
-4. デグレ確認として `?fixture=kusatsu`（展開前）mobile を1枚。注記が出ていないこと。
-5. `?fixture=kusatsu&embed=1` でも位置が崩れないことを1枚で確認（埋め込みでも小地図は出るので注記は出す判断でよい）。
-
-## 記録
-- ROADMAP の R60・R55 を `[x] 2026-09-16` に。
-- NIGHTLOG に3行（やったこと / 見た目の確認結果 / 次）＋ R55 の数字。
-- コミット→push（先にコミット、報告は簡潔に）。
+## 難易度・所要目安
+- sonnet。所要 25〜40分(実装10分 + 3案の撮り比べ10分 + check-all 約160秒 + 記録・コミット)。

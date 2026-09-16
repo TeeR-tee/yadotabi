@@ -1518,6 +1518,28 @@
   }
 
   /**
+   * R63: 初見の人が宿を選ばなくても状態Bを体験できる「サンプルを見る」導線。
+   * fixture 中(既に固定データを見ている)や embed 中は不要なので出さない。
+   * ロジック変更はせず素の <a href="?fixture=..."> の遷移に任せる。
+   */
+  var SAMPLE_LINKS = [
+    { fixture: 'kusatsu', label: '草津の例' },
+    { fixture: 'hakone', label: '箱根の例' },
+    { fixture: 'dogo', label: '道後の例' }
+  ];
+  function renderSampleLinks() {
+    if (!els.samples) return;
+    var params = new URLSearchParams(global.location.search);
+    var hideSamples = state.embed || !!fixtureNameFromUrl(params);
+    els.samples.hidden = hideSamples;
+    if (hideSamples) return;
+    els.samples.innerHTML = '<span class="samples__label">サンプル:</span>' +
+      SAMPLE_LINKS.map(function (s) {
+        return '<a href="?fixture=' + s.fixture + '">' + escapeHtml(s.label) + '</a>';
+      }).join('');
+  }
+
+  /**
    * 文字列が AREAS のどのチップに該当するかを判定する。
    * チップのラベルで前方一致(「草津温泉」→「草津」)する最初の index を返す。該当なしは -1。
    */
@@ -1703,6 +1725,7 @@
       searchClear: document.getElementById('search-clear'),
       suggest: document.getElementById('suggest-list'),
       chips: document.getElementById('area-chips'),
+      samples: document.getElementById('sample-links'),
       map: document.getElementById('map'),
       mapNote: document.getElementById('map-note'),
       backBtn: document.getElementById('back-btn'),
@@ -1726,6 +1749,7 @@
         (hotelFromUrl(initialParams) || fixtureNameFromUrl(initialParams))) {
       setEmbed(true);
     }
+    renderSampleLinks();
     if (!state.embed) ensureMap();
     render();
     applyEntryPoint();

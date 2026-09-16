@@ -31,6 +31,7 @@ const TARGETS = [
   { selector: '.far__item a', label: 'もっと遠くの各リンク' },
   { selector: '.morebtn', label: 'もっと見る' },
   { selector: '#feed-note a', label: '提案の作り方リンク' },
+  { selector: '.samples a', label: 'サンプル導線' },
 ];
 
 const PAGES = [

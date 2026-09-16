@@ -355,3 +355,8 @@
 - 見た目の確認結果: `?fixture=kusatsu`mobileで展開後クロップ撮影し、注記が30番カードと31番カードの間(feednoteの直前)に1行で収まり折り返し崩れなし、展開前は`.morenote`が0件でデグレなしをRead目視、コンソールエラー0件。
 - R55の数字: `check-all.mjs`合計162.8s・20本全PASS、最遅`scripts/check-hotelparam.mjs`27.9s、次点`scripts/check-feednote.mjs`12.3s・`scripts/check-attrib.mjs`12.1s。
 - 次: R14/R19/R40が残候補。
+
+### 2026-09-16 R63 状態Aに「サンプル: 草津/箱根/道後」のデモ導線を追加
+- やったこと: 配置A(`.chips`の下に新規1行)/B(チップ行内末尾)/C案の3案のうちA・Bを実装して`?demo=zoomout`mobileで撮り比べ、Bは横スクロールの奥に隠れて画面に出ないため不採用、Aは地図が窮屈にならず文字も読めたため採用。`<a href="?fixture=kusatsu|hakone|dogo">`の素のリンク(JSイベント追加なし)を`renderSampleLinks()`で描画し、`state.embed`または`fixtureNameFromUrl()`が非nullなら`hidden`。新規`scripts/check-sample.mjs`(15項目)を`check-all.mjs`に追加、`check-a11y.mjs`に`.samples a`を追加。
+- 見た目の確認結果: `?demo=zoomout`mobile/desktopとも「サンプル: 草津の例 箱根の例 道後の例」が1行に収まり横スクロールなし、地図は潰れず十分な高さ。`?fixture=kusatsu`mobileでは状態Bに遷移し導線は不可視(テストでも確認)。コンソールエラー0件、`check-all.mjs`21本全PASS。
+- 次: R14/R19/R40が残候補。
