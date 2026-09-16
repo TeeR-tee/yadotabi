@@ -1201,19 +1201,42 @@
   var SUB_DIST = 26;    // 6番以降(scale0.72 に縮めるので少し詰めてよい)
   var HOTEL_DIST = 36;  // 宿ピン(30px)。番号ピンに潜られないよう広めに取る
 
+  // ピンの実寸(px)。中心から上下左右にこの半分だけ矩形が広がる
+  var PIN_BOX = 24;        // 番号ピン(6番以降)
+  var PIN_BOX_TOP = 27;    // 1〜5番(scale1.12)
+  var BOX_PAD = 4;         // 障害物の矩形との間に必ず空ける見た目の余白
+
+  // 中心 p と一辺 size から、地図コンテナ座標の矩形を作る
+  function pinRectOf(p, size) {
+    var h = size / 2;
+    return { left: p.x - h, top: p.y - h, right: p.x + h, bottom: p.y + h };
+  }
+  // 矩形どうしが pad だけ膨らませても重ならないか(true = 重なる)
+  function rectsOverlap(a, b, pad) {
+    var m = pad || 0;
+    return a.left - m < b.right && a.right + m > b.left &&
+      a.top - m < b.bottom && a.bottom + m > b.top;
+  }
+
   /**
    * 画面上で近すぎる上位ピンを、表示位置だけ円状にずらして分離する。
    * `fixedPoints` は動かさない基準点(宿ピン)の containerPoint 配列。
+   * `obstacles` は絶対に乗ってはいけない矩形の配列(OSM帰属表示。地図コンテナ座標)。
+   *   帰属表示は OSM タイル利用規約上の必須表示で消せないため、点近似(R117)ではなく
+   *   矩形そのもので判定する。点近似は箱の幅・高さを1点で代用するため、
+   *   提案順位が変わって箱の端にピンが来ると穴が開き、逆に箱の上下では過剰に退避していた。
    * `markerPoints` は { marker, point, minDist } の配列で、呼び出し側で先頭から重要度順に並べる。
    * 緯度経度(state.cards / fitBounds 用の points)は書き換えず、marker の見た目位置だけ setLatLng する。
-   * 空きが見つからない密集地でも、必ず「最も空いている候補」へ逃がす(同一座標に積まない)。
+   * ピン同士は空きが見つからない密集地でも「最も空いている候補」へ逃がす(同一座標に積まない)が、
+   * `obstacles` との重なりだけはベストエフォートの対象外(絶対制約)にする。
    */
-  function nudgeOverlaps(markerPoints, fixedPoints) {
+  function nudgeOverlaps(markerPoints, fixedPoints, obstacles) {
     var NUDGE = 16;
     var RINGS = 6;          // 最大 96px まで退避できる
     var DIRS = 8;
     var MARGIN = 20;        // 地図コンテナの縁からこれだけ内側に収める(ピン半径+余白)
     var size = feedMap.getSize();
+    var boxes = obstacles || [];
     var placed = fixedPoints.map(function (p) { return { p: p, d: HOTEL_DIST }; });
 
     // コンテナからはみ出さないよう座標を丸める
@@ -1221,6 +1244,14 @@
       var x = Math.min(Math.max(p.x, MARGIN), Math.max(MARGIN, size.x - MARGIN));
       var y = Math.min(Math.max(p.y, MARGIN), Math.max(MARGIN, size.y - MARGIN));
       return (x === p.x && y === p.y) ? p : L.point(x, y);
+    };
+    // 帰属表示の矩形に1pxでも乗っていたら false。順位に依存しない絶対条件
+    var clearsBoxes = function (p, myBox) {
+      var r = pinRectOf(p, myBox);
+      for (var i = 0; i < boxes.length; i++) {
+        if (rectsOverlap(r, boxes[i], BOX_PAD)) return false;
+      }
+      return true;
     };
     // 既に置いたピンとの「余裕」。正なら十分離れている
     var clearance = function (p, myDist) {
@@ -1232,13 +1263,27 @@
       });
       return min;
     };
+    // リング探索を使い切っても空きが無いときの、必ず解がある決定的な逃がし先。
+    // 箱の下端 + ピン半径 + PAD へ真下に落とす(縦に積んでも箱には乗らない)
+    var escapeBelowBoxes = function (p, myBox) {
+      var q = p;
+      for (var i = 0; i < boxes.length; i++) {
+        var r = pinRectOf(q, myBox);
+        if (rectsOverlap(r, boxes[i], BOX_PAD)) {
+          q = L.point(q.x, boxes[i].bottom + BOX_PAD + myBox / 2);
+        }
+      }
+      return q;
+    };
 
     markerPoints.forEach(function (mp) {
       var myDist = mp.minDist;
+      var myBox = mp.box;
       var origin = clamp(mp.point);
-      var best = origin;
-      var bestClear = clearance(origin, myDist);
-      if (bestClear < 0) {
+      var originOk = clearsBoxes(origin, myBox);
+      var best = originOk ? origin : null;
+      var bestClear = originOk ? clearance(origin, myDist) : -Infinity;
+      if (!originOk || bestClear < 0) {
         // 8方向 x 6リング。リングごとに角度をずらして格子状の詰まりを解く
         outer:
         for (var ring = 1; ring <= RINGS; ring++) {
@@ -1247,6 +1292,8 @@
             var candidate = clamp(mp.point.add(
               L.point(Math.cos(angle) * NUDGE * ring, Math.sin(angle) * NUDGE * ring)
             ));
+            // 帰属表示に乗る候補は、ベストエフォートの比較対象にも入れない
+            if (!clearsBoxes(candidate, myBox)) continue;
             var clear = clearance(candidate, myDist);
             if (clear >= 0) {
               best = candidate;
@@ -1261,6 +1308,10 @@
           }
         }
       }
+      // どの候補も帰属表示を避けられなかったときの最終退避(箱の真下)
+      if (best === null) best = clamp(escapeBelowBoxes(origin, myBox));
+      // clamp で縁に張り付いた結果として箱に乗ることがあるので、最後にもう一度通す
+      if (!clearsBoxes(best, myBox)) best = escapeBelowBoxes(best, myBox);
       if (best !== mp.point) {
         mp.marker.setLatLng(feedMap.containerPointToLatLng(best));
       }
@@ -1318,22 +1369,22 @@
       var fixedPoints = [feedMap.latLngToContainerPoint(L.latLng(hotel.lat, hotel.lon))];
       // OSM帰属表示(右上)は消せない必須表示なので、ピン側を避けさせる。
       // 位置は setPosition('topright') 済みだが、どのピンがそこに来るかは
-      // 提案結果しだいで変わる(R114 で道後の並びが1つ繰り上がった際に実際に重なった)。
-      // R117: 中央1点だけを「動かない点」にすると、退避は半径 HOTEL_DIST の円でしか
-      // 効かないため、横長(実測 140x14px)の箱の**左端側**にピンが潜り込めてしまう。
-      // 箱の幅に沿って等間隔に点を並べ、箱全体で押しのける(縦は中央でよい。
-      // 円の半径が箱の高さを十分に覆うため)。間隔は HOTEL_DIST 以下にして穴を作らない。
+      // 提案結果しだいで変わる(R114/R117 で並びが1つ繰り上がった際に実際に重なった)。
+      // R118: 点の集まりで近似するのをやめ、getBoundingClientRect() で実測した
+      // **矩形そのもの**を絶対に乗ってはいけない障害物として渡す。
+      // 1行/2行(高さ14/28px)のどちらでも自動追従し、順位が変わっても穴が開かない。
+      var obstacles = [];
       var attribEl = feedMap.getContainer().querySelector('.leaflet-control-attribution');
       if (attribEl) {
         var mapRect = feedMap.getContainer().getBoundingClientRect();
         var aRect = attribEl.getBoundingClientRect();
         if (aRect.width > 0 && aRect.height > 0) {
-          var aLeft = aRect.left - mapRect.left;
-          var aMidY = aRect.top - mapRect.top + aRect.height / 2;
-          var steps = Math.max(1, Math.ceil(aRect.width / 24));
-          for (var s = 0; s <= steps; s++) {
-            fixedPoints.push(L.point(aLeft + (aRect.width * s) / steps, aMidY));
-          }
+          obstacles.push({
+            left: aRect.left - mapRect.left,
+            top: aRect.top - mapRect.top,
+            right: aRect.right - mapRect.left,
+            bottom: aRect.bottom - mapRect.top
+          });
         }
       }
       // marker は setLatLng で動かすので、元の緯度経度(state.cards)を基準に計算する
@@ -1342,10 +1393,11 @@
         return {
           marker: m,
           point: feedMap.latLngToContainerPoint(L.latLng(c.lat, c.lon)),
-          minDist: i < 5 ? TOP_DIST : SUB_DIST
+          minDist: i < 5 ? TOP_DIST : SUB_DIST,
+          box: i < 5 ? PIN_BOX_TOP : PIN_BOX
         };
       });
-      nudgeOverlaps(markerPoints, fixedPoints);
+      nudgeOverlaps(markerPoints, fixedPoints, obstacles);
     }, 0);
   }
 
@@ -2010,6 +2062,15 @@
     getState: function () { return state; },
     selectHotel: selectHotel,
     goBack: goBack,
-    getMap: function () { return map; }
+    getMap: function () { return map; },
+    // R118: 小地図のピン配置が「提案順位」に依存しないことを検査するための再描画フック。
+    // rank の計算には一切触れず、既に確定した state.cards の**並びだけ**を入れ替えて
+    // renderFeedMap() をやり直す(scripts/check-attrib.mjs が使う)。
+    reorderCardsForTest: function (order) {
+      if (!Array.isArray(order) || order.length !== state.cards.length) return false;
+      state.cards = order.map(function (i) { return state.cards[i]; });
+      renderFeedMap();
+      return true;
+    }
   };
 })(typeof window !== 'undefined' ? window : globalThis);
