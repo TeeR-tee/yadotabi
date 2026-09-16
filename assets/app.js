@@ -1425,12 +1425,27 @@
     return params.get('embed') === '1';
   }
 
-  /** `?bg=<6桁HEX>` を読む。3桁/7桁/色名/CSS混入などは黙って無視して null を返す。 */
+  // 相対輝度がこの値未満の bg は既定地色にフォールバックする。
+  // 根拠: 地色に直接乗る `.feednote`/`.morenote`(色 --c-text-faint #9494a3)が
+  // 黒地(L=0)付近で白カードとの明暗差が極端になり画面がちらつくため、
+  // #fff7e6(L≈0.93)は通し #333333(L≈0.033)は弾く境界として 0.5 を採用。
+  var BG_MIN_LUMINANCE = 0.5;
+
+  /** `?bg=<6桁HEX>` を読む。3桁/7桁/色名/CSS混入および暗すぎる色は黙って無視して null を返す。 */
   function bgFromUrl(params) {
     var raw = params.get('bg');
     if (!raw) return null;
     var hex = raw.charAt(0) === '#' ? raw.slice(1) : raw;
     if (!/^[0-9a-fA-F]{6}$/.test(hex)) return null;
+    // 暗すぎる地色は淡色テキスト(.feednote/.morenote)が読みづらくなるため既定色に戻す。
+    var r = parseInt(hex.slice(0, 2), 16) / 255;
+    var g = parseInt(hex.slice(2, 4), 16) / 255;
+    var b = parseInt(hex.slice(4, 6), 16) / 255;
+    var toLinear = function (c) {
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    };
+    var L = 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
+    if (L < BG_MIN_LUMINANCE) return null;
     return '#' + hex;
   }
 

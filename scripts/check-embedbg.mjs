@@ -105,6 +105,14 @@ async function main() {
       ok(r.cssVar === '', `無効値 bg=${v} では --c-bg が空文字`, r.cssVar);
     }
 
+    // 3b. 暗すぎる色(相対輝度 < 0.5)は既定色にフォールバック(R112)
+    const darkCases = ['000000', '333333'];
+    for (const v of darkCases) {
+      const r = await openAndRead(browser, `fixture=kusatsu&embed=1&bg=${v}`);
+      ok(r.bodyBg === DEFAULT_BG, `暗色 bg=${v} は既定色にフォールバックする(R112)`, r.bodyBg);
+      ok(r.cssVar === '', `暗色 bg=${v} では --c-bg が空文字(R112)`, r.cssVar);
+    }
+
     // 4. embed なしでは bg が効かない
     {
       const r = await openAndRead(browser, 'fixture=kusatsu&bg=fff7e6');

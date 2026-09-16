@@ -555,3 +555,6 @@
 - R109 `docs/check.mjs`にiframeの`sandbox`/`referrerpolicy`一貫性検査を追加。実iframe(`demo/hotel-page.html`実タグ)・タグ例(同ファイル`<pre class="tag-example">`、HTMLエスケープをデコード)・`README.md`タグ例の3箇所をローカルファイルから直接読み(fs.readFileSync、追加のネットワークアクセス0回)、sandboxトークンをSetにして期待値4トークンと集合一致するか・referrerpolicyが`no-referrer`かを`report()`で3行出す。
 - README.md:42の`allow-popups`を一時的に消して`node docs/check.mjs`を実行しNG+exit 1を確認、直後にEditで元に戻し`git diff README.md`が空であることを確認済み。`node docs/check.mjs`は新3行含め全OK・exit 0、`node scripts/check-all.mjs`は28本中28本PASS(合計236.8s)。
 - 次: ROADMAP残りはR64/R81/R85/R88/R90から計画役が選定。
+- R112 `bgFromUrl()`(`app.js:1428`)の書式検査直後に相対輝度判定を追加。閾値`BG_MIN_LUMINANCE=0.5`は地色に直接乗る`.feednote`/`.morenote`(`--c-text-faint` #9494a3)が黒地でちらつく実測に基づき採用、`#fff7e6`(L≈0.93)は通し`#333333`(L≈0.033)は弾く境界として決定。閾値未満は`null`を返し既定地色にフォールバック(画面へのエラー表示なし)。根拠と挙動はREADME.mdの`?bg=`説明行と`demo/hotel-page.html`の該当箇所に1行ずつ追記。
+- `bg=000000`/`bg=fff7e6`をmobileで撮影し目視、暗色は既定のクリーム系地色にフォールバック・明色は従来どおり適用されることを確認(文字崩れ・はみ出しなし)。`scripts/check-embedbg.mjs`に暗色2ケース(`000000`/`333333`が既定色フォールバック)を追加し20 pass/0 fail、`node scripts/check-all.mjs`は28本中28本PASS。
+- 次: ROADMAP残りはR64/R81/R85/R88/R90/R113(同一エリアチップ連打でOverpass再取得)から計画役が選定。
