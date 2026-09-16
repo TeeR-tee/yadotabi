@@ -552,6 +552,52 @@ console.log('\n(a-5) R35 観光対象でない候補の除外(OSM側にも適用
   ok(eNames.indexOf('ビーコンプラザ') === -1, 'extract の「コンベンション」で落ちる', eNames);
   ok(eNames.indexOf('〇〇アリーナ') === -1, 'extract の「体育館である」で落ちる', eNames);
   ok(eNames.indexOf('〇〇の湯') !== -1, '共同浴場は残る(過剰除外していない)', eNames);
+
+  // (5) R80 除外語に当たっても OSM に一致要素があれば通す ---------------------
+  // OSM 候補は Overpass の観光タグを通ってきた構造化証拠なので、語より優先する。
+  // 救済された記事は統合で OSM 側に吸収されるため、件数は増えず source が both になる。
+  const Er = loadEngine({
+    ...geoMock(),
+    fetchSpots: () => Promise.resolve([
+      // a) wikipedia タグで記事を名指ししている(表記が違っても結び付く)
+      { id: 'way/r1', name: '旧〇〇邸', lat: at(600), lon: HOTEL.lon, category: 'attraction',
+        categoryLabel: '観光名所', distanceM: 600, website: null, openingHours: null,
+        wikipediaTitle: '〇〇県立〇〇高等学校旧校舎', wikidataId: null },
+      // b) 名前が完全一致し、かつ 150m 以内にある
+      // 名前自体は除外語に当たらない(当たると OSM 側も落ちて救済の相手が消える)。
+      // 落とされるのは冒頭文の「コンベンション」の方。
+      { id: 'way/r2', name: '〇〇プラザ', lat: at(1000), lon: HOTEL.lon, category: 'attraction',
+        categoryLabel: '観光名所', distanceM: 1000, website: null, openingHours: null,
+        wikipediaTitle: null, wikidataId: null },
+      // c) 名前が含むだけの別主体(自治体・大学)は救済の根拠にしない
+      { id: 'way/r3', name: '〇〇町立郷土資料館', lat: at(1400), lon: HOTEL.lon, category: 'museum',
+        categoryLabel: '美術館・博物館', distanceM: 1400, website: null, openingHours: null,
+        wikipediaTitle: null, wikidataId: null }
+    ]),
+    fetchWikiNearby: () => Promise.resolve([
+      // 'high school' 相当の除外語に当たるが、OSM が wikipedia タグで名指ししている
+      { id: 'wp/r1', title: '〇〇県立〇〇高等学校旧校舎', lat: at(605), lon: HOTEL.lon, distanceM: 605,
+        thumbnailUrl: 'https://example.com/r1.jpg', extract: '重要文化財の校舎である。', url: '' },
+      // 冒頭文の「コンベンション」で落ちるが、同名の OSM 要素が 150m 以内にある
+      { id: 'wp/r2', title: '〇〇プラザ', lat: at(1005), lon: HOTEL.lon, distanceM: 1005,
+        thumbnailUrl: 'https://example.com/r2.jpg',
+        extract: '〇〇プラザは、コンベンション施設である。', url: '' },
+      // 自治体の記事。'〇〇町立郷土資料館' に名前が含まれるだけなので救済されない
+      { id: 'wp/r3', title: '〇〇町', lat: at(1410), lon: HOTEL.lon, distanceM: 1410,
+        thumbnailUrl: null, extract: '〇〇町は、日本の地方公共団体である。', url: '' }
+    ])
+  });
+  const rItems = await Er.collect(HOTEL);
+  const rNames = rItems.map(i => i.name);
+  const byName = (n) => rItems.filter(i => i.name === n)[0];
+  ok(rNames.indexOf('旧〇〇邸') !== -1, 'R80: wikipediaタグ一致で除外語の記事が救済される', rNames);
+  eq(byName('旧〇〇邸').source, 'both', 'R80: 救済された記事は OSM に吸収され source=both');
+  ok(byName('旧〇〇邸').imageUrl === 'https://example.com/r1.jpg',
+    'R80: 救済で写真が付く(救済しないと写真の無い osm 単独のままだった)');
+  ok(rNames.indexOf('〇〇プラザ') !== -1, 'R80: 同名かつ近接の OSM 要素で救済される', rNames);
+  eq(byName('〇〇プラザ').source, 'both', 'R80: 同名救済も source=both');
+  ok(rNames.indexOf('〇〇町') === -1, 'R80: 名前が含まれるだけの自治体記事は救済しない(誤爆防止)', rNames);
+  eq(rNames.length, 3, 'R80: 救済で候補件数は増えない(統合で吸収される)');
 }
 
 // ---------------------------------------------------------------------------

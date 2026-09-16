@@ -440,6 +440,52 @@
     return false;
   }
 
+  /**
+   * R80: 語の除外に当たった Wikipedia 記事を「OSM の観光タグ付き要素として実在する」
+   * という構造化された証拠で救済してよいかどうか。
+   *
+   * 背景: OSM 候補は geo.js の buildOverpassQuery が tourism / historic / leisure /
+   * amenity / natural / man_made の限られた値でしか要素を取ってこないため、
+   * 応答に入っている時点で「観光の対象としてタグ付けされている」ことが確定している。
+   * 一方 Wikipedia 記事にはタグが無く、isExcludedArticle の語のルールが唯一の門だった。
+   * そのため「OSM に tourism=attraction として載っているのに、名前や冒頭文の語で
+   * wiki 側だけが落ちる」という非対称が残っていた(R79 の指摘した語ベースの天井)。
+   *
+   * 判定は既に語のルールを通過して確定している osmItems との突き合わせで行うが、
+   * **統合(dedupe)で使う isSamePlace より厳しくする**。isSamePlace は「名前の包含 +
+   * 150m 以内」でも同じ場所とみなすが、これは重複カードを潰すための緩さであって
+   * (誤って寄せても表示が1枚に減るだけ)、救済の根拠としては危険なため。
+   * 実測(4 fixture)では包含を許すと次の3件が誤爆した:
+   *   箱根町 ← 箱根町立郷土資料館 / 鈴廣 ← 鈴廣かまぼこ博物館 / 愛媛大学 ← 愛媛大学ミュージアム
+   * いずれも「施設の名前に自治体名・企業名・大学名が含まれている」だけで、記事の側は
+   * 自治体・企業・大学という**より広い主体**であり観光スポットではない。
+   *
+   * そこで救済の根拠は次の2つだけに絞る(どちらも名前レベルの同一性がある):
+   *   a) OSM 要素の wikipedia タグがその記事を名指ししている(最も確かな構造化証拠)
+   *   b) 正規化した名前が完全一致し、かつ DEDUPE_NEAR_M 以内にある
+   * 一致した記事はこの後の統合で必ずその OSM 候補に吸収されるので、救済で候補の
+   * 件数が増えることはなく、写真・要約が付いて source が both になるだけになる。
+   *
+   * @param {{title:string, lat:number, lon:number}} article geosearch の記事
+   * @param {Array<object>} osmItems 語のルールを通過済みの OSM 候補
+   * @returns {boolean} true なら除外を取り消してよい
+   */
+  function hasOsmTagEvidence(article, osmItems) {
+    if (!Array.isArray(osmItems) || !osmItems.length) return false;
+    var title = typeof article.title === 'string' ? article.title.trim() : '';
+    var nt = normalizeName(title);
+    if (!nt) return false;
+    for (var i = 0; i < osmItems.length; i++) {
+      var item = osmItems[i];
+      // a) wikipedia タグでの名指し。座標は問わない(タグ自体が同一性の宣言)。
+      if (item.wikipediaTitle && normalizeName(item.wikipediaTitle) === nt) return true;
+      // b) 名前の完全一致 + 近接。包含は採らない(上のコメントの誤爆3件のため)。
+      if (normalizeName(item.name) !== nt) continue;
+      if (distanceBetween(item.lat, item.lon, article.lat, article.lon) <= DEDUPE_NEAR_M) return true;
+    }
+    return false;
+  }
+
   // ---------------------------------------------------------------------------
   // collect: 候補を集めて統合する
   // ---------------------------------------------------------------------------
@@ -727,7 +773,11 @@
     if (wikiResult.status === 'fulfilled' && Array.isArray(wikiResult.value)) {
       wikiResult.value.forEach(function (article) {
         if (!article || !isFinite(article.lat) || !isFinite(article.lon)) return;
-        if (isExcludedArticle(article.title, article.extract)) return;
+        // R80: 語で落ちる記事でも、既に確定した osmItems(= Overpass の観光タグを
+        // 通ってきた要素)に同じ場所があれば通す。タグという構造化証拠を語より優先する。
+        // osmItems はこの時点で必ず確定済み(上の buildOsmItems)なので参照して安全。
+        if (isExcludedArticle(article.title, article.extract)
+          && !hasOsmTagEvidence(article, osmItems)) return;
         var item = fromWikiArticle(article, h);
         if (!item.name) return;
         if (isHotelItself(item, h)) return;
