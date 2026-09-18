@@ -750,3 +750,8 @@
 - やったこと: `engine.js`に`DEFINITION_WIDE_AREA = /にまたがる[^。]{0,12}(国立公園|国定公園|自然公園)である/`を追加し`isExcludedArticle()`で判定。**NEXT.mdの想定(保護リストより後ろに配置)とは異なり、対象2記事の名前が両方とも「公園」で終わり保護リスト(NAME_PROTECT_SUFFIX)に直撃して先にreturn falseされ判定に届かないことを実測で発見**したため、R119〜R121と同じ**保護リストより前**に配置し直した(理由をコードコメントとNIGHTLOGに明記)。`check-engine.mjs`に(r141)節5ケース追加(既存ケース削除ゼロ)。
 - 見た目の確認結果: kusatsu 8位「上信越高原国立公園」・9位「妙高戸隠連山国立公園」が消え8位「草津白根山」・9位「日晃寺」に繰り上がり(NEXT.md想定の壹千参百年記念之碑・地蔵源泉はmore側1・2位のまま不変で繰り上がらず、想定と違うが自分の実測を採用)。4エリア200記事の除外判定全件突き合わせでkusatsuのみ2件変化、hakone/dogo/beppuは無変化。dump-rank4エリアもhakone/dogo/beppu完全無差分、kusatsuはcards30枚を目視し誤爆0を確認。`?fixture=kusatsu`mobile/desktop・`dogo`mobileの3枚撮影し崩れなし。
 - 次: `node scripts/check-engine.mjs` 318 pass/0 fail、`node scripts/check-all.mjs` **29本全緑(exit 0)**。外部API0回。朝の相談節を整理(判断要4件を先頭にまとめ、R116等の判断不要4件をROADMAP通常項目扱いに変更)。次はROADMAPの朝の相談整理を踏まえ計画役が選定。
+
+### 2026-09-18 R142 固有名を持たない一般名詞だけの候補を落とす
+- やったこと: `engine.js`に`GENERIC_NAME_NG`(商店街・足湯・記念碑・国登録記念物・公園等25語、完全一致のみ)を追加し、`isExcludedName()`の**`isProtectedName`より前**に判定を挿入(NAME_PROTECT_SUFFIXに足湯・記念碑・公園が入っており後ろに置くと11件中8件が判定に届かないR141と同じ罠のため)。4エリアfixtureで完全一致ヒットを実測し**11件ちょうど**(hakone7・dogo1・beppu3)を確認、湯畑・筆塚等の短い固有名は無傷。`check-engine.mjs`に(r142)節14ケース追加(既存ケース削除ゼロ)。副作用として`check-nosummary.mjs`の(r139)/(r140)が実データ「商店街」名を参照していたため、繰り上がった「愛媛道後足湯カフェ 坊っちゃん」に参照名を差し替えた(検査の意図・ケース数は不変)。
+- 見た目の確認結果: dogo #16「商店街」が消え以降が繰り上がり(30位まで観光名所・神社・山頂等で非観光対象なし)、kusatsu/hakone/beppuは`dump-rank`完全無差分。`?fixture=dogo`/`kusatsu` mobileを撮影し目視、崩れ・重なりなし。kusatsu mobileで湯畑(20位)・筆塚(19位)が残存していることをテキストでも確認。
+- 次: `node scripts/check-engine.mjs` 332 pass/0 fail、`node scripts/check-all.mjs` **29本全緑(exit 0)**。R143(kusatsuの動物種名5件・ドクターフィッシュ22位)は落とす軸が違う(タグ、名前ではない)ためROADMAPに起票のみで今回は実装せず。外部API0回。rank・geo.js・fixtures無変更。

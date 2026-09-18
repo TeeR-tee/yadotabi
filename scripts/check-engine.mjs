@@ -1537,5 +1537,48 @@ console.log('\n(r141) 複数県にまたがる広域国立公園・国定公園�
   });
 }
 
+// ---------------------------------------------------------------------------
+console.log('\n(r142) 固有名を持たない一般名詞そのものの候補をカードから落とす');
+{
+  // 実測(4エリアfixtures突き合わせ): OSM候補で name が一般名詞と完全一致するものが
+  // 11件(hakone 足湯×3・記念碑×2・国登録記念物×2、dogo 商店街×1、beppu 足湯×3)。
+  // Wikipedia記事側は完全一致ヒット0件(記事タイトルは必ず固有名を持つため構造的に当たらない)。
+  // 完全一致のみで判定するので、`湯畑`・`筆塚`のような4文字以下の短い固有名は
+  // 1件も巻き込まない(部分一致にすると`〇〇商店街`まで落ちてしまうため絶対に避ける)。
+  const R142_CASES = [
+    // --- 落とす側: 実測11件のうち代表4種(NAME_PROTECT_SUFFIX に直撃する語を含む) ---
+    { name: '商店街', drop: true },
+    { name: '足湯', drop: true },
+    { name: '記念碑', drop: true },
+    { name: '国登録記念物', drop: true },
+    // --- 残す側: 4文字以下の短い固有名(完全一致しないので無傷であることの確認) ---
+    { name: '湯畑', drop: false },
+    { name: '筆塚', drop: false },
+    { name: '大湯', drop: false },
+    { name: '地蔵', drop: false },
+    { name: '拝殿', drop: false },
+    // --- 残す側: 一般名詞を含むが固有名が付いているため完全一致しないもの ---
+    { name: '道後ﾊｲｶﾗ通り', drop: false },
+    { name: '西の河原公園', drop: false },
+    { name: '地蔵の湯まえ足湯', drop: false },
+    { name: '別府公園', drop: false },
+    { name: '道後公園', drop: false }
+  ];
+
+  const E142 = loadEngine({
+    ...geoMock(),
+    fetchSpots: () => Promise.resolve(R142_CASES.map((c, i) => ({
+      id: 'node/' + (9000 + i), name: c.name, lat: at(100 + i * 50), lon: HOTEL.lon,
+      category: 'attraction', categoryLabel: '観光名所', distanceM: 100 + i * 50
+    }))),
+    fetchWikiNearby: () => Promise.resolve([])
+  });
+  const got142 = new Set((await E142.collect(HOTEL)).map(i => i.name));
+  R142_CASES.forEach(c => {
+    if (c.drop) ok(!got142.has(c.name), 'R142 落とす: ' + c.name);
+    else ok(got142.has(c.name), 'R142 残す: ' + c.name);
+  });
+}
+
 console.log('\n==== ' + pass + ' pass / ' + fail + ' fail ====');
 process.exit(fail ? 1 : 0);

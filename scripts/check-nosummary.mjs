@@ -318,13 +318,16 @@ async function main() {
         };
       })
     );
-    const shotengai = bareRows.find((r) => r.name === '商店街');
+    // R142(2026-09-18): dogo #16「商店街」は一般名詞そのものの名前のため候補から除外され、
+    // #16「愛媛道後足湯カフェ 坊っちゃん」に繰り上がった(要約×画像×公式×でbare条件は同じ)。
+    // 参照名をこれに差し替える(検査の意図=bareカードの帯が畳まれていること、は不変)。
+    const shotengai = bareRows.find((r) => r.name === '愛媛道後足湯カフェ 坊っちゃん');
     // R140 で帯(.feedcard__media)そのものを畳んだため mediaHeight は null になる(要素が存在しない)。
     // これは R139 の「情報ゼロのカードの帯を圧縮する」という目的をさらに徹底した結果であり、
     // 検査の意図(bare カードに肥大した帯が残っていないこと)はこの条件で引き続き満たされる。
     ok(
       !!shotengai && shotengai.bare === true && shotengai.mediaHeight === null,
-      '(r139) a. 情報ゼロのカード(商店街)が feedcard--bare になり .feedcard__media の帯が無い(R140で畳んだ)',
+      '(r139) a. 情報ゼロのカード(愛媛道後足湯カフェ 坊っちゃん)が feedcard--bare になり .feedcard__media の帯が無い(R140で畳んだ・R142で商店街から繰り上がり)',
       shotengai
     );
     const isaniwaBare = bareRows.find((r) => r.name === '伊佐爾波神社');
@@ -349,10 +352,11 @@ async function main() {
         };
       })
     );
-    const shotengaiR140 = bareDetailRows.find((r) => r.name === '商店街');
+    // R142: こちらも「商店街」→「愛媛道後足湯カフェ 坊っちゃん」に参照先を差し替える。
+    const shotengaiR140 = bareDetailRows.find((r) => r.name === '愛媛道後足湯カフェ 坊っちゃん');
     ok(
       !!shotengaiR140 && shotengaiR140.bare === true && shotengaiR140.hasMedia === false && shotengaiR140.hasPh === false,
-      '(r140) a. bare カード(商店街)に .feedcard__media / .feedcard__ph が存在しない(帯を畳んだ)',
+      '(r140) a. bare カード(愛媛道後足湯カフェ 坊っちゃん)に .feedcard__media / .feedcard__ph が存在しない(帯を畳んだ)',
       shotengaiR140
     );
     // 伊佐爾波神社は写真あり(.feedcard__img)のため .feedcard__ph は元々存在しない。
