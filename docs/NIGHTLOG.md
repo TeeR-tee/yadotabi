@@ -707,3 +707,8 @@
 - やったこと: `scripts/archive-shots.mjs` を新設(移動のみ・`unlinkSync`/`rmSync`/`rmdirSync`は0件をgrepで確認)。既定ドライラン、`--apply`で実行、しきい値は`--days`(既定2日)の相対指定。移動前は直下1113ファイル(1096枚のpng+17本のfail-*.txt)・1.1GB、除外リスト3種(docs参照2件+固定名保存2件、うち1件はdocs/gsheetと重複)を据え置いたうえで`--apply`後は直下508件・`archive/`605件で**合計1113件・完全一致**(1枚も消失なし)。`docs/CHECKS.md`に保持方針の節を追加、再発防止の自動化は入れず(理由:撮影直後に消えたと誤解される恐れがあるため)人が月1で回す運用にした。
 - 確認結果: `node --check`通過、撮影1枚(`?fixture=kusatsu`mobile)が`screenshots/`直下に新規生成されカード30枚・帰属表示「Leaflet | © OpenStreetMap」に崩れなしを目視、`git status -sb`で`screenshots/`配下の差分は0件(.gitignore有効)、`node scripts/check-all.mjs` **29本中29本PASS(exit 0)**(固定名保存のcheck-keyboard/check-hotelparamも含め全緑)。
 - 次: ROADMAP R102(list-shots.mjs)は保持方針・移動コマンド・CHECKS.md追記の3点が本タスクで満たされたため補記のみ、残るのは枚数集計の一覧コマンドだけ。他はROADMAPの未着手項目から計画役が選定。
+
+### 2026-09-18 R134 README を実装に合わせ直す
+- やったこと: README.md の4箇所を実測し直して修正。(1)「12本/13本」「25本」→**29本**に統一(`ls scripts/check-*.mjs`=29本・`SCRIPTS`配列=29要素を自分でも確認)。(2)「Python 3が必要」は指示書の「一本化されたので不要」という前提が誤りだったため実装(`scripts/lib/server.mjs`)を確認し、**実際は今も`spawn('python',...)`でhttp.serverを起動しており検査の実行にはPython 3が必要(アプリ本体をブラウザで開くだけなら不要)**という正しい内容に書いた。(3)写真ありカード割合表を4エリア(草津/箱根/道後/別府)に更新、`dump-rank`を自分で4回実行し数え直した結果は**草津15/30(50%)・箱根11/30(37%)・道後10/30(33%)・別府11/30(37%)**(指示書の草津17件/道後11件とは差異があったため自分の実測値を採用)。(4)「判断待ちの設計課題」の検索候補重なり項目は解決済み(R2-1)に書き換え、残り4項目はそのまま保持。
+- 見た目の確認結果: README以外は無変更(画面に影響なし)。`grep -n "12本\|13本\|25本" README.md`が空。
+- 次: `node scripts/check-all.mjs` **29本中29本PASS(exit 0・合計287.9s)**。外部API 0回。ROADMAP残りは「カテゴリ多様性の減点」等の朝の相談項目から計画役が選定。
