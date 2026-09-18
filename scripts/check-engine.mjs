@@ -1337,5 +1337,74 @@ console.log('\n(r127) 英語名だけの OSM 単独候補を落とす(統合・�
   ok(gotJa.some((x) => x.name === '公園A'), 'R127 残す: 日本語名の単独OSM候補(公園A)は落ちない');
 }
 
+// ---------------------------------------------------------------------------
+console.log('\n(r132) 行ける場所ではないもの(人物・出来事・球技場)をカードから落とす');
+{
+  // R119〜R121 が見ていたのは「まだ在るか」「訪問が適切か」だったが、ここで問うのは
+  // もっと手前の**「そもそも行ける場所か」**という軸。人物・出来事は場所ではないので、
+  // 徒歩分数と経路リンクが付くこと自体が提案として意味をなさない。
+  // 判定は3つとも定義文の構造で行い、語の列挙で広げない(誤爆0件を実測で確認済み)。
+  const R132_CASES = [
+    // --- 落とす側1: 人物の伝記。生没年の括弧という**構造**で検出する(kusatsu 5位) ---
+    // 既存の人物語は「日本の政治家」等で日本人しか想定しておらず、外国人には1語も当たらない。
+    { title: 'コンウォール・リー', drop: true,
+      extract: 'コンウォール・リー（Mary Helena Cornwall Legh、1857年5月20日-1941年12月18日）は、英国女性。宣教師の道を歩み1907年来日。' },
+    // --- 落とす側2: 球技場。R79 が競技場/運動場/武道館を入れたときの取りこぼし(kusatsu 8位) ---
+    { title: '本白根第3グランド', drop: true,
+      extract: '本白根第3グランド（もとしらねだいさんぐらんど）は、群馬県草津町にある球技場である。1987年完成。' },
+    // --- 落とす側3: 合戦=出来事。述部の「戦いである」で見る(hakone 11位) ---
+    { title: '石橋山の戦い', drop: true,
+      extract: '石橋山の戦い（いしばしやまのたたかい）は、平安時代末期の治承4年（1180年）に源頼朝と平氏政権勢力（大庭景親ら）との間で行われた戦いである。源氏軍は300騎が石橋山に陣を構え、対する平家軍は3000騎が谷を一つ隔てて布陣して戦い、源頼朝は大敗し箱根山中へ敗走した。' },
+    // --- 残す側1: 名前に「戦い」を含む出来事に言及する史跡の記事。述部が「である」の形に
+    //     ならないので当たらない。`戦い` 単体を除外語に入れてはいけない理由の本命ケース。
+    { title: '石橋山古戦場', drop: false,
+      extract: '石橋山古戦場（いしばしやまこせんじょう）は、神奈川県小田原市にある史跡。石橋山の戦いの舞台となった場所で、源頼朝ゆかりの碑が建つ。' },
+    // --- 残す側2: 山。生没年らしき数字を含まない通常の地物(誤爆の下限確認) ---
+    { title: '本白根山', drop: false,
+      extract: '本白根山（もとしらねさん）は、群馬県吾妻郡草津町と嬬恋村にまたがる標高2,171mの火山。本白根火砕丘、鏡池火砕丘、鏡池北火砕丘などからなる火砕丘群である。' },
+    // --- 残す側3: 城。括弧内に年号があっても月日まで揃わない形は人物判定に当たらない ---
+    { title: '湯築城', drop: false,
+      extract: '湯築城（ゆづきじょう）は、愛媛県松山市道後公園にあった日本の城。堀や土塁が現存する。' },
+    // --- 残す側4: 創建年の括弧を持つ寺社。年だけの括弧で人物と誤判定しないことの確認 ---
+    { title: '湯前神社', drop: false,
+      extract: '湯前神社（ゆのまえじんじゃ）は、静岡県熱海市にある神社。天平勝宝元年（749年）の創建と伝わる。' }
+  ];
+
+  const E132 = loadEngine({
+    ...geoMock(),
+    fetchSpots: () => Promise.resolve([]),
+    fetchWikiNearby: () => Promise.resolve(R132_CASES.map((c, i) => ({
+      id: 'wp/' + (1400 + i), title: c.title, lat: at(300 + i * 400), lon: HOTEL.lon,
+      distanceM: 300 + i * 400, thumbnailUrl: null, extract: c.extract, url: ''
+    })))
+  });
+  const got132 = new Set((await E132.collect(HOTEL)).map(i => i.name));
+  R132_CASES.forEach(c => {
+    if (c.drop) ok(!got132.has(c.title), 'R132 落とす: ' + c.title);
+    else ok(got132.has(c.title), 'R132 残す: ' + c.title);
+  });
+
+  // 本命: hakone 21位の正しい行き先「石橋山古戦場の碑」は OSM 由来(extract 無し)なので
+  // 述部判定の走査対象にすらならない。合戦の記事だけが消え、碑へ行く導線は必ず残る。
+  const E132b = loadEngine({
+    ...geoMock(),
+    fetchWikiNearby: () => Promise.resolve([]),
+    fetchSpots: () => Promise.resolve([
+      { id: 'node/7777001', name: '石橋山古戦場の碑', lat: at(3322), lon: HOTEL.lon,
+        category: 'monument', categoryLabel: '記念碑', distanceM: 3322 },
+      { id: 'node/7777002', name: '湯畑', lat: at(75), lon: HOTEL.lon,
+        category: 'attraction', categoryLabel: '観光名所', distanceM: 75 },
+      { id: 'node/7777003', name: '道の駅　草津運動茶屋公園', lat: at(1500), lon: HOTEL.lon,
+        category: 'attraction', categoryLabel: '観光名所', distanceM: 1500 }
+    ])
+  });
+  const got132b = new Set((await E132b.collect(HOTEL)).map(i => i.name));
+  ok(got132b.has('石橋山古戦場の碑'), 'R132 残す: 石橋山古戦場の碑(OSM・正しい行き先)');
+  ok(got132b.has('湯畑'), 'R132 残す: 湯畑');
+  // 名前に '運動' を含むが '運動場' ではないので TITLE_KEYWORD_NG に当たらない。
+  // 球技場の追加で道の駅を巻き込んでいないことの確認。
+  ok(got132b.has('道の駅　草津運動茶屋公園'), 'R132 残す: 道の駅　草津運動茶屋公園');
+}
+
 console.log('\n==== ' + pass + ' pass / ' + fail + ' fail ====');
 process.exit(fail ? 1 : 0);
