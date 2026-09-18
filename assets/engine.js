@@ -950,11 +950,15 @@
         if (t.indexOf(hint.words[j]) !== -1) return hint;
       }
     }
+    // R147: extract 全文(e)を走査すると2文目以降の語に誤反応する
+    // (例: 「長興山のシダレザクラ」は1文目「シダレザクラの巨木である」だが、
+    //  2文目「紹太寺の敷地内」の「寺」に反応して神社・寺院と誤判定されていた)。
+    // R115/R145 と同じ definitionScope() の範囲(タイトル+定義文1文目)だけを見る。
     for (i = 0; i < WIKI_CATEGORY_HINTS.length; i++) {
       hint = WIKI_CATEGORY_HINTS[i];
       if (isDenied(hint, scope)) continue;
       for (j = 0; j < hint.words.length; j++) {
-        if (e.indexOf(hint.words[j]) !== -1) return hint;
+        if (scope.indexOf(hint.words[j]) !== -1) return hint;
       }
     }
     return { category: 'other', label: 'スポット' };

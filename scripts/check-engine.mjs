@@ -1738,5 +1738,52 @@ console.log('\n(r145) 災害という「出来事」そのものの記事を定�
   });
 }
 
+console.log('\n(r147) 要約(extract)2文目以降ではなく定義文(1文目)だけでカテゴリを判定する');
+{
+  // guessWikiCategory() は非公開の内部関数なので、この節専用にもう一つ
+  // サンドボックスを作り、YadoEngine と一緒に __guessWikiCategory として公開する。
+  // (collect() 経由だと isExcludedName の駅・行政区画フィルタに引っかかって
+  //  候補にすら残らない実例が複数あり、guessWikiCategory() 単体の入出力を
+  //  直接検証したいこの節の目的とは合わないため。)
+  const sandbox147 = { console, setTimeout, clearTimeout, Promise, Date, Math, JSON, URL };
+  sandbox147.window = sandbox147;
+  sandbox147.YadoGeo = geoMock();
+  vm.createContext(sandbox147);
+  vm.runInContext(
+    src.replace('global.YadoEngine = {', 'global.__guessWikiCategory = guessWikiCategory;\n  global.YadoEngine = {'),
+    sandbox147,
+    { filename: 'engine.js(r147)' }
+  );
+  const guess147 = sandbox147.__guessWikiCategory;
+
+  // 5エリア250記事の実測(2026-09-18): guessWikiCategory() の第2ループを
+  // extract 全文(e) から definitionScope(scope: タイトル+1文目・120字上限) に絞ると
+  // 22件中8件が変化・14件は不変(悪化0件、計画役+作業役の実測一致)。
+  // ここでは変化する代表3件+変化しない代表3件を、実際の extract(先頭2文)そのままで検証する。
+  const R147_CHANGE_CASES = [
+    // 1文目には根拠語が無く、2文目の語に反応して誤判定されていたもの → scope 化で 'スポット' になる
+    { title: '箱根町', after: 'スポット',
+      extract: '箱根町（はこねまち）は、神奈川県足柄下郡にある町。箱根温泉や芦ノ湖など多くの観光資源を有する。' },
+    { title: '長興山のシダレザクラ', after: 'スポット',
+      extract: '長興山のシダレザクラ（ちょうこうざんのシダレザクラ）は、神奈川県小田原市入生田（いりううだ）地区にあるシダレザクラの巨木である。紹太寺の敷地内にあり、国の天然記念物に指定されている。' },
+    { title: '玄武洞駅', after: 'スポット',
+      extract: '玄武洞駅（げんぶどうえき）は、兵庫県豊岡市城崎町池谷にある、京都丹後鉄道宮福線の駅である。玄武洞（玄武洞公園）への玄関口となっている。' }
+  ];
+  const R147_UNCHANGED_CASES = [
+    // 1文目に根拠語があり、scope 化しても変わらないもの(14件のうち代表3件)
+    { title: '一の湯', after: '温泉',
+      extract: '一の湯（いちのゆ）は、神奈川県足柄下郡箱根町にある温泉旅館。箱根七湯のひとつに数えられる。' },
+    { title: '金刀比羅宮松山分社', after: '神社・寺院',
+      extract: '金刀比羅宮松山分社（ことひらぐうまつやまぶんしゃ）は、愛媛県松山市にある神社である。道後温泉の近くに位置する。' },
+    { title: '玄武洞', after: '自然・景勝',
+      extract: '玄武洞（げんぶどう）は、兵庫県豊岡市赤石にある洞窟状の岩山である。玄武洞公園として整備されている。' }
+  ];
+
+  R147_CHANGE_CASES.concat(R147_UNCHANGED_CASES).forEach(c => {
+    const got = guess147(c.title, c.extract);
+    eq(got.label, c.after, 'R147 定義文1文目のみで判定: ' + c.title + ' -> ' + c.after);
+  });
+}
+
 console.log('\n==== ' + pass + ' pass / ' + fail + ' fail ====');
 process.exit(fail ? 1 : 0);

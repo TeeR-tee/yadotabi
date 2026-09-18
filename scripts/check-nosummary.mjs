@@ -292,15 +292,19 @@ async function main() {
     // 2026-09-18 R137 作業役実測: kusatsu 9 / hakone 6 / dogo 5 / beppu 11 = 合計31枚。
     // NEXT.md の計画時想定(dogo 6枚・合計32枚)とは dogo が1枚ズレる。fixtures/dogo.json を
     // 直接数えても website/contact:website 付き要素は上位30枚中5件しかなく、作業役の実測を採用する。
+    // 2026-09-18 R147 で hakone が 6→7 に変化(合計31→32)。R147 でカテゴリ判定を
+    // 定義文1文目のみに限定した結果、「長興山のシダレザクラ」が神社・寺院→スポットに
+    // 変わって神社・寺院カテゴリの減点枠が1つ空き、公式サイトを持つ「阿弥陀寺」が
+    // top30 に繰り上がったことによる正しい副作用(作業役実測)。
     const officialCountKusatsu = await kusatsuPage.locator('.feedcard__official').count();
     const officialCountHakone = await hakonePage.locator('.feedcard__official').count();
     const officialCountDogo = await page.locator('.feedcard__official').count();
     const officialCountBeppu = await beppuPage.locator('.feedcard__official').count();
     const officialTotal = officialCountKusatsu + officialCountHakone + officialCountDogo + officialCountBeppu;
     ok(
-      officialCountKusatsu === 9 && officialCountHakone === 6 && officialCountDogo === 5 &&
-        officialCountBeppu === 11 && officialTotal === 31,
-      '(r137) c. 4エリアの .feedcard__official 件数が実測(9/6/5/11=31)と一致',
+      officialCountKusatsu === 9 && officialCountHakone === 7 && officialCountDogo === 5 &&
+        officialCountBeppu === 11 && officialTotal === 32,
+      '(r137) c. 4エリアの .feedcard__official 件数が実測(9/7/5/11=32)と一致',
       { officialCountKusatsu, officialCountHakone, officialCountDogo, officialCountBeppu, officialTotal }
     );
 
