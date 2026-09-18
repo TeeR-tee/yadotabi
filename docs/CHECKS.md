@@ -69,6 +69,14 @@ R89(2026-09-16)実測: `check-hotelparam` は固定待ちを条件待ちに置�
 - `docs/check.mjs:143` の `internalPaths` は `Set` のため、同じパス(`index.html`)への重複登録は1回のリクエストに畳まれる。
 - **穴として残っている点(無害・今は直さない)**: `demo/hotel-page.html:224` の `<pre class="tag-example">` 内にある見本コード用の**絶対URL**(`https://teer-tee.github.io/yadotabi/?hotel=...`)も、`docs/check.mjs:151` の絶対URL分岐 `raw.startsWith(BASE)` に該当してしまい抽出される。実測: このURLを `new URL()` で解決すると `pathname` = `/yadotabi/`、置換後は空文字列になり `checkLink(page, '' || 'index.html')`(`docs/check.mjs:200`)で `index.html` として叩かれる。クエリは落ちるため今回のケースは無害だが、`<pre>` に実在しないパスの見本URLを書くと将来**偽のNGが出る**可能性がある。`docs/check.mjs` のロジックは変更していない(注記のみ)。
 
+## 撮影ファイルの命名と保持方針(R92)
+
+- 命名は `<ISO日時>_<ラベル>_<mobile|desktop>.png`(既に統一されている)。
+- `screenshots/` は `.gitignore` 済みでリポジトリには入らない(ローカルのディスクだけを消費する)。
+- 古いものは `node scripts/archive-shots.mjs`(ドライラン・件数と容量を確認) → `node scripts/archive-shots.mjs --apply`(実行)で `screenshots/archive/` へ**移動**する。移動なので元に戻せる(削除はしない)。既定のしきい値は「今日から2日より前」で `--days=N` で変更可。
+- 消してよいと判断したときだけ、みのるんが手で `screenshots/archive/` ごと消す(自動削除の仕組みは作らない)。
+- 目安: 月に1度 `node scripts/archive-shots.mjs --apply` を回すと `screenshots/` 直下が肥大しすぎない。
+
 ## この表が古くなっていないかの確認方法(R106)
 
 - `node scripts/check-all.mjs` の実行結果の本数(冒頭または末尾の総数表示)と、この文書の `^| check` で始まる表行の数(`grep -c "^| check" docs/CHECKS.md`。docs/check.mjs の行も含む)を突き合わせる。

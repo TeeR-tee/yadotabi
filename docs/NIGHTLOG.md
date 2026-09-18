@@ -702,3 +702,8 @@
 - やったこと: `isExcludedArticle`(保護リストより後ろ)に `DEFINITION_INDEX_ARTICLE = /^本項では/` を追加し、extract の生の先頭(definitionPredicate() を通さない)に当てて索引記事を落とした。beppu 9位「別府駅商業施設」(複数商業施設をまとめた索引記事)が消え、繰り上がりは「ヒットパレードクラブ」(旧10位)1件のみで正当な行き先。朝の相談は R122(R132で解決済み)・R2-1(実測で不具合と確定し修正済み)の2件を「解決済み」として畳み、過去のサイクル記録本文は1行も削っていない。
 - 見た目の確認結果: `dump-rank` 4エリアを変更前後で全件突き合わせ、kusatsu/hakone/dogoは完全無差分、beppuはcards9位以降が1行ずつ繰り上がりmore1位「野口原児童公園」がcards30位に入っただけで誤爆なし。`?fixture=beppu` mobile/desktopで9位が「ヒットパレードクラブ」に変わったことを目視、`?fixture=kusatsu` mobileはデグレなし(1位光泉寺のまま)。文字崩れ・重なり・はみ出し・帰属表示欠落なし、コンソールエラー0件。
 - 次: `scripts/check-engine.mjs` に (r133) 節を追加(落とす1件+残す対照4件、既存R119ケースの`別府駅商業施設`は期待値反転につき(r133)節へdrop:trueで移動、削除はゼロ)、`node scripts/check-all.mjs` **29本中29本PASS(exit 0)**。外部API 0回。ROADMAP残りは「カテゴリ多様性の減点」等の朝の相談に残った判断待ち項目から計画役が選定。
+
+### 2026-09-18 R92 撮影1.1GBを可逆に畳む
+- やったこと: `scripts/archive-shots.mjs` を新設(移動のみ・`unlinkSync`/`rmSync`/`rmdirSync`は0件をgrepで確認)。既定ドライラン、`--apply`で実行、しきい値は`--days`(既定2日)の相対指定。移動前は直下1113ファイル(1096枚のpng+17本のfail-*.txt)・1.1GB、除外リスト3種(docs参照2件+固定名保存2件、うち1件はdocs/gsheetと重複)を据え置いたうえで`--apply`後は直下508件・`archive/`605件で**合計1113件・完全一致**(1枚も消失なし)。`docs/CHECKS.md`に保持方針の節を追加、再発防止の自動化は入れず(理由:撮影直後に消えたと誤解される恐れがあるため)人が月1で回す運用にした。
+- 確認結果: `node --check`通過、撮影1枚(`?fixture=kusatsu`mobile)が`screenshots/`直下に新規生成されカード30枚・帰属表示「Leaflet | © OpenStreetMap」に崩れなしを目視、`git status -sb`で`screenshots/`配下の差分は0件(.gitignore有効)、`node scripts/check-all.mjs` **29本中29本PASS(exit 0)**(固定名保存のcheck-keyboard/check-hotelparamも含め全緑)。
+- 次: ROADMAP R102(list-shots.mjs)は保持方針・移動コマンド・CHECKS.md追記の3点が本タスクで満たされたため補記のみ、残るのは枚数集計の一覧コマンドだけ。他はROADMAPの未着手項目から計画役が選定。
