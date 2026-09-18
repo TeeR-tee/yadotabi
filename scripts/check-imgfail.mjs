@@ -76,7 +76,7 @@ async function main() {
 
       const cards = page.locator('.feedcard');
       const cardCount = await cards.count();
-      ok(cardCount === 30, '?demo=imgfail でも .feedcard が30枚', cardCount);
+      ok(cardCount === 5, '?demo=imgfail でも .feedcard が5枚', cardCount);
 
       // 先頭3枚: .feedcard__ph になっている(.feedcard__img が残っていない)
       for (let i = 0; i < 3; i++) {
@@ -107,7 +107,7 @@ async function main() {
     }
 
     // --- 5. フラグ無しでデグレなし(先に取得したベースラインを検査) ---
-    ok(baselineCardCount === 30, '?fixture=kusatsu(フラグ無し)で .feedcard が30枚', baselineCardCount);
+    ok(baselineCardCount === 5, '?fixture=kusatsu(フラグ無し)で .feedcard が5枚', baselineCardCount);
     console.log('  参考: フラグ無し時の .feedcard__ph 枚数 = ' + baselinePhCount);
 
     // --- 6. (R57) alt がスポット名を含む(フラグ無しページの4枚目以降を検査) ---

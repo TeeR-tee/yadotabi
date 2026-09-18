@@ -54,7 +54,7 @@ async function main() {
       await waitFor(2500);
 
       const dbgCount = await page.locator('.dbg').count();
-      ok(dbgCount >= 30, '1. ?fixture=kusatsu&debug=1 で .dbg が30件以上', dbgCount);
+      ok(dbgCount >= 5, '1. ?fixture=kusatsu&debug=1 で .dbg が5件以上', dbgCount);
 
       const firstDbg = (await page.locator('.feedcard').nth(0).locator('.dbg').textContent()) || '';
       ok(firstDbg.includes('#1'), '4. 1位カードの .dbg が「#1」を含む', firstDbg);
@@ -83,7 +83,7 @@ async function main() {
       ok(dbgCount === 0, '2. ?fixture=kusatsu(debug 無し)で .dbg が0件', dbgCount);
 
       const cardCount = await page.locator('.feedcard').count();
-      ok(cardCount === 30, '2. debug 無しでも .feedcard が30枚(デグレなし)', cardCount);
+      ok(cardCount === 5, '2. debug 無しでも .feedcard が5枚(デグレなし)', cardCount);
 
       namesWithoutDebug = await page.locator('.feedcard__name').allTextContents();
       await context.close();
@@ -112,8 +112,8 @@ async function main() {
     ok(JSON.stringify(namesWithDebug) === JSON.stringify(namesWithoutDebug),
       '5. debug の有無で .feedcard__name の並びが完全一致(DOM 上でも順序不変)',
       { withDebug: namesWithDebug && namesWithDebug.slice(0, 5), without: namesWithoutDebug && namesWithoutDebug.slice(0, 5) });
-    ok(Array.isArray(namesWithDebug) && namesWithDebug.length === 30,
-      '5. 比較に使ったカード名が30件ある', namesWithDebug && namesWithDebug.length);
+    ok(Array.isArray(namesWithDebug) && namesWithDebug.length === 5,
+      '5. 比較に使ったカード名が5件ある', namesWithDebug && namesWithDebug.length);
   } finally {
     await browser.close();
     await stop();

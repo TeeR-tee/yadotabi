@@ -45,7 +45,7 @@ async function main() {
       const context = await browser.newContext({ viewport: { width: 375, height: 812 } });
       const page = await context.newPage();
       await page.goto(`${BASE}/?fixture=kusatsu`, { waitUntil: 'load' });
-      await page.waitForFunction(() => document.querySelectorAll('.feedcard[data-index]').length >= 30, null, { timeout: 15000 });
+      await page.waitForFunction(() => document.querySelectorAll('.feedcard[data-index]').length >= 5, null, { timeout: 15000 });
 
       // 2) view レコード
       let list = await readPassive(page);
@@ -53,7 +53,8 @@ async function main() {
       check('view レコードがちょうど1件', views.length === 1, `件数=${views.length}`);
       if (views.length) {
         const v = views[0];
-        check('view.topIds が10件', Array.isArray(v.topIds) && v.topIds.length === 10, `件数=${v.topIds && v.topIds.length}`);
+        // R152: 初期カードが5件になったので topIds(cards の先頭10件)も5件になる
+        check('view.topIds が5件', Array.isArray(v.topIds) && v.topIds.length === 5, `件数=${v.topIds && v.topIds.length}`);
         check('view.hotel.name が入っている', !!(v.hotel && v.hotel.name), `name=${v.hotel && v.hotel.name}`);
       }
 
@@ -103,7 +104,7 @@ async function main() {
       const context = await browser.newContext({ viewport: { width: 375, height: 812 } });
       const page = await context.newPage();
       await page.goto(`${BASE}/?fixture=kusatsu`, { waitUntil: 'load' });
-      await page.waitForFunction(() => document.querySelectorAll('.feedcard[data-index]').length >= 30, null, { timeout: 15000 });
+      await page.waitForFunction(() => document.querySelectorAll('.feedcard[data-index]').length >= 5, null, { timeout: 15000 });
 
       await page.evaluate((key) => {
         const dummies = [];
@@ -112,7 +113,7 @@ async function main() {
       }, PASSIVE_KEY);
 
       await page.reload({ waitUntil: 'load' });
-      await page.waitForFunction(() => document.querySelectorAll('.feedcard[data-index]').length >= 30, null, { timeout: 15000 });
+      await page.waitForFunction(() => document.querySelectorAll('.feedcard[data-index]').length >= 5, null, { timeout: 15000 });
       await waitFor(300);
 
       const list = await readPassive(page);
@@ -138,7 +139,7 @@ async function main() {
       }, { key: PASSIVE_KEY, day: DAY });
 
       await page.goto(`${BASE}/?fixture=kusatsu&demo=passive`, { waitUntil: 'load' });
-      await page.waitForFunction(() => document.querySelectorAll('.feedcard[data-index]').length >= 30, null, { timeout: 15000 });
+      await page.waitForFunction(() => document.querySelectorAll('.feedcard[data-index]').length >= 5, null, { timeout: 15000 });
 
       // カードを1枚タップして passivePush を発火させる(掃除は書き込み時にのみ走る)。
       // R137: カード本文の行数が増えると中心座標のクリックが写真ボタンに当たり tap が
@@ -186,11 +187,11 @@ async function main() {
       });
 
       await page.goto(`${BASE}/?fixture=kusatsu`, { waitUntil: 'load' });
-      await page.waitForFunction(() => document.querySelectorAll('.feedcard[data-index]').length >= 30, null, { timeout: 15000 }).catch(() => {});
+      await page.waitForFunction(() => document.querySelectorAll('.feedcard[data-index]').length >= 5, null, { timeout: 15000 }).catch(() => {});
       await waitFor(1000);
 
       const cardCount = await page.evaluate(() => document.querySelectorAll('.feedcard[data-index]').length);
-      check('localStorage 封じでもカード30枚が出る', cardCount >= 30, `件数=${cardCount}`);
+      check('localStorage 封じでもカード5枚が出る', cardCount >= 5, `件数=${cardCount}`);
       check('localStorage 封じでコンソールエラー0件', consoleErrors.length === 0, `件数=${consoleErrors.length} ${consoleErrors.slice(0, 3).join(' / ')}`);
 
       await context.close();

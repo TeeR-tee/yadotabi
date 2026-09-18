@@ -26,8 +26,13 @@
   var DRIVE_M_PER_MIN = 500;
 
   // カードの上限。far は「もっと遠く」を開いたときに出す分。
-  var MAX_CARDS = 30;
-  var MAX_MORE = 30; // 「もっと見る」で追加展開する分(31〜60件目)
+  // R152: 人が同時に比べられるのは4±1件という調査結果に従い、理由付き候補から
+  // 初期5件だけを切り出す。母数(reasonFor に渡す cards)は REASON_POOL のまま動かさない。
+  var MAX_CARDS = 5;
+  var MAX_MORE = 10; // 「もっと見る」で追加展開する分(6〜15件目)
+  // 理由を計算するときの母数。「この一帯で唯一のX」が5件中で唯一という意味に
+  // すり替わらないよう、母数は従来どおり上位30件に固定する。
+  var REASON_POOL = 30;
   var MAX_FAR = 10;
   // 車でこれを超えるものは cards から外して far に回す
   // 実効距離 = FAR_DRIVE_MIN × DRIVE_M_PER_MIN = 30km。この30kmは make-fixture の
@@ -1453,6 +1458,19 @@
       }
     }
 
+    // R152 規則6: 同カテゴリの2番目以降でも、rank が無条件で許している枠
+    // (CATEGORY_FREE_SLOTS)の内側なら「その土地でそのカテゴリを名乗れる一軒」とみなす。
+    // 1番目しか拾わない従来規則だと、湯畑・松山城・別府地獄めぐり・大滝乃湯のような
+    // 「2番目の有名どころ」が理由なしで落ちるため。
+    // 母数に同カテゴリが2件以上あることを条件にし、1件しかないものは上の
+    // 「この一帯で唯一の」に任せる(文言の重複を避ける)。
+    if (d.categoryIndex >= 1 && d.categoryIndex <= CATEGORY_FREE_SLOTS && d.category !== 'other') {
+      var sameCat2 = (Array.isArray(cardsInView) ? cardsInView : []).filter(function (c) {
+        return c && c.categoryLabel === label && c._debug && c._debug.category === d.category;
+      });
+      if (sameCat2.length >= 2) return label + 'ならここも外せない';
+    }
+
     if (d.image && d.summary && d.official && d.both) {
       return '写真・解説・公式サイトが揃っている';
     }
@@ -1582,16 +1600,22 @@
       }
     });
 
-    var topCards = cards.slice(0, MAX_CARDS);
-    // R151: 理由は「今画面に出ている cards」だけを母数に数える。
-    // more/far を母数に入れると視界に入っていない候補で「唯一」を名乗ることになり嘘になるため付けない。
-    topCards.forEach(function (card) {
-      card.reason = reasonFor(card, topCards);
+    // R151: 理由は「候補の母数」だけを母数に数える。more/far を母数に入れると
+    // 視界に入っていない候補で「唯一」を名乗ることになり嘘になるため付けない。
+    // R152: 母数は上位 REASON_POOL 件のまま固定し、切り出しだけ 5/10 にする。
+    var pool = cards.slice(0, REASON_POOL);
+    pool.forEach(function (card) {
+      card.reason = reasonFor(card, pool);
     });
 
+    // R152: 理由を付けられなかった候補は出さない(「件数だけ多い」の構造的な原因)。
+    var withReason = pool.filter(function (card) { return !!card.reason; });
+    // 理由付きが1件も無いエリアでは従来どおり上位から出す(空フィード回避のフォールバック)。
+    var picked = withReason.length ? withReason : pool;
+
     return {
-      cards: topCards,
-      more: cards.slice(MAX_CARDS, MAX_CARDS + MAX_MORE),
+      cards: picked.slice(0, MAX_CARDS),
+      more: picked.slice(MAX_CARDS, MAX_CARDS + MAX_MORE),
       far: far.slice(0, MAX_FAR)
     };
   }

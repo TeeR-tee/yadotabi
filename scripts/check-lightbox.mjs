@@ -229,7 +229,7 @@ async function main() {
     await rPage.goto(`${BASE}/?fixture=kusatsu`, { waitUntil: 'load' });
     await waitFor(2000);
     const cardCount = await rPage.locator('.feedcard').count();
-    ok(cardCount === 30, 'デグレ確認: kusatsuでカードが30枚描画される', cardCount);
+    ok(cardCount === 5, 'デグレ確認: kusatsuで初期カードが5枚描画される', cardCount);
     const regressionShot = path.join(PROJECT_ROOT, 'screenshots', dateStamp() + '_r66-regression-kusatsu_mobile.png');
     await rPage.screenshot({ path: regressionShot, fullPage: false });
     console.log('  撮影: ' + regressionShot);

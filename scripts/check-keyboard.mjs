@@ -9,7 +9,7 @@
 //   2. 1枚目の .feedcard__imgbtn に到達でき、Enter でライトボックスが開き、
 //      Escape で閉じ、フォーカスが .feedcard__imgbtn に戻る
 //   3. .feedcard__no にフォーカスして Enter で .pin--flash が付く
-//   4. Tab を押し続けて #more-btn に到達でき、Enter で .feedcard が60枚になる
+//   4. Tab を押し続けて #more-btn に到達でき、Enter で .feedcard が15枚になる
 //   5. ?demo=zoomout(状態A)で #search-input → .chip → .samples a の順に到達できる。
 //      検索欄に1文字入れると #search-clear がTab対象に加わる
 //   6. .feedcard__imgbtn と #more-btn にフォーカスした状態で outlineWidth が 0px でない
@@ -138,7 +138,7 @@ async function main() {
     ok(flashed === 1, '3. .feedcard__no にフォーカスしEnterで.pin--flashが付く', flashed);
     await waitFor(1300);
 
-    // --- 4. #more-btn に到達しEnterで60枚に展開 ---
+    // --- 4. #more-btn に到達しEnterで15枚に展開(R152: 初期5件+もっと見る10件) ---
     let reachedMoreBtn = false;
     for (let i = 0; i < 400; i++) {
       await page.keyboard.press('Tab');
@@ -158,10 +158,10 @@ async function main() {
       await page.keyboard.press('Enter');
       await waitFor(500);
       const cardCount = await page.locator('.feedcard').count();
-      ok(cardCount === 60, '4. Enterで.feedcardが60枚になる', cardCount);
+      ok(cardCount === 15, '4. Enterで.feedcardが15枚になる', cardCount);
     } else {
       ok(false, '6. #more-btn フォーカス時に outlineWidth が 0px でない(未到達のためスキップ扱い)');
-      ok(false, '4. Enterで.feedcardが60枚になる(未到達のためスキップ扱い)');
+      ok(false, '4. Enterで.feedcardが15枚になる(未到達のためスキップ扱い)');
     }
 
     ok(consoleErrors.length === 0, '状態B: コンソールエラー0件', consoleErrors);

@@ -55,12 +55,22 @@ const delay = (ms, v) => new Promise(r => setTimeout(() => r(v), ms));
     ['普通の要約です。', '普通の要約です。'],
     ['北海道の北緯は高い。', '北海道の北緯は高い。']
   ];
+  // R152: present() が「理由を付けられた候補」だけを出すようになったため、
+  // カテゴリ不明(other)のダミーは表示段に残らず座標除去を観測できない。
+  // そこで各ダミーに別々のカテゴリを与え、全件が「この一帯で唯一のX」で残るようにする。
+  // (検査対象は summary の座標除去であって選別ではない)
+  const CATS = [
+    ['place_of_worship', '神社・寺院'], ['park', '公園'], ['museum', '美術館・博物館'],
+    ['peak', '山頂'], ['castle', '城・城跡'], ['zoo', '動物園'], ['aquarium', '水族館']
+  ];
   const E = load({
-    fetchSpots: () => Promise.resolve([]),
+    fetchSpots: () => Promise.resolve(cases.map((c, i) => ({ id: 'n/' + i, name: 'ほにゃらら' + i, lat: 35.23 + (i + 1) * 0.01, lon: 139.10, category: CATS[i][0], categoryLabel: CATS[i][1], distanceM: 500 * (i + 1) }))),
     fetchWikiNearby: () => Promise.resolve(cases.map((c, i) => ({ id: 'wp/' + i, title: 'ほにゃらら' + i, lat: 35.23 + (i + 1) * 0.01, lon: 139.10, distanceM: 500 * (i + 1), extract: c[0], thumbnailUrl: null, url: '' })))
   });
   const r = await E.suggest(H, {});
-  const all = r.cards.concat(r.far);
+  // R152: cards は5件で打ち切られ、続きは more に入る。座標除去は表示段(cards/more/far)
+  // 全体に効いている必要があるので、3つとも母数にする。
+  const all = r.cards.concat(r.more || [], r.far);
   cases.forEach((c, i) => {
     const got = all.find(x => x.name === 'ほにゃらら' + i);
     ok(got && got.summary === c[1], '座標除去: ' + c[0].slice(0, 24), got && got.summary);

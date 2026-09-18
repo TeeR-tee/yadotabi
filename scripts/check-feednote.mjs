@@ -55,7 +55,7 @@ async function main() {
 
       const noteTop = await note.evaluate((el) => el.getBoundingClientRect().top);
       const lastCardBottom = await page.locator('.feedcard').last().evaluate((el) => el.getBoundingClientRect().top);
-      ok(noteTop > lastCardBottom, '#feed-note が .feedcard 30枚の下にある', { noteTop, lastCardBottom });
+      ok(noteTop > lastCardBottom, '#feed-note が初期カード5枚の下にある', { noteTop, lastCardBottom });
 
       const noteText = await note.textContent();
       ok(noteText.includes('暫定版'), '注記テキストに「暫定版」を含む', noteText);

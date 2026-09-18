@@ -9,8 +9,9 @@
 //
 // 確認項目(5エリア共通):
 //   (a) 理由あり件数が cards(30件)中 10件以上20件以下
-//   (b) 「この一帯で唯一のX」が付いたカードは、そのXのカテゴリラベルを持つカードが cards 内に本当に1件だけ
-//   (c) more/far に reason が付いていない
+//   (b) 「この一帯で唯一のX」が付いたカードは、そのXのカテゴリラベルを持つカードが
+//       cards+more(=理由の母数から選ばれた表示分)内に本当に1件だけ
+//   (c) far に reason が付いていない(R152: more は理由付きのみを選ぶ仕様に変わったので reason を持つ)
 //   (d) ?debug=1 の有無でカード名の並び順が完全一致(rank 無改変の証明)
 
 import { chromium } from 'file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs';
@@ -42,6 +43,7 @@ async function suggestData(page, base, area) {
     const presented = window.YadoEngine.present(ranked, hotel);
     return {
       cards: presented.cards.map((c) => ({ reason: c.reason, categoryLabel: c.categoryLabel })),
+      moreCards: (presented.more || []).map((c) => ({ reason: c.reason, categoryLabel: c.categoryLabel })),
       more: (presented.more || []).map((c) => c.reason),
       far: (presented.far || []).map((c) => c.reason),
     };
@@ -64,26 +66,30 @@ async function main() {
     for (const area of AREAS) {
       const data = await suggestData(page, base, area);
 
-      // (a) 理由あり件数が10〜20件
-      const withReason = data.cards.filter((c) => c.reason).length;
-      ok(withReason >= 10 && withReason <= 20, `${area}: 理由あり件数が10〜20件`, withReason);
+      // (a) R152: cards は理由付きのみを5件まで、more は続きを10件まで。
+      // 5エリアとも理由付きは14件以上あるので、表示分は必ず全て理由を持つ。
+      const shown = data.cards.concat(data.moreCards);
+      const withReason = shown.filter((c) => c.reason).length;
+      ok(data.cards.length === 5, `${area}: 初期カードが5件`, data.cards.length);
+      ok(withReason === shown.length && shown.length >= 10 && shown.length <= 15,
+        `${area}: 表示カード(cards+more)が10〜15件で全て理由付き`, { shown: shown.length, withReason });
 
       // (b) 「この一帯で唯一のX」の X が cards 内に本当に1件だけ
       let uniqueOk = true;
       const uniqueDetails = [];
-      data.cards.forEach((c) => {
+      shown.forEach((c) => {
         const m = c.reason && c.reason.match(/^この一帯で唯一の(.+)$/);
         if (!m) return;
         const label = m[1];
-        const count = data.cards.filter((x) => x.categoryLabel === label).length;
+        const count = shown.filter((x) => x.categoryLabel === label).length;
         if (count !== 1) uniqueOk = false;
         uniqueDetails.push({ label, count });
       });
-      ok(uniqueOk, `${area}: 「唯一のX」のXはcards内に本当に1件だけ`, uniqueDetails.filter((d) => d.count !== 1));
+      ok(uniqueOk, `${area}: 「唯一のX」のXは表示カード内に本当に1件だけ`, uniqueDetails.filter((d) => d.count !== 1));
 
-      // (c) more/far に reason が付いていない
-      const moreFarHasReason = data.more.some(Boolean) || data.far.some(Boolean);
-      ok(!moreFarHasReason, `${area}: more/far にreasonが付いていない`);
+      // (c) R152: far には reason を付けない(more は理由付き選別の続きなので持っていてよい)
+      const farHasReason = data.far.some(Boolean);
+      ok(!farHasReason, `${area}: far にreasonが付いていない`);
 
       // (d) debug=1 の有無で並び順が完全一致
       await page.goto(`${base}/?fixture=${area}`, { waitUntil: 'load' });

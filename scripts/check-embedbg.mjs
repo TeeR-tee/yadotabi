@@ -97,10 +97,10 @@ async function main() {
       ok(r.bodyBg === DEFAULT_BG, 'embedなしでは bg=fff7e6 が無視され既定色のまま', r.bodyBg);
     }
 
-    // 6. カード30枚・カード自体の背景色は変わらない(有効値のケースで確認)
+    // 6. 初期カード5枚・カード自体の背景色は変わらない(有効値のケースで確認)
     {
       const r = await openAndRead(browser, 'fixture=kusatsu&embed=1&bg=fff7e6');
-      ok(r.cardCount === 30, 'カードは30枚のまま', r.cardCount);
+      ok(r.cardCount === 5, 'カードは5枚のまま', r.cardCount);
       ok(r.cardBg !== null && r.cardBg !== CUSTOM_BG, '.feedcard の背景色は宿の地色に変わっていない', r.cardBg);
     }
   } finally {

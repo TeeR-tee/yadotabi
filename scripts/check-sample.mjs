@@ -119,7 +119,7 @@ async function checkSampleClickNavigates(browser) {
     ok(title === '草津温泉', 'c. #feed-title が「草津温泉」', title);
 
     const cardCount = await page.locator('.feedcard').count();
-    ok(cardCount === 30, 'c. .feedcard が30枚', cardCount);
+    ok(cardCount === 5, 'c. .feedcard が5枚', cardCount);
 
     ok(consoleErrors.length === 0, 'c. コンソールエラー0件', consoleErrors);
   });
@@ -184,7 +184,7 @@ async function checkFixtureRandom(browser) {
     ok(['草津温泉', '箱根湯本', '道後温泉', '別府温泉', '城崎温泉'].includes(title), 'f. #feed-title が5エリアのいずれか', title);
 
     const cardCount = await page.locator('.feedcard').count();
-    ok(cardCount === 30, 'f. .feedcard が30枚', cardCount);
+    ok(cardCount === 5, 'f. .feedcard が5枚', cardCount);
 
     const samples = page.locator('.samples');
     const visible = await samples.evaluate((el) => {

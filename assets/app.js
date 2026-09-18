@@ -105,7 +105,7 @@
     view: 'select',   // "select" | "feed"
     hotel: null,      // {id?, name, lat, lon}
     cards: [],
-    more: [],         // 31〜60件目(「もっと見る」で展開する分)
+    more: [],         // 6〜15件目(「もっと見る」で展開する分)
     moreOpen: false,  // 「もっと見る」を展開済みか
     far: [],
     stage: null,      // null | "loading" | "osm" | "wiki" | "done" | "error"
@@ -1135,7 +1135,7 @@
     if (open) {
       return '<p class="morenote">' + escapeHtml(String(startNo)) + '番以降は地図に表示していません。</p>';
     }
-    return '<button type="button" class="morebtn" id="more-btn">もっと見る（残り' + more.length + '件）</button>';
+    return '<button type="button" class="morebtn" id="more-btn">もっと見る</button>';
   }
 
   function farHtml(far) {
@@ -1148,7 +1148,7 @@
       '</li>';
     }).join('');
     return '<details class="far">' +
-      '<summary class="far__summary">もっと遠く（車1時間以上）' + far.length + '件</summary>' +
+      '<summary class="far__summary">もっと遠く（車1時間以上）</summary>' +
       '<ul class="far__list">' + items + '</ul>' +
     '</details>';
   }
@@ -1443,7 +1443,9 @@
     var hotel = state.hotel;
     if (!hotel) return;
     ensureFeedMap();
-    els.feedMap.classList.toggle('feedmap--tall', state.cards.length >= 25);
+    // R152: カードが5件打ち切りになったので閾値を 25 → 5 に緩める
+    // (25 のままだと 15件化後は永久に false になり、背の高い地図が二度と出ない)
+    els.feedMap.classList.toggle('feedmap--tall', state.cards.length >= 5);
 
     feedMarkers.forEach(function (m) { feedMap.removeLayer(m); });
     feedMarkers = [];

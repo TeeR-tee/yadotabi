@@ -203,7 +203,7 @@ console.log('\n(a) 統合・除外・far分離・Cardのフィールド・リン
   }
 
   // 上限
-  ok(res.cards.length <= 30, 'cards は最大30件');
+  ok(res.cards.length <= 5, 'cards は最大5件');
   ok(res.far.length <= 10, 'far は最大10件');
 }
 
@@ -1051,8 +1051,10 @@ console.log('\n(e) present(): more(31〜60件目)');
     fetchWikiNearby: () => Promise.resolve([])
   });
   const res = await E.suggest(HOTEL, CTX);
-  eq(res.cards.length, 30, '候補31件以上のとき cards は30件のまま');
-  eq(res.more.length, 10, '40件中 cards30件を除いた10件が more に入る');
+  // R152: cards は5件・more は10件で打ち切る。この候補は全て category='other' で
+  // 理由が付かないため、present() の「理由付き0件フォールバック」(上位から出す)が働く。
+  eq(res.cards.length, 5, '候補6件以上のとき cards は5件のまま');
+  eq(res.more.length, 10, '40件中 cards5件を除いた次の10件が more に入る');
   ok(res.cards.every(c => c.name.startsWith('候補')), 'cards は距離順の候補');
   ok(res.more.every(c => c.name.startsWith('候補')), 'more も候補由来');
   // rank 順が連続していること(cards末尾の距離 <= more先頭の距離)
@@ -1062,11 +1064,11 @@ console.log('\n(e) present(): more(31〜60件目)');
     'more の先頭は cards の末尾より遠い(rank順が連続)',
     { lastCard: lastCard.distanceM, firstMore: firstMore.distanceM });
 
-  // 候補が30件以下のとき more は空配列(undefined ではない)
+  // 候補が5件以下のとき more は空配列(undefined ではない)
   const E2 = loadEngine(geoMock());
   const res2 = await E2.suggest(HOTEL, CTX);
-  ok(Array.isArray(res2.more), '候補30件以下でも more は配列');
-  eq(res2.more.length, 0, '候補30件以下のとき more は空配列');
+  ok(Array.isArray(res2.more), '候補5件以下でも more は配列');
+  eq(res2.more.length, 0, '候補5件以下のとき more は空配列');
 }
 
 // ---------------------------------------------------------------------------
@@ -1153,8 +1155,9 @@ console.log('\n(r84) _debug の有無で cards/more/far が不変(内訳は並�
   const raw = JSON.stringify(res);
   ok(raw.includes('"_debug"'), '素の JSON には _debug が含まれる(付いていることの確認)');
   ok(!JSON.stringify(stripped).includes('"_debug"'), '_debug を落とした JSON には _debug が残らない');
-  eq(stripped.cards.length, 30, '_debug があっても cards は30件');
-  eq(stripped.more.length, 10, '_debug があっても more は10件');
+  eq(stripped.cards.length, 5, '_debug があっても cards は5件');
+  ok(stripped.more.length >= 1 && stripped.more.length <= 10,
+    '_debug があっても more は1〜10件', stripped.more.length);
 
   // 3. rank() を2回呼んでも順序が同じ(_debug の後付けが次回の入力を汚していない)
   if (ranked) {
@@ -1164,8 +1167,10 @@ console.log('\n(r84) _debug の有無で cards/more/far が不変(内訳は並�
   }
 
   // 4. 並びが _debug.rank の昇順と一致する(内訳が実際の順位と食い違わない)
+  // R152: 理由の付かない候補を飛ばすので rank は連番ではなくなる。昇順であることを見る。
   const rankSeq = res.cards.map((c) => c._debug.rank);
-  eq(rankSeq, rankSeq.map((_, i) => i + 1), 'cards の _debug.rank は 1..30 の昇順');
+  ok(rankSeq.every((v, i) => i === 0 || v > rankSeq[i - 1]),
+    'cards の _debug.rank は昇順(選別で飛び番になる)', rankSeq);
 
   // 5. カテゴリ減点が入ったカードでは total < base、入っていないカードでは total === base
   let penaltyConsistent = true;
