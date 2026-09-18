@@ -890,6 +890,26 @@
   var WEEKDAY_JA = { Mo: '月', Tu: '火', We: '水', Th: '木', Fr: '金', Sa: '土', Su: '日' };
 
   /**
+   * R137: 公式サイトのURLからホスト名だけを取り出して読みやすくする。
+   * 「どこへ飛ぶか」が変わって見える加工はしない(先頭の www. を剥がすだけ。
+   * パスやクエリは表示しない。途中を省略して別ドメインに見せる短縮もしない)。
+   * 解析できなければ推測せず null を返し、呼び出し側は何も出さない。
+   */
+  function officialDomainText(url) {
+    if (typeof url !== 'string' || !url.trim()) return null;
+    var host;
+    try {
+      host = new URL(url.trim()).hostname;
+    } catch (e) {
+      return null;
+    }
+    if (!host) return null;
+    if (host.indexOf('www.') === 0) host = host.slice(4);
+    if (!host) return null;
+    return host;
+  }
+
+  /**
    * R136: OSM の opening_hours 独自記法を、読める日本語1行に直す。
    * 「今開いているか」の判定は絶対にしない(記法が86通りあり誤判定の実害が出るため)。
    * やることは「先頭の1区間だけを読める形にする」だけ。解釈できなければ null を返し、
@@ -992,6 +1012,10 @@
     // R136: 営業中/閉店の判定はしない。取得した表記を読める形にするだけ。無ければ何も出さない。
     var hoursText = openingHoursText(card.openingHours);
     var hours = hoursText ? '<p class="feedcard__hours">⏰ ' + escapeHtml(hoursText) + '</p>' : '';
+    // R137: 公式サイトのURLからホスト名だけを出す。無ければ何も出さない(推測しない)。
+    var officialUrl = safeUrl(card.links && card.links.official);
+    var domainText = officialUrl ? officialDomainText(officialUrl) : null;
+    var official = domainText ? '<p class="feedcard__official">⧉ ' + escapeHtml(domainText) + '</p>' : '';
 
     return '<article class="card feedcard" data-index="' + index + '">' +
       '<div class="feedcard__media">' + media +
@@ -1009,6 +1033,7 @@
         hours +
         summary +
         linkRowHtml(card) +
+        official +
         (debugRank && card._debug ? debugHtml(card._debug) : '') +
       '</div>' +
     '</article>';

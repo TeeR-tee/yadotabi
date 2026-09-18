@@ -140,8 +140,10 @@ async function main() {
       await page.goto(`${BASE}/?fixture=kusatsu&demo=passive`, { waitUntil: 'load' });
       await page.waitForFunction(() => document.querySelectorAll('.feedcard[data-index]').length >= 30, null, { timeout: 15000 });
 
-      // カードを1枚タップして passivePush を発火させる(掃除は書き込み時にのみ走る)
-      await page.locator('.feedcard[data-index="0"]').click();
+      // カードを1枚タップして passivePush を発火させる(掃除は書き込み時にのみ走る)。
+      // R137: カード本文の行数が増えると中心座標のクリックが写真ボタンに当たり tap が
+      // 発火しない場合があるため、常に本文内にある .feedcard__name を明示的にクリックする。
+      await page.locator('.feedcard[data-index="0"] .feedcard__name').click();
       await waitFor(300);
 
       const list = await readPassive(page);
@@ -150,8 +152,11 @@ async function main() {
       check('(b) 89日前のエントリは残る', tags.includes('recent89'), `残っているtag=${tags.join(',')}`);
       check('(c) t が無いエントリは残る(判断できないものは消さない)', tags.includes('no-t'), `残っているtag=${tags.join(',')}`);
 
+      // R137: ページ読み込み自体で view が1件自動記録されるため、期待値は
+      // 「seed2件(recent89・no-t)+ view1件 + tap1件 = 4件」が正しい(旧・期待値3件は、
+      // クリック中心がたまたま写真ボタンに当たり tap が発火しない偶然で辻褄が合っていただけ)。
       const box = await page.locator('.passivebox').textContent().catch(() => '');
-      check('.passivebox の総件数がold1件消えた分だけ減っている(残2+新規1=3件)', /総件数\s*3/.test(box || ''), `box=${box}`);
+      check('.passivebox の総件数がold1件消えてview+tapが乗った分(残2+view1+tap1=4件)', /総件数\s*4/.test(box || ''), `box=${box}`);
 
       await context.close();
     }

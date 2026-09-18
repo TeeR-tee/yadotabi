@@ -30,6 +30,12 @@
 //         出ない(null に倒す)こと。opening_hours を持たない通常カード(dogo #1)にも出ないこと
 //      c. .feedcard__hours の総数が「4エリアで openingHoursText が読める枚数」ちょうどと一致
 //         (engine.js が openingHours を捨てずカードまで運んでいることの確認)
+//   (r137) 公式サイトのドメイン(.feedcard__official)の表示。推測せず、解析できた分だけ出す検査:
+//      a. 公式サイトを持つカード(dogo 萬翠荘 https://www.bansuisou.org/)に .feedcard__official が
+//         出て、www. を剥がしたホスト名(bansuisou.org)ちょうどになる
+//      b. 公式サイトを持たないカード(dogo 光泉寺は公式リンクがない = .feedcard__links に「公式」チップ無し)
+//         には .feedcard__official が出ない
+//      c. 4エリアの .feedcard__official 総数が実測(kusatsu 9 / hakone 6 / dogo 5 / beppu 11 = 31枚)と一致
 
 import { chromium } from 'file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs';
 import { ensureServer } from './lib/server.mjs';
@@ -261,9 +267,45 @@ async function main() {
       '(r136) c. 4エリアの .feedcard__hours 件数が実測(5/4/4/5=18)と一致',
       { kusatsuHoursCount, hakoneHoursCount, dogoHoursCount, beppuHoursCount, total }
     );
+
+    // (r137) 公式サイトのドメイン(.feedcard__official)。推測せず、解析できた分だけ出す検査。
+    const officialRows = await page.locator('.feedcard').evaluateAll((cards) =>
+      cards.map((c) => ({
+        name: c.querySelector('.feedcard__name') ? c.querySelector('.feedcard__name').textContent : '',
+        officialText: c.querySelector('.feedcard__official') ? c.querySelector('.feedcard__official').textContent : null,
+      }))
+    );
+    const bansuisou = officialRows.find((r) => r.name === '萬翠荘');
+    ok(
+      !!bansuisou && bansuisou.officialText === '⧉ bansuisou.org',
+      '(r137) a. 萬翠荘(公式サイトあり)に www. を剥がしたホスト名が出る',
+      bansuisou
+    );
+    const yuJinja = officialRows.find((r) => r.name === '湯神社');
+    ok(
+      !!yuJinja && yuJinja.officialText === null,
+      '(r137) b. 湯神社(公式サイトなし)には .feedcard__official が出ない',
+      yuJinja
+    );
+
+    // (r137) c. 4エリア合計の .feedcard__official 件数が実測どおりであることの確認
+    // 2026-09-18 R137 作業役実測: kusatsu 9 / hakone 6 / dogo 5 / beppu 11 = 合計31枚。
+    // NEXT.md の計画時想定(dogo 6枚・合計32枚)とは dogo が1枚ズレる。fixtures/dogo.json を
+    // 直接数えても website/contact:website 付き要素は上位30枚中5件しかなく、作業役の実測を採用する。
+    const officialCountKusatsu = await kusatsuPage.locator('.feedcard__official').count();
+    const officialCountHakone = await hakonePage.locator('.feedcard__official').count();
+    const officialCountDogo = await page.locator('.feedcard__official').count();
+    const officialCountBeppu = await beppuPage.locator('.feedcard__official').count();
+    const officialTotal = officialCountKusatsu + officialCountHakone + officialCountDogo + officialCountBeppu;
+    ok(
+      officialCountKusatsu === 9 && officialCountHakone === 6 && officialCountDogo === 5 &&
+        officialCountBeppu === 11 && officialTotal === 31,
+      '(r137) c. 4エリアの .feedcard__official 件数が実測(9/6/5/11=31)と一致',
+      { officialCountKusatsu, officialCountHakone, officialCountDogo, officialCountBeppu, officialTotal }
+    );
+
     await hakonePage.close();
     await kusatsuPage.close();
-
     await beppuPage.close();
 
     await context.close();
