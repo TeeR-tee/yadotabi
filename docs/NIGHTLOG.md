@@ -6,7 +6,7 @@
 
 ### 触ってみるURL(スマホでOK)
 - 通常: https://teer-tee.github.io/yadotabi/ (地図の宿ピンをタップ、または検索欄に「箱根 ホテル」)
-- 固定データ(APIを叩かない確認用): https://teer-tee.github.io/yadotabi/?fixture=kusatsu / ?fixture=hakone
+- 固定データ(APIを叩かない確認用): https://teer-tee.github.io/yadotabi/?fixture=kusatsu / ?fixture=hakone / ?fixture=kinosaki
 - 埋め込みモード: https://teer-tee.github.io/yadotabi/?fixture=kusatsu&embed=1
 - 営業用デモ(予約サイト風の宿ページに埋めた1枚): https://teer-tee.github.io/yadotabi/demo/hotel-page.html
 
@@ -800,3 +800,8 @@
 - やったこと: `engine.js` に `DEFINITION_GONE_SITE`(鉱山・炭鉱・スキー場・遊園地・動物園・ロープウェイ・索道・鉄道・駅・工場・劇場・映画館・百貨店・学校・病院・刑務所・飛行場・製作所)を新設し、R120のsoloループ直後・R121より前に `にあった`+種別語の AND 判定を1本追加(保護リストより前・R119/R120と同じ枠組み)。自分で5エリア250記事を述部ベースで再実測し、「にあった」26件中**ヒット11件・誤爆0件**(竹野鉱山・太子駅・別府の高校3件+小中学校2件・きりはまビーチ駅・豊岡市立竹野中学校/港西小学校/竹野小学校)を確認、旧町村9件はTITLE_SUFFIX_NGの`村`/`町`末尾一致で名前の時点で既に除外されておりR148には未到達と判明(NEXT.mdの「旧町村9件」注記を実装コメントで訂正)。`check-engine.mjs` に (r148) 節を追加(落とす3件+残す城跡4件。既存R146ケースの竹野鉱山はR148で候補から消えるため`gone:true`判定に期待値変更、削除はゼロ)。
 - 見た目の確認結果: 5エリアdump-rank before/afterで**kusatsu/hakone/dogo/beppuは完全無差分**、**kinosakiのみ竹野鉱山18位消滅→御所の湯30位に繰り上がり**の1枚差分のみ。`?fixture=kinosaki`と`?fixture=dogo`をmobileで撮影しRead目視、御所の湯カード(共同浴場・徒歩3分175m)と道後4位の**湯築城**(城・城跡・写真あり・「堀や土塁が現存する」)ともに崩れなし。石垣山城・羽根尾城・長野原城もengine.js直接呼び出しで「にあった」あり・種別語ヒットなし=残存を個別確認。
 - 次: `node scripts/check-all.mjs` **29本全緑(exit 0)**を確認(旧不具合`check-sample.mjs`のfeed-title配列に城崎温泉が漏れていた既存バグも合わせて修正)。外部API0回。ROADMAP新規起票なし。
+
+### 2026-09-18 R149 5エリア化の取りこぼし6箇所を塞ぐ
+- やったこと: 城崎(kinosaki)未対応の6箇所を修正。`check-nosummary.mjs`の行き止まり検査AREASに`kinosaki`追加、`(r136)c.`営業時間ガードを5エリア合計(kusatsu5/hakone4/dogo4/beppu5/kinosaki4=22)、`(r137)c.`公式ドメインガードを5エリア合計(9/7/5/11/4=36)に更新。README.mdの写真割合表を5行化し実測値(草津16件53%/箱根11件37%/道後11件37%/別府11件37%/城崎20件67%)に修正、FIXTURES.mdの手順書を「5エリア分」に、NIGHTLOG朝のまとめに`?fixture=kinosaki`を追加。
+- 見た目の確認結果: 全て自分でPlaywright実測(計画役の数値と完全一致)。ガードを1つずらして赤くなることを確認後、正しい値に復元。`dump-rank`5エリアが作業前後で完全無差分(カードの順位・枚数は無変更)。`node scripts/check-all.mjs`**29本全緑(exit 0)**、`check-nosummary.mjs`が城崎を検査対象に含むことを確認。
+- 次: `assets/engine.js`等ロジックは無変更。エリア列挙の取りこぼしは今回で解消、次のROADMAP項目へ。

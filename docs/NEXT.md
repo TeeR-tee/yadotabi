@@ -1,128 +1,117 @@
-# NEXT: R148 閉山した鉱山「竹野鉱山」が城崎18位に出ている(`にあった` 型の廃止記事の取りこぼし)
+# NEXT: R149 5エリア化の取りこぼしを6箇所まとめて塞ぐ
 
-- **タスクID**: R148
-- **難易度**: 低〜中(既存ルール R119/R120 と同じ枠組みに AND 判定を1本足すだけ)
-- **所要目安**: 30〜45分
+- タスクID: **R149**
+- 難易度: 低〜中(検査の期待値更新4箇所 + 文書3箇所。ロジック改変なし)
+- 所要目安: 40〜60分(うち `check-all` 1回が約1〜2分)
 
 ## 目的
 
-「もう無くなった場所」をカードに出さない方針(R115/R119/R120/R121)を確立済みなのに、
-**`かつて` を書かずに `にあった` だけで廃止を述べる記事**が1件すり抜けている。
-宿の客が写真と要約を見て 6km 先へ向かっても、現地に鉱山は無い。
+城崎温泉(kinosaki)を5エリア目として追加したのに、**「エリアを列挙している箇所」が4エリアのまま残っている**。
+とくに `check-nosummary.mjs` の3つの regression ガードが城崎を一度も開いていないため、
+**城崎だけ品質の網が掛かっていない**。R145〜R148 の4サイクルは全て城崎で穴が見つかったエリアであり、
+そこにガードが無いのは最も危険。あわせて文書の数字も古い。同種の作業なので**6件まとめて1サイクルで直す**。
 
-## 実測で判明した前提(計画役が5エリア250記事で確認・作業役は必ず自分で再実測すること)
+## 実測で判明した前提(計画役が Playwright mobile 375x812 と dump-rank で測った)
 
-### 問題のカード
-`node scripts/dump-rank.mjs kinosaki` の **18位**:
+### 漏れの一覧(ファイル名・行番号つき)
 
-| 順位 | 名前 | カテゴリ | 距離m | 要約 | 画像 | 公式 | source |
-|---|---|---|---|---|---|---|---|
-| 18 | 竹野鉱山 | スポット | 6011 | ○ | ○ | × | wiki |
-
-定義文(1文目):
-`竹野鉱山（たけのこうざん）は、兵庫県豊岡市竹野町（旧城崎郡竹野町）にあった鉱山。`
-
-### なぜ既存3軸をすり抜けるか
-- `assets/engine.js:312` `DEFINITION_GONE_MARK = 'かつて'` … この記事に `かつて` が**無い**ので R119 の AND が成立しない。
-- `assets/engine.js:339` `DEFINITION_GONE_SOLO = ['存在した', '存在していた']` … `にあった` は別語なので当たらない。
-- 名前側の除外語に `鉱山` は無い(`群馬鉄山` は R120 の `存在した` で落ちていたため、この語で落とした前例が無い)。
-
-### `にあった` 単独を入れてはいけない理由(engine.js:329-331 に既述・計画役が5エリアで再実測)
-定義文に `にあった` を含む記事は **5エリアで26件**。そこに以下が含まれる:
-
-| エリア | タイトル | 定義文(冒頭) | 落としてよいか |
+| # | 場所 | 現状 | 直す内容 |
 |---|---|---|---|
-| dogo | **湯築城**(cards **4位**) | 愛媛県松山市道後公園にあった日本の城 | **絶対ダメ**(跡地が公園で行ける) |
-| hakone | 石垣山城 | 神奈川県小田原市早川にあった日本の城 | **ダメ** |
-| kusatsu | 羽根尾城 / 長野原城 | …にあった日本の城 | **ダメ** |
-| kusatsu | 六合村 (群馬県) | …吾妻郡にあった村である | ダメ(旧自治体) |
-| dogo | 道後村 / 道後湯之町 | …温泉郡にあった村/町である | ダメ |
-| kinosaki | 城崎町 / 竹野町 / 中竹野村 / 田鶴野村 / 港村 / 内川村 / 竹野村 | …にあった町/村 | ダメ |
+| 1 | `scripts/check-nosummary.mjs:167` | `const AREAS = ['kusatsu','hakone','dogo','beppu']` | `'kinosaki'` を足して5エリアに。R124「行き止まりカード」検査が城崎を開くようにする |
+| 2 | `scripts/check-nosummary.mjs:250-268` | `(r136) c.` 営業時間の総数ガードが `5/4/4/5=18` の**4エリア合計** | kinosaki を加えた5エリア合計に。期待値は**作業役の実測値** |
+| 3 | `scripts/check-nosummary.mjs:291-311` | `(r137) c.` 公式ドメインの総数ガードが `9/7/5/11=32` の**4エリア合計** | 同上。kinosaki を加えた5エリア合計に |
+| 4 | `README.md:95-103` | 「写真があるカードの割合」表が**4行**・草津の数字も古い(表 15件/50% vs 実測14件) | 5行にし、5エリアとも**作業役の実測値**に直す |
+| 5 | `docs/FIXTURES.md:108` | 「`dump-rank` を**4エリア分**取り差分ゼロを確認」 | 「5エリア分」に直す |
+| 6 | `docs/NIGHTLOG.md:9` | 朝のまとめ「触ってみるURL」が `?fixture=kusatsu / ?fixture=hakone` の2つだけ | `?fixture=kinosaki` を足す(1行の編集。過去のサイクル記録は1行も消さない) |
 
-→ だから R119 は AND 判定を選んでいる。**同じ形を踏襲すること。**
+### 計画役の実測値(**参考。作業役は必ず自分で測り直して書くこと**)
 
-### 採る判定(AND)と実測ヒット
-`にあった` + **消滅しうる人工施設の種別語**(鉱山・炭鉱・スキー場・遊園地・動物園・ロープウェイ・索道・鉄道・駅・工場・劇場・映画館・百貨店・学校・病院・刑務所・飛行場・製作所)
-の組み合わせだけを落とす。**5エリア250記事の実測ヒットは 11件ちょうど・誤爆0件**:
+`?fixture=<area>` を mobile 375x812 で開いて DOM を数えた値:
 
-1. kusatsu 太子駅(廃駅) 2. beppu 大分県立別府青山高等学校 3. beppu 別府市立別府商業高等学校
-4. beppu 別府市立北小学校 5. beppu 別府市立山の手中学校 6. beppu 別府市立野口小学校
-7. kinosaki きりはまビーチ駅 8. kinosaki 豊岡市立竹野中学校 9. **kinosaki 竹野鉱山**
-10. kinosaki 豊岡市立港西小学校 11. kinosaki 豊岡市立竹野小学校
+| area | .feedcard | .feedcard__hours | .feedcard__official | .feedcard--bare | 行き止まり |
+|---|---|---|---|---|---|
+| kusatsu | 30 | 5 | 9 | 7 | 0 |
+| hakone | 30 | 4 | 7 | 9 | 0 |
+| dogo | 30 | 4 | 5 | 11 | 0 |
+| beppu | 30 | 5 | 11 | 8 | 0 |
+| **kinosaki** | 30 | **4** | **4** | **8** | 0 |
 
-**11件すべてが本当に現存しない施設**。このうち**カード30枚に到達しているのは竹野鉱山の1件だけ**
-(他10件は学校・駅の名前ルールで既に除外済み)。
-→ **カードの差分は kinosaki の1枚だけ、他4エリアは完全無差分**になる見込み。
+`dump-rank` の上位30件で「画像有 ○」の枚数: 草津14 / 箱根11 / 道後10 / 別府11 / **城崎18**(城崎が5エリアで最多)。
 
-### 繰り上がり(計画役が確認済み)
-`dump-rank kinosaki` の more 1位 **「御所の湯」**(osm・共同浴場・宿から **175m**)がカード30枚に繰り上がる。
-城崎温泉の外湯7湯の一つで、浴衣客が徒歩2分で行く城崎の代表的な行き先。
-6km 先の閉山した鉱山より提案として明確に上等。
+### 漏れていなかった箇所(**確認済み・触らなくてよい**)
+
+`scripts/make-fixture.mjs:20-25` AREAS(5件) / `scripts/slim-fixtures.mjs:61`(5件) /
+`docs/check.mjs:20-24` TARGETS(5件) / `assets/app.js:1929-1934` SAMPLE_LINKS(5件) /
+`scripts/check-sample.mjs:73-78`(6本・前サイクルで修正済み) / `scripts/check-attrib.mjs:185-189`(5件) /
+`README.md:3,29,114` パラメータ表(5件) / `README.md:216-220` サイズ表(5行) /
+`docs/FIXTURES.md:17-21` 対象エリア表・`:29-33` far 実測表(5行)。
+
+**`assets/engine.js` のコメント中の「4エリア200記事」は変更しない** — それらは各ルールを実測した
+**当時の記録**であり、R145/R148 が追記した「5エリア250記事」と併存しているのが正しい状態。
 
 ## 対象ファイル(絶対パス)
 
-- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\engine.js` — 定数1つ追加 + `isExcludedArticle` に AND 判定1本
-- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-engine.mjs` — (r148) 節を追加
-- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md` / `docs\NIGHTLOG.md` — 完了記録
+- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-nosummary.mjs`(#1〜#3)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\README.md`(#4)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\FIXTURES.md`(#5)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\NIGHTLOG.md`(#6 + サイクル記録)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md`(完了マーク)
 
 ## 実装方針
 
-1. `assets/engine.js` の `DEFINITION_GONE_SOLO`(:339)の近くに、
-   `DEFINITION_GONE_SITE = ['鉱山','炭鉱', …]` を**コメント付きで**新設する
-   (なぜ城・村・町・公園を入れないかを R119 と同じ密度で書き残す)。
-2. `isExcludedArticle` 内、**R120 の solo ループの直後・R121 より前**に AND 判定を1本足す:
-   `predicate` に `にあった` があり、かつ `DEFINITION_GONE_SITE` のどれかを含むなら `return true`。
-3. 走査範囲・評価位置(**保護リストより前**)・`hasOsmTagEvidence()` による救済経路は
-   **R119/R120 とまったく同じ**にする。新しい経路を作らない。
-4. `scripts/check-engine.mjs` に `(r148)` 節を追加。
+1. **先に自分で実測する**。`?fixture=kinosaki` を含む5エリアを Playwright で開き、
+   `.feedcard__hours` / `.feedcard__official` / `.feedcard--bare` / 行き止まりカードを数える。
+   `dump-rank` 5エリアで「画像有 ○」も数える。**上の表は照合用で、書き込むのは自分の数字**。
+2. `check-nosummary.mjs:167` の `AREAS` に `'kinosaki'` を追加。
+   同ファイルはページを使い回す構造(`beppuPage` / `page`=dogo / `kusatsuPage` / `hakonePage`)なので、
+   **kinosaki 用のページを1つ足して同じ形で開き、`finally` の前で `close()` するのを忘れない**。
+3. `(r136) c.` と `(r137) c.` の合計計算に kinosaki の件数を加え、`ok()` の条件式・メッセージ・
+   デバッグ出力オブジェクトを5エリアぶんに揃える。コメントに
+   `2026-09-18 R149 実測: kusatsu …/ kinosaki … = 合計…` を1行残す。
+4. README の表に城崎の行を足し、5行とも実測値に直す(割合は 30 で割った整数%)。
+5. FIXTURES.md の「4エリア分」→「5エリア分」。
+6. NIGHTLOG の「触ってみるURL」に城崎を1つ足す。
 
-## 却下した案とその理由
-
-- **`にあった` 単独で落とす** → 湯築城(dogo 4位)・石垣山城・羽根尾城・長野原城の城4件と旧町村9件を巻き込む。実測で確認済み。
-- **名前側の `TITLE_KEYWORD_NG` に `鉱山` を足す** → 現役の観光鉱山(足尾・佐渡など)を将来巻き込む。記事が自分で「あった」と書いているという**意味的根拠**の方が強い。
-- **距離が遠い(6km)ことを理由に落とす** → rank の閾値変更に当たり禁止。しかも近くの廃墟なら落ちない。
-- **`DEFINITION_GONE_SOLO` に `にあった` を足す** → 上と同じ理由で即ダメ。solo 配列には触らないこと。
-
-## 実装上の罠
-
-- **`DEFINITION_GONE_PAST`(R119 の AND 側)を1語も変えない**。そちらは `かつて` とペアで動いている。
-- `definitionPredicate()` は記事名の言い直しを落とした**述部**を返す。5エリアの全ヒットが述部側に `にあった` を残すことを実測で確認してから実装すること(主題部に落ちていたら判定が空振りする)。
-- **保護リスト(`NAME_PROTECT_SUFFIX`)より前**に置かないと、`スキー場`・`動物園`・`ロープウェイ` で保護された候補が定義文に到達しない(R119 が実測で踏んだ罠)。
-- 5エリアの fixture は `kusatsu, hakone, dogo, beppu, kinosaki` の**5本**。4本で止めないこと。
+**やらないこと**: 新しい検査ファイルの追加、`check-nosummary` の既存ケースの削除、
+engine/app/style の変更、カードの順位や枚数を動かす変更。
 
 ## 完了条件
 
-1. `dump-rank kinosaki` から **竹野鉱山が消え**、**御所の湯が30位以内に繰り上がる**。
-2. **kusatsu / hakone / dogo / beppu の4エリアが完全無差分**(before/after のテキスト差分ゼロ)。
-3. 5エリアの `にあった` 26件を全件突き合わせ、**城4件(湯築城・石垣山城・羽根尾城・長野原城)と旧町村9件が1件も落ちていない**ことを目視で確認し、結果を NIGHTLOG に書く。
-4. `scripts/check-engine.mjs` に `(r148)` 節を追加(落とす代表: 竹野鉱山・太子駅 / **残す対照: 湯築城・石垣山城・羽根尾城・道後村・城崎町**)。**既存ケースの削除はゼロ**。
+1. 上記6箇所すべてが5エリアに揃っている(`grep -n "kinosaki" scripts/check-nosummary.mjs README.md docs/FIXTURES.md docs/NIGHTLOG.md` で確認できる)。
+2. `check-nosummary` の3ガードが城崎を含み、期待値が**作業役自身の実測値**である。
+3. 城崎の件数を1つずらした値を一時的に入れると**その検査が赤くなる**ことを1回だけ確かめる(ガードが効いている証拠。確認後は必ず正しい値に戻す)。
+4. カードの順位・枚数が1つも動いていない(`dump-rank` 5エリアが作業前後で**完全無差分**)。
 5. `node scripts/check-all.mjs` **29本全緑**。
 
 ## 検証手順
 
 ```
 cd C:\workspace\claude\旅行先用サイト\yadotabi
-node --check assets/engine.js
-# before を5エリア分保存 → 実装 → after と diff
 for a in kusatsu hakone dogo beppu kinosaki; do node scripts/dump-rank.mjs $a > before-$a.txt; done
-node scripts/check-engine.mjs
-node scripts/check-all.mjs      # 29本全緑が必須
+# (実測 → 編集)
+for a in kusatsu hakone dogo beppu kinosaki; do node scripts/dump-rank.mjs $a > after-$a.txt; diff before-$a.txt after-$a.txt; done   # 全て差分ゼロ
+node scripts/check-nosummary.mjs      # 単体で緑
+node scripts/check-all.mjs            # 29本全緑
 ```
-加えて `?fixture=kinosaki` を **mobile で撮影して目視**し、繰り上がった御所の湯のカードに崩れが無いことを確認する。
+
+`before-*.txt` / `after-*.txt` は確認後に削除する(リポジトリに残さない)。
 
 ## 変更禁止範囲
 
-- **rank の重み・閾値は変更禁止**(除外ルールを1本足すだけ。スコア計算には触らない)
-- **`assets/geo.js`・`fixtures/*.json` は変更禁止**
-- **入力UIの追加禁止**(入力ゼロ原則)
-- **外部API 0回**(fixture のみで完結する)
-- **数値は作業役が自分で実測して書く**(この文書の数値を転記しない)
+- **rank の重み・閾値の変更禁止**(検査と文書だけ。カードの順位・枚数は1つも動かさない)。
+- **`assets/geo.js`・`fixtures/*.json` の変更禁止**。
+- **入力UIの追加禁止**(ユーザー入力ゼロの原則)。
+- **外部API 0回**(全て `?fixture=` で行う)。
+- **数値は作業役が自分で実測して書く**(この文書の表を写経しない)。
+- `git stash` / `reset --hard` / `checkout` でファイルを戻す操作は禁止。
 
 ## 終わったら
 
-1. `docs/ROADMAP.md` の R148 を **`- [x] 2026-09-18 R148 …`** に書き換える
+1. `docs/ROADMAP.md` の R149 を **`[x] 2026-09-18`** に変える。
 2. `docs/NIGHTLOG.md` の**ファイル末尾**の「## サイクル記録」節の末尾に
-   `### 2026-09-18 R148 <一言>` の見出しを付けて**3行**追記する(先頭に新しい節を作らない)
-3. **先にコミット**(1行の日本語メッセージ)
-4. `git push`
-5. **報告前に `git log --oneline -1` で実際のハッシュを確認する**(推測で書かない)
+   `### 2026-09-18 R149 <一言>` の見出しを付けて3行(やったこと / 見た目の確認結果 / 次)を追記する。
+   **ファイル先頭に新しい節を作らない**。
+3. **先にコミット**する(1行の日本語メッセージ)。報告文を書く前にコミットすること。
+4. `git push`。
+5. **報告前に `git log --oneline -1` を実行して実際のハッシュを確認する**(推測で書かない)。
+6. 報告は簡潔に。長文の報告書は書かない。

@@ -21,21 +21,21 @@
 //      真に記事が無い12枚は NO_SUMMARY_TEXT ちょうどに一致すること(誤爆0件を1枚ずつ確認)
 //   7. R124: wikipediaTitle が無く wikidataId しか無い候補(?fixture=beppu 18位「うみたまご」)でも
 //      要約行にリンクが出ること(Wikidata転送URL経由。行き止まり修正の不変条件)
-//   8. R124: 4エリア全カードで、HAS_ARTICLE_NO_SUMMARY_TEXT を含む .feedcard__summary--none には
+//   8. R124/R149: 5エリア全カードで、HAS_ARTICLE_NO_SUMMARY_TEXT を含む .feedcard__summary--none には
 //      必ず a[href] が1本以上あること(「記事はあります」と言っておいてリンクが無い行き止まりが無い)
 //   (r136) 営業時間(.feedcard__hours)の表示。判定はせず表記を読める形にするだけの検査:
 //      a. 営業時間があるカード(dogo #27 椿の湯・#9 愛媛大学ミュージアム 等)に .feedcard__hours が
 //         正しい文言で出る(正常系5例をカード実測で突き合わせる)
 //      b. 営業時間がある(取得済みの)季節分岐カード(dogo #10 松山城)には .feedcard__hours が
 //         出ない(null に倒す)こと。opening_hours を持たない通常カード(dogo #1)にも出ないこと
-//      c. .feedcard__hours の総数が「4エリアで openingHoursText が読める枚数」ちょうどと一致
+//      c. .feedcard__hours の総数が「5エリアで openingHoursText が読める枚数」ちょうどと一致
 //         (engine.js が openingHours を捨てずカードまで運んでいることの確認)
 //   (r137) 公式サイトのドメイン(.feedcard__official)の表示。推測せず、解析できた分だけ出す検査:
 //      a. 公式サイトを持つカード(dogo 萬翠荘 https://www.bansuisou.org/)に .feedcard__official が
 //         出て、www. を剥がしたホスト名(bansuisou.org)ちょうどになる
 //      b. 公式サイトを持たないカード(dogo 光泉寺は公式リンクがない = .feedcard__links に「公式」チップ無し)
 //         には .feedcard__official が出ない
-//      c. 4エリアの .feedcard__official 総数が実測(kusatsu 9 / hakone 6 / dogo 5 / beppu 11 = 31枚)と一致
+//      c. 5エリアの .feedcard__official 総数が実測(kusatsu 9 / hakone 7 / dogo 5 / beppu 11 / kinosaki 4 = 36枚)と一致
 
 import { chromium } from 'file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs';
 import { ensureServer } from './lib/server.mjs';
@@ -163,8 +163,10 @@ async function main() {
       umitamagoRow
     );
 
-    // R124: 4エリア全カードで、HAS_ARTICLE_NO_SUMMARY_TEXT を含む --none には必ずリンクが1本以上あること
-    const AREAS = ['kusatsu', 'hakone', 'dogo', 'beppu'];
+    // R124: 5エリア全カードで、HAS_ARTICLE_NO_SUMMARY_TEXT を含む --none には必ずリンクが1本以上あること
+    // 2026-09-18 R149: kinosaki を追加(既存のページ使い回し構造に合わせ、
+    // kusatsu/beppu以外・dogo以外は context.newPage() で開いて finally 前で close する)
+    const AREAS = ['kusatsu', 'hakone', 'dogo', 'beppu', 'kinosaki'];
     const deadEnds = [];
     for (const area of AREAS) {
       const areaPage = area === 'beppu' ? beppuPage : (area === 'dogo' ? page : await context.newPage());
@@ -185,7 +187,7 @@ async function main() {
       });
       if (area !== 'beppu' && area !== 'dogo') await areaPage.close();
     }
-    ok(deadEnds.length === 0, '8. 4エリアで「記事はあります」文言なのにリンクが0本のカードが無い', deadEnds);
+    ok(deadEnds.length === 0, '8. 5エリアで「記事はあります」文言なのにリンクが0本のカードが無い', deadEnds);
 
     // (r136) 営業時間表示。dogo は page(既に開いている)を再利用する。
     const dogoHours = await page.locator('.feedcard').evaluateAll((cards) =>
@@ -248,24 +250,30 @@ async function main() {
       otakinoyu
     );
 
-    // (r136) c. 4エリア合計の .feedcard__hours 件数が実測どおりであることの確認
+    // (r136) c. 5エリア合計の .feedcard__hours 件数が実測どおりであることの確認
     // (rank・候補集合は不変のため、この本数が動いたら engine 側で openingHours を
     // 取りこぼした/余計に付けた regression の合図になる)
     const hakonePage = await context.newPage();
     await hakonePage.goto(`${BASE}/?fixture=hakone`, { waitUntil: 'load' });
     await waitFor(1500);
+    const kinosakiPage = await context.newPage();
+    await kinosakiPage.goto(`${BASE}/?fixture=kinosaki`, { waitUntil: 'load' });
+    await waitFor(1500);
     const beppuHoursCount = await beppuPage.locator('.feedcard__hours').count();
     const hakoneHoursCount = await hakonePage.locator('.feedcard__hours').count();
     const kusatsuHoursCount = await kusatsuPage.locator('.feedcard__hours').count();
     const dogoHoursCount = await page.locator('.feedcard__hours').count();
-    const total = kusatsuHoursCount + hakoneHoursCount + dogoHoursCount + beppuHoursCount;
-    // 2026-09-18 R136 実測: kusatsu 5 / hakone 4 / dogo 4 / beppu 5 = 合計18枚(NEXT.md想定どおり)。
+    const kinosakiHoursCount = await kinosakiPage.locator('.feedcard__hours').count();
+    const total = kusatsuHoursCount + hakoneHoursCount + dogoHoursCount + beppuHoursCount + kinosakiHoursCount;
+    // 2026-09-18 R149 実測: kusatsu 5 / hakone 4 / dogo 4 / beppu 5 / kinosaki 4 = 合計22枚
+    // (kinosaki を追加。他4エリアの内訳はR136実測から不変)。
     // dogo は opening_hours を持つカードが5枚(#1伊佐爾波神社・#9愛媛大学ミュージアム・
     // #10松山城・#24萬翠荘・#27椿の湯)だが、#10松山城は季節分岐で null に倒れるため表示は4枚。
     ok(
-      kusatsuHoursCount === 5 && hakoneHoursCount === 4 && dogoHoursCount === 4 && beppuHoursCount === 5 && total === 18,
-      '(r136) c. 4エリアの .feedcard__hours 件数が実測(5/4/4/5=18)と一致',
-      { kusatsuHoursCount, hakoneHoursCount, dogoHoursCount, beppuHoursCount, total }
+      kusatsuHoursCount === 5 && hakoneHoursCount === 4 && dogoHoursCount === 4 && beppuHoursCount === 5 &&
+        kinosakiHoursCount === 4 && total === 22,
+      '(r136) c. 5エリアの .feedcard__hours 件数が実測(5/4/4/5/4=22)と一致',
+      { kusatsuHoursCount, hakoneHoursCount, dogoHoursCount, beppuHoursCount, kinosakiHoursCount, total }
     );
 
     // (r137) 公式サイトのドメイン(.feedcard__official)。推測せず、解析できた分だけ出す検査。
@@ -288,7 +296,7 @@ async function main() {
       yuJinja
     );
 
-    // (r137) c. 4エリア合計の .feedcard__official 件数が実測どおりであることの確認
+    // (r137) c. 5エリア合計の .feedcard__official 件数が実測どおりであることの確認
     // 2026-09-18 R137 作業役実測: kusatsu 9 / hakone 6 / dogo 5 / beppu 11 = 合計31枚。
     // NEXT.md の計画時想定(dogo 6枚・合計32枚)とは dogo が1枚ズレる。fixtures/dogo.json を
     // 直接数えても website/contact:website 付き要素は上位30枚中5件しかなく、作業役の実測を採用する。
@@ -296,16 +304,19 @@ async function main() {
     // 定義文1文目のみに限定した結果、「長興山のシダレザクラ」が神社・寺院→スポットに
     // 変わって神社・寺院カテゴリの減点枠が1つ空き、公式サイトを持つ「阿弥陀寺」が
     // top30 に繰り上がったことによる正しい副作用(作業役実測)。
+    // 2026-09-18 R149 実測: kusatsu 9 / hakone 7 / dogo 5 / beppu 11 / kinosaki 4 = 合計36枚
+    // (kinosaki を追加。他4エリアの内訳は不変)。
     const officialCountKusatsu = await kusatsuPage.locator('.feedcard__official').count();
     const officialCountHakone = await hakonePage.locator('.feedcard__official').count();
     const officialCountDogo = await page.locator('.feedcard__official').count();
     const officialCountBeppu = await beppuPage.locator('.feedcard__official').count();
-    const officialTotal = officialCountKusatsu + officialCountHakone + officialCountDogo + officialCountBeppu;
+    const officialCountKinosaki = await kinosakiPage.locator('.feedcard__official').count();
+    const officialTotal = officialCountKusatsu + officialCountHakone + officialCountDogo + officialCountBeppu + officialCountKinosaki;
     ok(
       officialCountKusatsu === 9 && officialCountHakone === 7 && officialCountDogo === 5 &&
-        officialCountBeppu === 11 && officialTotal === 32,
-      '(r137) c. 4エリアの .feedcard__official 件数が実測(9/7/5/11=32)と一致',
-      { officialCountKusatsu, officialCountHakone, officialCountDogo, officialCountBeppu, officialTotal }
+        officialCountBeppu === 11 && officialCountKinosaki === 4 && officialTotal === 36,
+      '(r137) c. 5エリアの .feedcard__official 件数が実測(9/7/5/11/4=36)と一致',
+      { officialCountKusatsu, officialCountHakone, officialCountDogo, officialCountBeppu, officialCountKinosaki, officialTotal }
     );
 
     // (r139) 情報ゼロカードの空箱(196px)を低い帯に詰めた検査。
@@ -381,6 +392,7 @@ async function main() {
     await hakonePage.close();
     await kusatsuPage.close();
     await beppuPage.close();
+    await kinosakiPage.close();
 
     await context.close();
   } finally {
