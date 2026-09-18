@@ -1017,7 +1017,12 @@
     var domainText = officialUrl ? officialDomainText(officialUrl) : null;
     var official = domainText ? '<p class="feedcard__official">⧉ ' + escapeHtml(domainText) + '</p>' : '';
 
-    return '<article class="card feedcard" data-index="' + index + '">' +
+    // R139: 写真も要約(記事ありリンクも含む)も営業時間も公式サイトも1つも無いカードだけ、
+    // .feedcard__media の空箱(196px)を低い帯に詰める。85枚(写真あり/情報あり)は一切変えない。
+    var isPlaceholderMedia = !isPortraitDemo && !(imgSrc && safeUrl(imgSrc));
+    var isBare = isPlaceholderMedia && !card.summary && !hasArticle && !hoursText && !domainText;
+
+    return '<article class="card feedcard' + (isBare ? ' feedcard--bare' : '') + '" data-index="' + index + '">' +
       '<div class="feedcard__media">' + media +
         '<button type="button" class="feedcard__no" data-no="' + (index + 1) + '" aria-label="' + (index + 1) + '番のピンを地図で光らせる">' + (index + 1) + '</button>' +
       '</div>' +

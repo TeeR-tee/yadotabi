@@ -433,6 +433,16 @@ body {
   background: linear-gradient(135deg, var(--c-primary-soft), var(--c-surface-2));
 }
 
+/* R139: 写真・要約・営業時間・公式サイトが1つも無いカードだけ、196pxの空箱を
+   番号バッジが乗るだけの低い帯に詰める。他85枚の .feedcard__media / .feedcard__ph は無改変。 */
+.feedcard--bare .feedcard__media {
+  aspect-ratio: auto;
+  height: 64px;
+}
+.feedcard--bare .feedcard__ph {
+  font-size: 22px;
+}
+
 .feedcard__no {
   position: absolute;
   top: var(--sp-2); left: var(--sp-2);

@@ -304,6 +304,33 @@ async function main() {
       { officialCountKusatsu, officialCountHakone, officialCountDogo, officialCountBeppu, officialTotal }
     );
 
+    // (r139) 情報ゼロカードの空箱(196px)を低い帯に詰めた検査。
+    // 写真・要約・営業時間・公式サイトが1つも無いカードだけ feedcard--bare が付き、
+    // .feedcard__media の高さが下がる。他のカードは1pxも変えない。
+    const bareRows = await page.locator('.feedcard').evaluateAll((cards) =>
+      cards.map((c) => {
+        const media = c.querySelector('.feedcard__media');
+        const rect = media ? media.getBoundingClientRect() : null;
+        return {
+          name: c.querySelector('.feedcard__name') ? c.querySelector('.feedcard__name').textContent : '',
+          bare: c.classList.contains('feedcard--bare'),
+          mediaHeight: rect ? Math.round(rect.height) : null,
+        };
+      })
+    );
+    const shotengai = bareRows.find((r) => r.name === '商店街');
+    ok(
+      !!shotengai && shotengai.bare === true && shotengai.mediaHeight !== null && shotengai.mediaHeight <= 100,
+      '(r139) a. 情報ゼロのカード(商店街)が feedcard--bare になり .feedcard__media が100px以下に詰まっている',
+      shotengai
+    );
+    const isaniwaBare = bareRows.find((r) => r.name === '伊佐爾波神社');
+    ok(
+      !!isaniwaBare && isaniwaBare.bare === false && isaniwaBare.mediaHeight === 196,
+      '(r139) b. 写真がある伊佐爾波神社には feedcard--bare が付かず .feedcard__media が従来の196pxのまま',
+      isaniwaBare
+    );
+
     await hakonePage.close();
     await kusatsuPage.close();
     await beppuPage.close();
