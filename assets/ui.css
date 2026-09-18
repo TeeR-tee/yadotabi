@@ -342,6 +342,26 @@ code {
 .empty__icon { font-size: 40px; margin-bottom: var(--sp-3); }
 .empty__title { font-size: var(--fs-lg); font-weight: 700; color: var(--c-text); margin-bottom: var(--sp-2); }
 
+/* ---------- 束の見出し(R157) ----------
+   フィードの「もっと見る」以降を、テーマの束ごとに区切る小見出し。
+   カードより一段弱い見た目にして、読み飛ばす目印に徹する。 */
+.feedbundle {
+  margin: var(--sp-5) var(--sp-3) var(--sp-3);
+  padding-bottom: var(--sp-2);
+  border-bottom: 1px solid var(--c-border);
+  font-size: var(--fs-md);
+  font-weight: 700;
+  color: var(--c-text-sub);
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+.feedbundle__n {
+  font-size: var(--fs-xs);
+  font-weight: 400;
+  color: var(--c-text-faint);
+}
+
 /* ---------- 区切り・ユーティリティ ---------- */
 .divider { border: none; border-top: 1px solid var(--c-border); margin: var(--sp-5) 0; }
 .text-sub   { color: var(--c-text-sub); }

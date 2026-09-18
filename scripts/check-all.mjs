@@ -1,5 +1,5 @@
 // scripts/check-all.mjs
-// check-*.mjs 29本 + docs/check.mjs の計30本を直列実行し、pass/fail と所要時間を表で出す。
+// check-*.mjs 30本 + docs/check.mjs の計31本を直列実行し、pass/fail と所要時間を表で出す。
 // 1本でも失敗なら exit 1。
 // R130: 共有サーバ方式。ここで ensureServer() を1回だけ呼び、空きポートのサーバを立てて
 // 各子プロセスに環境変数 YADOTABI_BASE で渡す。子は自分でサーバを起動しないので、
@@ -17,6 +17,7 @@ const ROOT = path.resolve(__dirname, '..');
 const SCRIPTS = [
   'scripts/check-a11y.mjs',
   'scripts/check-attrib.mjs',
+  'scripts/check-bundle.mjs',
   'scripts/check-autozoom.mjs',
   'scripts/check-chipcurrent.mjs',
   'scripts/check-debugflag.mjs',

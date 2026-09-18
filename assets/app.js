@@ -1192,6 +1192,60 @@
     return '';
   }
 
+  /**
+   * R157: 「もっと見る」で開いた 6件目以降に、テーマの束の見出しを挿し込む。
+   *
+   * カードは1枚も並べ替えない(rank 順のまま)。束が切り替わる位置に見出しを
+   * 挟むだけなので、data-index・番号バッジ・地図のピン番号は一切変わらない
+   * (並べ替えると番号が 1,2,3,4,5,8,14... と飛び、地図との対応が読めなくなる)。
+   *
+   * 束分けは初期5件を含む全カードで行う。初期5件は見出し無しの現状維持で、
+   * 6件目以降で初めてその束の切れ目に見出しが出る。
+   *
+   * 同じ束が rank 順の都合で離れて再登場することがあるため、一度出した束の
+   * 見出しは二度出さない(「歴史を歩く」が3回出ると束に見えない)。
+   * 見出しに添える件数は、その束の 6件目以降にある残り全部の件数。
+   */
+  function moreBundledHtml() {
+    var all = state.cards.concat(state.more);
+    var offset = state.cards.length;
+    var bundles = [];
+    try {
+      bundles = window.YadoEngine.bundle(all) || [];
+    } catch (e) {
+      bundles = [];
+    }
+
+    // 束分けに失敗したら従来どおり見出し無しで並べる(提案そのものは落とさない)
+    if (!bundles.length) {
+      return state.more.map(function (c, i) { return cardHtml(c, i + offset); }).join('');
+    }
+
+    // 添字 -> 束 の逆引きと、束ごとの「6件目以降の残り件数」
+    var labelOf = {};
+    var restOf = {};
+    bundles.forEach(function (b) {
+      var rest = b.indices.filter(function (i) { return i >= offset; }).length;
+      restOf[b.label] = rest;
+      b.indices.forEach(function (i) { labelOf[i] = b.label; });
+    });
+
+    var out = '';
+    var shown = {};
+    for (var i = offset; i < all.length; i++) {
+      var label = labelOf[i];
+      // 見出しは束の初出時だけ。残り1件しかない束は見出しを出さず本文に混ぜる
+      // (「見出し1本に中身1件」を作らない)。
+      if (label && !shown[label] && restOf[label] >= 2) {
+        shown[label] = true;
+        out += '<h3 class="feedbundle">' + escapeHtml(label) +
+          ' <span class="feedbundle__n">' + escapeHtml(String(restOf[label])) + '件</span></h3>';
+      }
+      out += cardHtml(all[i], i);
+    }
+    return out;
+  }
+
   function renderFeed() {
     var hotel = state.hotel;
     if (!hotel) return;
@@ -1225,7 +1279,7 @@
 
     var html = state.cards.map(cardHtml).join('');
     if (state.moreOpen) {
-      html += state.more.map(function (c, i) { return cardHtml(c, i + state.cards.length); }).join('');
+      html += moreBundledHtml();
     }
     // スケルトンは「まだ増える」ことを示すので、読み込み中は実カードの後ろに残す
     if (loading) html += skeletonHtml();

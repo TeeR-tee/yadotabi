@@ -1673,11 +1673,104 @@
     return result;
   }
 
+  // ---------------------------------------------------------------------------
+  // bundle: カードを「テーマの束」にまとめる(R157)
+  // ---------------------------------------------------------------------------
+
+  // category(22種)→ テーマ5〜6種への写像。カテゴリをそのまま束にすると
+  // 25件に11〜13本の見出しが立って画面が見出しだらけになるため、粗くまとめる。
+  // 表に無い category は FALLBACK_THEME に落とす(geo.js に key が増えても落ちない)。
+  var FALLBACK_THEME = 'この土地の名物';
+  var THEME_OF = {
+    place_of_worship: '歴史を歩く',
+    castle: '歴史を歩く',
+    monument: '歴史を歩く',
+    memorial: '歴史を歩く',
+    ruins: '歴史を歩く',
+
+    public_bath: '湯を楽しむ',
+    hot_spring: '湯を楽しむ',
+    spring: '湯を楽しむ',
+
+    // 塔(viewpoint)も山も滝も「景色を見にいく」なら無理がない。
+    // 「自然を見る」にするとタワーが浮き、viewpoint を分けると1件束ができる。
+    peak: '景色を見にいく',
+    waterfall: '景色を見にいく',
+    viewpoint: '景色を見にいく',
+    cave: '景色を見にいく',
+    nature: '景色を見にいく',
+    picnic_site: '景色を見にいく',
+    lighthouse: '景色を見にいく',
+
+    park: '緑をゆっくり',
+    garden: '緑をゆっくり',
+
+    museum: '屋内でじっくり',
+    theme_park: '屋内でじっくり',
+    zoo: '屋内でじっくり',
+    aquarium: '屋内でじっくり',
+
+    attraction: FALLBACK_THEME,
+    other: FALLBACK_THEME
+  };
+
+  /**
+   * カード配列をテーマの束にまとめる。純関数。
+   *
+   * 並べ替えは一切しない。返すのは元配列の添字だけを持つ
+   * [{ label, indices: [...] }] で、束の並びは「その束の最小の添字」の昇順
+   * (= 上位カードを持つ束が上)。
+   *
+   * 1件しかない束は作らず FALLBACK_THEME へ寄せる(見出し1本に中身1件を構造的に作らない)。
+   * 寄せた結果 FALLBACK_THEME も1件なら label を null にして見出しを出さない。
+   */
+  function bundle(cards) {
+    var list = Array.isArray(cards) ? cards : [];
+    var order = [];   // label の初出順
+    var byLabel = {};
+
+    list.forEach(function (card, i) {
+      var cat = card && card._debug ? card._debug.category : null;
+      var label = (cat && THEME_OF[cat]) || FALLBACK_THEME;
+      if (!byLabel[label]) { byLabel[label] = []; order.push(label); }
+      byLabel[label].push(i);
+    });
+
+    // 1件だけの束を FALLBACK_THEME へ寄せる
+    var strays = [];
+    order.forEach(function (label) {
+      if (label === FALLBACK_THEME) return;
+      if (byLabel[label].length === 1) {
+        strays.push(byLabel[label][0]);
+        byLabel[label] = [];
+      }
+    });
+    if (strays.length) {
+      if (!byLabel[FALLBACK_THEME]) { byLabel[FALLBACK_THEME] = []; order.push(FALLBACK_THEME); }
+      byLabel[FALLBACK_THEME] = byLabel[FALLBACK_THEME].concat(strays).sort(function (a, b) { return a - b; });
+    }
+
+    var out = order.filter(function (label) {
+      return byLabel[label] && byLabel[label].length;
+    }).map(function (label) {
+      return { label: label, indices: byLabel[label] };
+    });
+
+    // 束の並び = その束の最小の添字の昇順
+    out.sort(function (a, b) { return a.indices[0] - b.indices[0]; });
+
+    // 束が1つだけ、かつ中身も1件なら見出しを出さない
+    if (out.length === 1 && out[0].indices.length === 1) out[0].label = null;
+
+    return out;
+  }
+
   global.YadoEngine = {
     suggest: suggest,
     // テスト・差し替え用に3段を個別に公開する
     collect: collect,
     rank: rank,
-    present: present
+    present: present,
+    bundle: bundle
   };
 })(typeof window !== 'undefined' ? window : globalThis);
