@@ -1580,5 +1580,58 @@ console.log('\n(r142) 固有名を持たない一般名詞そのものの候補�
   });
 }
 
+// ---------------------------------------------------------------------------
+console.log('\n(r143) 動物園・水族館の「中の展示」(動物の種名)をカードから落とす');
+{
+  // 動物園そのもの(ワンダーラクテンチ動物園・だっこしてZOO ほか)は絶対に巻き込まない。
+  // 4条件AND: source=osm(単独) + category=zoo/aquarium(タグ由来)
+  // + 記事の裏付け/公式サイト無し + 名前が施設語を1つも含まない。
+  // drop=true が落ちる側(=中の展示)、drop=false が残る側(=動物園そのもの)。
+  const R143_CASES = [
+    // --- 落とす側: 4エリア実測8件のうち代表(施設語を含まない動物の種名) ---
+    { name: 'ドクターフィッシュ', category: 'zoo', drop: true },
+    { name: 'ニホンザル', category: 'zoo', drop: true },
+    { name: 'カピバラ', category: 'zoo', drop: true },
+    { name: 'ラマ、ヤギ、ヒツジ', category: 'zoo', drop: true },
+    { name: 'ウサギ', category: 'zoo', drop: true },
+    // --- 残す側(対照): 正当な動物園そのもの(施設語を含む・タグは同じ zoo/aquarium) ---
+    { name: 'ワンダーラクテンチ動物園', category: 'zoo', drop: false },
+    { name: 'だっこしてZOO', category: 'zoo', drop: false },
+    { name: '愛媛県立とべ動物園', category: 'zoo', drop: false },
+    // 「うみたまご」は施設語(園・館等)を含まないが、website 有りで安全弁1が先に効く
+    { name: '大分マリーンパレス水族館「うみたまご」', category: 'aquarium', drop: false,
+      website: 'https://www.umitamago.jp/' }
+  ];
+
+  const E143 = loadEngine({
+    ...geoMock(),
+    fetchSpots: () => Promise.resolve(R143_CASES.map((c, i) => ({
+      id: 'node/' + (9100 + i), name: c.name, lat: at(100 + i * 400), lon: HOTEL.lon,
+      category: c.category, categoryLabel: c.category === 'aquarium' ? '水族館' : '動物園',
+      distanceM: 100 + i * 400, website: c.website || null
+    }))),
+    fetchWikiNearby: () => Promise.resolve([])
+  });
+  const got143 = new Set((await E143.collect(HOTEL)).map(i => i.name));
+  R143_CASES.forEach(c => {
+    if (c.drop) ok(!got143.has(c.name), 'R143 落とす: ' + c.name);
+    else ok(got143.has(c.name), 'R143 残す: ' + c.name);
+  });
+
+  // 対照: wiki/website の裏付けがあれば施設語が無くても落ちない(2つの安全弁のうち1つ目)。
+  // 「草津熱帯圏」相当のケース(施設語リストに当たらないが wikidata を持つ)。
+  const E143b = loadEngine({
+    ...geoMock(),
+    fetchSpots: () => Promise.resolve([
+      { id: 'node/9200', name: '草津熱帯圏', category: 'zoo', categoryLabel: '動物園',
+        lat: at(500), lon: HOTEL.lon, distanceM: 500,
+        wikipediaTitle: '草津熱帯圏', wikidataId: 'Q11618188', website: 'http://nettaiken.com/' }
+    ]),
+    fetchWikiNearby: () => Promise.resolve([])
+  });
+  ok(new Set((await E143b.collect(HOTEL)).map(i => i.name)).has('草津熱帯圏'),
+    'R143 残す: 草津熱帯圏(施設語に当たらないが wiki/website の裏付けで先に keep)');
+}
+
 console.log('\n==== ' + pass + ' pass / ' + fail + ' fail ====');
 process.exit(fail ? 1 : 0);

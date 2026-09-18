@@ -153,6 +153,18 @@
   //     '湯' 単体も入れない(「〇〇の湯」は除外語に当たらないので保護不要)。
 
   /**
+   * R143: 動物園・水族館(tourism=zoo|aquarium)の「中の展示」(動物の種名そのもの)を
+   * 「動物園そのもの」から区別するための施設語リスト。
+   * 「動物園そのもの」は名前に必ずこの種の施設語を含む(園・館・小屋・パーク・ZOO…)。
+   * 「中の展示」は種名そのもので、施設語を1文字も含まない非対称を判定に使う。
+   * 4エリア(kusatsu/hakone/dogo/beppu)の tourism=zoo|aquarium 全27要素を実測して
+   * 過不足を確認済み(誤爆0件)。
+   */
+  var ZOO_FACILITY_WORD = [
+    '園', '館', '小屋', 'パーク', 'ランド', 'ZOO', 'Aquarium', 'サファリ', '牧場', '里', '村', '広場', '舎'
+  ];
+
+  /**
    * R142: 固有名を持たない一般名詞**そのもの**の候補を落とす。名前が完全一致した
    * ときだけ落とすリスト(部分一致は絶対にしない。`商店街` を部分一致にすると
    * `〇〇商店街` まで巻き込む。R116 が「誤爆リスクが高い」として見送られたのは
@@ -1246,6 +1258,22 @@
       if (hasJapaneseChar(item.name)) return true;
       if (item.summary) return true;
       if (item.wikipediaTitle || item.wikidataId) return true;
+      return false;
+    });
+
+    // R143: 動物園・水族館の「中の展示」(動物の種名そのもの)を落とす。
+    // 「動物園そのもの」(ワンダーラクテンチ動物園・だっこしてZOO ほか)は絶対に巻き込まない。
+    // 4条件すべてが揃う場合だけ落とす(緩めると正当な動物園まで消える)。
+    //   1. item.source === 'osm'(統合で 'both' に昇格していない単独候補)
+    //   2. item.category が zoo/aquarium(タグ由来。geo.js の detectCategory が付与)
+    //   3. 記事の裏付けも公式サイトも無い(summary/wikipediaTitle/wikidataId/website 無し)
+    //   4. 名前が施設語(ZOO_FACILITY_WORD)を1つも含まない(= 動物園そのものではなく中の展示)
+    merged = merged.filter(function (item) {
+      if (item.source !== 'osm') return true;
+      if (item.category !== 'zoo' && item.category !== 'aquarium') return true;
+      if (item.summary || item.wikipediaTitle || item.wikidataId || item.website) return true;
+      var hasFacilityWord = ZOO_FACILITY_WORD.some(function (w) { return item.name.indexOf(w) > -1; });
+      if (hasFacilityWord) return true;
       return false;
     });
 
