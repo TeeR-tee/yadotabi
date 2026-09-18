@@ -319,9 +319,12 @@ async function main() {
       })
     );
     const shotengai = bareRows.find((r) => r.name === '商店街');
+    // R140 で帯(.feedcard__media)そのものを畳んだため mediaHeight は null になる(要素が存在しない)。
+    // これは R139 の「情報ゼロのカードの帯を圧縮する」という目的をさらに徹底した結果であり、
+    // 検査の意図(bare カードに肥大した帯が残っていないこと)はこの条件で引き続き満たされる。
     ok(
-      !!shotengai && shotengai.bare === true && shotengai.mediaHeight !== null && shotengai.mediaHeight <= 100,
-      '(r139) a. 情報ゼロのカード(商店街)が feedcard--bare になり .feedcard__media が100px以下に詰まっている',
+      !!shotengai && shotengai.bare === true && shotengai.mediaHeight === null,
+      '(r139) a. 情報ゼロのカード(商店街)が feedcard--bare になり .feedcard__media の帯が無い(R140で畳んだ)',
       shotengai
     );
     const isaniwaBare = bareRows.find((r) => r.name === '伊佐爾波神社');
@@ -329,6 +332,42 @@ async function main() {
       !!isaniwaBare && isaniwaBare.bare === false && isaniwaBare.mediaHeight === 196,
       '(r139) b. 写真がある伊佐爾波神社には feedcard--bare が付かず .feedcard__media が従来の196pxのまま',
       isaniwaBare
+    );
+
+    // (r140) 同じ絵文字を2回言うだけの帯(旧R139の64px)を畳み、番号バッジを
+    // .feedcard__body 側へ移した検査。DOM上のバッジの data-no / aria-label / クラス名は不変。
+    const bareDetailRows = await page.locator('.feedcard').evaluateAll((cards) =>
+      cards.map((c) => {
+        const noBtn = c.querySelector('.feedcard__no');
+        return {
+          name: c.querySelector('.feedcard__name') ? c.querySelector('.feedcard__name').textContent : '',
+          bare: c.classList.contains('feedcard--bare'),
+          hasMedia: !!c.querySelector('.feedcard__media'),
+          hasPh: !!c.querySelector('.feedcard__ph'),
+          noCount: c.querySelectorAll('.feedcard__no').length,
+          phFontSize: c.querySelector('.feedcard__ph') ? getComputedStyle(c.querySelector('.feedcard__ph')).fontSize : null,
+        };
+      })
+    );
+    const shotengaiR140 = bareDetailRows.find((r) => r.name === '商店街');
+    ok(
+      !!shotengaiR140 && shotengaiR140.bare === true && shotengaiR140.hasMedia === false && shotengaiR140.hasPh === false,
+      '(r140) a. bare カード(商店街)に .feedcard__media / .feedcard__ph が存在しない(帯を畳んだ)',
+      shotengaiR140
+    );
+    // 伊佐爾波神社は写真あり(.feedcard__img)のため .feedcard__ph は元々存在しない。
+    // 「写真は無いが情報はある(isBare=false)」カードで .feedcard__ph が維持されることを確認する。
+    const univMuseumR140 = bareDetailRows.find((r) => r.name === '愛媛大学ミュージアム');
+    ok(
+      !!univMuseumR140 && univMuseumR140.bare === false && univMuseumR140.hasPh === true && univMuseumR140.phFontSize === '44px',
+      '(r140) b. 非bare カード(愛媛大学ミュージアム=写真なし情報あり)には .feedcard__ph が引き続き存在しフォントサイズ44pxのまま',
+      univMuseumR140
+    );
+    const allHaveOneNo = bareDetailRows.every((r) => r.noCount === 1);
+    ok(
+      allHaveOneNo,
+      '(r140) c. dogo 全30枚で .feedcard__no が1つずつ存在する(帯を畳んでもバッジは消えない)',
+      bareDetailRows.filter((r) => r.noCount !== 1)
     );
 
     await hakonePage.close();

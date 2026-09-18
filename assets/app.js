@@ -1022,11 +1022,16 @@
     var isPlaceholderMedia = !isPortraitDemo && !(imgSrc && safeUrl(imgSrc));
     var isBare = isPlaceholderMedia && !card.summary && !hasArticle && !hoursText && !domainText;
 
+    // R140: isBare のときは .feedcard__media(絵文字の帯)ごと出さない。
+    // 番号バッジ(.feedcard__no)は data-no / aria-label / クラス名を変えず、
+    // .feedcard__body の先頭に移すことで帯を畳む(帯が持っていた唯一の価値はバッジの置き場だったため)。
+    var noBtn = '<button type="button" class="feedcard__no" data-no="' + (index + 1) + '" aria-label="' + (index + 1) + '番のピンを地図で光らせる">' + (index + 1) + '</button>';
+    var mediaBlock = isBare ? '' : '<div class="feedcard__media">' + media + noBtn + '</div>';
+
     return '<article class="card feedcard' + (isBare ? ' feedcard--bare' : '') + '" data-index="' + index + '">' +
-      '<div class="feedcard__media">' + media +
-        '<button type="button" class="feedcard__no" data-no="' + (index + 1) + '" aria-label="' + (index + 1) + '番のピンを地図で光らせる">' + (index + 1) + '</button>' +
-      '</div>' +
+      mediaBlock +
       '<div class="feedcard__body">' +
+        (isBare ? noBtn : '') +
         '<h2 class="feedcard__name">' + escapeHtml(card.name) + '</h2>' +
         '<p class="feedcard__meta">' +
           '<span class="feedcard__cat">' + escapeHtml(emoji) + ' ' + escapeHtml(card.categoryLabel || '') + '</span>' +
