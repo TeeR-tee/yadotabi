@@ -1847,8 +1847,9 @@
     var params = new URLSearchParams(global.location.search);
     var hideSamples = state.embed || !!fixtureNameFromUrl(params);
     els.samples.hidden = hideSamples;
+    if (els.pickbarLead) els.pickbarLead.hidden = hideSamples;
     if (hideSamples) return;
-    els.samples.innerHTML = '<span class="samples__label">サンプル:</span>' +
+    els.samples.innerHTML = '<span class="samples__label">例を見る:</span>' +
       SAMPLE_LINKS.map(function (s) {
         return '<a href="?fixture=' + s.fixture + '">' + escapeHtml(s.label) + '</a>';
       }).join('') +
@@ -2055,6 +2056,7 @@
       searchClear: document.getElementById('search-clear'),
       suggest: document.getElementById('suggest-list'),
       chips: document.getElementById('area-chips'),
+      pickbarLead: document.getElementById('pickbar-lead'),
       samples: document.getElementById('sample-links'),
       map: document.getElementById('map'),
       mapNote: document.getElementById('map-note'),

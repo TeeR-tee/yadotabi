@@ -687,3 +687,8 @@
 - やったこと: `scripts/lib/server.mjs` を新設して `ensureServer()` にサーバの起動・停止を集約し、サーバを使う25本すべてから自前の spawn/kill ブロックを削除(重複820行を除去)。`check-all.mjs` が親で1つだけ立てて `YADOTABI_BASE` を env で子に渡す方式にし、ポートは固定3000をやめ `listen(0)` の実測空きポート、`stop()` は kill 後にプロセスの終了イベントとポート解放を待つようにした。検査のアサーションは1つも減らしていない(3回とも796 pass / 0 fail)。
 - 3連続の結果: `node scripts/check-all.mjs` を3回連続で実行し **3回とも29本中29本PASS**(283s / 286s / 279s、合計約14分)。ERR_CONNECTION_REFUSED / RESET は3回とも0件で、R129 で毎回1本ずつ入れ替わりで落ちていた揺れが消えた。単体実行も feednote・autozoom・links-target・embedbg・a11y で全件PASS(親が無ければ自分で起動する性質を維持)。実行後に python の http.server が残っていないことも確認。
 - 次: 検査基盤が信用できる状態に戻ったので、ROADMAP 先頭の R2-1(検索候補がエリアチップ行に重なる)へ。デザイン判断を含むため朝の相談向き。
+
+### 2026-09-18 R131 初めて開いた人に売り文句を1行だけ見せる
+- やったこと: `.chips` と `.samples` の間に `<p class="pickbar__lead">宿を選ぶと、まわりの見どころが並びます。`(20文字)を新設し、`renderSampleLinks()` で `.samples` と同じ真偽値を `hidden` に流用(通常表示・`?embed=1`と`?fixture=`では非表示)。`.samples` の `margin-top` を0にして1つの塊に見せ、ラベルも「サンプル:」→「例を見る:」に変更(リンク5本の文字列は不変)。
+- 見た目の確認結果=実測px: mobile 375x812で `.pickbar` 高さ **187px**(目標200px以下)・`#map` 高さ **625px**(目標610px以上)。desktop/mobile とも撮影4枚をRead目視し文字崩れ・チップとの被りなし、`?fixture=kusatsu`と`&embed=1`はリード文が出ず状態Bへ直行することを確認。
+- 次: `node scripts/check-all.mjs` 29本中29本PASS(exit 0)。ROADMAP残りはR2-1(デザイン判断・朝の相談向き)。

@@ -14,6 +14,9 @@
 //   e. ?fixture=kusatsu&embed=1 でも .samples が不可視。
 //   f. ?fixture=random で4エリアのいずれかが開き、.feedcard が30枚、.samples が不可視。
 //   g. 各ケースでコンソールエラー0件。
+//   h. R131: ?demo=nohotels で #pickbar-lead が可視・テキストが空でなく24文字以内。
+//   i. R131: 同URLで .pickbar の offsetHeight <= 200(mobile相当)。
+//   j. R131: ?fixture=kusatsu と ?fixture=kusatsu&embed=1 で #pickbar-lead が不可視。
 
 import { chromium } from 'file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs';
 import { ensureServer } from './lib/server.mjs';
@@ -134,6 +137,42 @@ async function checkSamplesHiddenInFixture(browser, path, label) {
   });
 }
 
+async function checkPickbarLead(browser) {
+  await withPage(browser, async (page, consoleErrors) => {
+    await page.goto(`${BASE}/?demo=nohotels`, { waitUntil: 'load' });
+    await waitFor(1500);
+
+    const lead = page.locator('#pickbar-lead');
+    const visible = await lead.evaluate((el) => {
+      return el.offsetParent !== null && getComputedStyle(el).display !== 'none';
+    });
+    ok(visible, 'h. ?demo=nohotels で #pickbar-lead が可視', visible);
+
+    const text = (await lead.textContent() || '').trim();
+    ok(text.length > 0, 'h. #pickbar-lead のテキストが空でない', text);
+    ok(text.length <= 24, 'h. #pickbar-lead のテキストが24文字以内', text.length);
+
+    const pickbarHeight = await page.locator('.pickbar').evaluate((el) => el.offsetHeight);
+    ok(pickbarHeight <= 200, 'i. .pickbar の offsetHeight <= 200', pickbarHeight);
+
+    ok(consoleErrors.length === 0, 'h/i. コンソールエラー0件', consoleErrors);
+  });
+}
+
+async function checkPickbarLeadHiddenInFixture(browser, path, label) {
+  await withPage(browser, async (page, consoleErrors) => {
+    await page.goto(`${BASE}${path}`, { waitUntil: 'load' });
+    await waitFor(1500);
+
+    const lead = page.locator('#pickbar-lead');
+    const visible = await lead.evaluate((el) => {
+      return el.offsetParent !== null && getComputedStyle(el).display !== 'none';
+    });
+    ok(!visible, label + ': #pickbar-lead が不可視', visible);
+    ok(consoleErrors.length === 0, label + ': コンソールエラー0件', consoleErrors);
+  });
+}
+
 async function checkFixtureRandom(browser) {
   await withPage(browser, async (page, consoleErrors) => {
     await page.goto(`${BASE}/?fixture=random`, { waitUntil: 'load' });
@@ -167,6 +206,9 @@ async function main() {
     await checkSamplesHiddenInFixture(browser, '/?fixture=kusatsu', 'd.fixtureのみ');
     await checkSamplesHiddenInFixture(browser, '/?fixture=kusatsu&embed=1', 'e.fixture+embed');
     await checkFixtureRandom(browser);
+    await checkPickbarLead(browser);
+    await checkPickbarLeadHiddenInFixture(browser, '/?fixture=kusatsu', 'j.fixtureのみ');
+    await checkPickbarLeadHiddenInFixture(browser, '/?fixture=kusatsu&embed=1', 'j.fixture+embed');
   } finally {
     await browser.close();
     await stop();

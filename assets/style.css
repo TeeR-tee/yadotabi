@@ -179,13 +179,22 @@ body {
   font-weight: 600;
 }
 
+/* R131: 初見の人に「何をするサイトか」を1行だけ伝える。地図の高さを削るため1行に留める */
+.pickbar__lead {
+  font-size: var(--fs-xs);
+  color: var(--c-text-sub);
+  margin: var(--sp-2) 0 0;
+  line-height: 1.4;
+}
+
 /* R63: 初見向けサンプル導線。地図の高さを削るため最小限の1行に留める */
 /* R74: 5本になり折り返すため、.chips と同じ横スクロールの型に寄せる */
+/* R131: 直上の .pickbar__lead と1つの塊に見せるため margin-top を無くす */
 .samples {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  margin-top: var(--sp-2);
+  margin-top: 0;
   font-size: var(--fs-xs);
   overflow-x: auto;
   scrollbar-width: none;
