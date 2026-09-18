@@ -3,12 +3,13 @@
 制定: 2026-09-16 未明。みのるんが寝ている間も改善を回し続けるための規約。
 本番URL: https://teer-tee.github.io/yadotabi/ (GitHub Pages、無料)。リポジトリ: https://github.com/TeeR-tee/yadotabi
 
-## 3つの役割(3すくみ)
+## 4つの役割
 | 役 | 誰 | やること | やらないこと |
 |---|---|---|---|
 | 計画役(オペレーター) | 各サイクル冒頭の planner エージェント(Opus) | ROADMAP・NIGHTLOG・最新スクリーンショットを読み、次の1タスクを `docs/NEXT.md` に書く。バックログが尽きたら ROADMAP に3〜5件追記 | コードを書かない |
 | 作業役 | builder-opus / builder-sonnet | NEXT.md を実装→検証→コミット→push | 計画の変更、タスクの追加 |
 | 監視役 | 司令塔セッションの cron(25分毎) | 最終コミットから40分以上動きが無ければ、サイクルを自分で起動し直す | 通常時は何もしない |
+| 市場調査役 | 各サイクル冒頭の research エージェント(Opus) | 競合(じゃらん・Agoda・Trip.com 等)と利用者ニーズを調べ、「こういうニーズがあるのに実装できていない」を指摘する。計画役が次の指示を出せないときは一緒に考える | コードを書く、実装方針を確定する(提案までが役割) |
 
 ## 絶対ルール
 1. **コスト0円**。有料API・APIキー必要サービス・Google Maps API は禁止。地図は Leaflet+OSM、データは Overpass/Nominatim/Wikipedia のみ。
