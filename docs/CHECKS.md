@@ -1,14 +1,16 @@
 # CHECKS.md — `scripts/check-all.mjs` が回す29本の一覧と並列化できない理由
 
-この表は `scripts/check-all.mjs` の `SCRIPTS` 配列(`check-all.mjs:14`)と**一対一で一致させること**。check 本を増減したらこの表も同じコミットで直す。
+この表は `scripts/check-all.mjs` の `SCRIPTS` 配列(`check-all.mjs:17`)と**一対一で一致させること**。check 本を増減したらこの表も同じコミットで直す。
 
 ## 対象範囲
 
 `node scripts/check-all.mjs` は `scripts/check-*.mjs` の28本と `docs/check.mjs` の1本、計29本を `spawnSync` で直列に呼ぶだけの外側の殻です。各 check 本の中身はこのタスクでは無編集(AUTOPILOT の運用どおり)。
 
-## サーバを立てる24本(ポート3000占有・全て Playwright あり)
+## サーバを立てる25本(全て Playwright あり)
 
 **R130 以降、サーバの起動・停止は `scripts/lib/server.mjs` の `ensureServer()` に一本化しました**(各本が自前でポート3000を spawn/kill するのをやめた)。`check-all.mjs` が親として1回だけサーバを立て、環境変数 `YADOTABI_BASE` で各子プロセスに渡すため、子は起動せず奪い合いが起きません。単体実行時は同変数が無いので従来どおり自分で起動し、`listen(0)` で実測した空きポートを使い、`stop()` がプロセスの終了とポートの解放を待ってから返ります(終了待ちが無かったのが連続実行で1本ずつ落ちていた原因)。
+
+**注記(R135)**: `scripts/check-*.mjs` のうち16本の冒頭コメントには、R130より前に書かれた「自分で `python -m http.server 3000` を起動して検証後に落とす」という記述が残っていた。実装(`scripts/lib/server.mjs`)を確認すると **`python -m http.server` を使うこと自体は今も正しい**(`ensureServer()` が単体実行時に内部で `spawn('python', ['-m', 'http.server', ...])` する)。古かったのは「ポート**3000固定**で**各本が個別に**起動・終了する」という前提部分であり、実際は `findFreePort()` で実測した空きポートを使い、`check-all.mjs` 経由なら親が1本だけ起動して `YADOTABI_BASE` で子に配る方式に変わっている。この行は指示書上コード無編集(コメントは16本すべてコメント文のみ実装に合わせて修正済み・非コメント行の差分は0)。
 
 | 本名 | 何を検査するか |
 |---|---|
@@ -38,29 +40,32 @@
 | check-recent | 検索候補に「最近見た宿」が見出し付きで統合されること(R32) |
 | check-sample | サンプル導線チップの表示・件数 |
 
-所要目安(R55 実測・NIGHTLOG 2026-09-16 R60+R55、当時20本時点): 合計 **162.8s**、最遅 **check-hotelparam 27.9s**、次点 **check-feednote 12.3s**、僅差で **check-attrib 12.1s**。現在は27本。
-R89(2026-09-16)実測: `check-hotelparam` は固定待ちを条件待ちに置換して 33.9s→8.4s(中央値、41 pass/0 fail一致)。27本(check-all.mjs)の合計は **221.2s**、最遅は `check-embedbg 18.2s` に交代(hotelparam は最遅から外れた)。
+所要目安(現在値・2026-09-18 R135 実測): **29本**(check-all.mjs)の合計は **283.5s**、最遅は `check-attrib.mjs 24.6s`。過去(check本数が少なかった頃)の記録はNIGHTLOGの当該サイクルを参照(この節は現在値だけを保持する運用にする)。
 
-## サーバもPlaywrightも不要な3本 + docs/check.mjs
+## サーバもPlaywrightも不要な4本
 
 | 本名 | 何を検査するか |
 |---|---|
 | check-engine | `engine.js` の除外・併合・要約ロジックの単体テスト |
 | check-geo | `geo.js` の同心円リング収集ロジック(fetchをスタブ) |
 | check-r5 | 段階描画の発火順 |
-| docs/check.mjs | 本番URLへのGET・応答時間・ファイルKB・リンク切れ検査(他3本と違い、ローカルではなく本番URLへのHTTPアクセスのためサーバ不要)。R109: 埋め込みタグの sandbox/referrerpolicy が3箇所で一致しているか |
+| docs/check.mjs | 本番URLへのGET・応答時間・ファイルKB・リンク切れ検査(他3本と違い、ローカルではなく本番URLへのHTTPアクセスのためサーバもPlaywrightも不要)。R109: 埋め込みタグの sandbox/referrerpolicy が3箇所で一致しているか |
+
+実測では「サーバを使う25本」と「Playwrightを使う25本」は完全に同じ集合(`grep -l ensureServer` と `grep -l playwright` の結果が一致)で、サーバ不要かPlaywright不要かで割れる本は存在しない。上記4本だけがどちらも不要。
 
 ## 並列化できない理由
 
-- 23本が同じ**ポート3000**を `--bind 127.0.0.1` で占有します。同時に2本走らせると後発が `EADDRINUSE` で即死します。
-- `check-all.mjs` は `spawnSync` による直列呼び出しの外側の殻で、各 check 本の中身は無編集が原則(AUTOPILOT の運用)。ポートを外から変える口がありません。
+- R130 で `scripts/lib/server.mjs` の `ensureServer()` に一本化され、`findFreePort()` が `listen(0)` で空きポートを実測するため、**ポート3000の奪い合いはすでに解消済み**(現状ポート3000を掴む check 本は0本。`grep -rn "PORT = 3000" scripts/` にヒットするのは check-all 対象外の `dump-rank.mjs` と `make-readme-shots.mjs` のみ)。
+- 残っている障壁は次の2点のみ。
+  1. Windows のメモリ上限: Playwright の Chromium を同時に何個立てるかの上限が未決定(`check-history` が過去に `ERR_NO_BUFFER_SPACE` でフレークした実績あり)。
+  2. フレークが起きたときの切り分けコスト: 直列なら失敗本の特定が容易だが、並列化するとどの本のタイミング干渉かの切り分けが難しくなる。
+- `check-all.mjs` は `spawnSync` による直列呼び出しの外側の殻で、各 check 本の中身は無編集が原則(AUTOPILOT の運用)。
 
 ## 並列化する場合に必要になる改修(今回はやらない)
 
-1. 各本の `const PORT = 3000` を `Number(process.env.YADO_PORT) || 3000` にする(23ファイルの1行修正)。
-2. `check-all.mjs` が本ごとに空きポートを割り当てて環境変数で渡す。
-3. Playwright の Chromium を同時に何個立てるかの上限を決める(Windows のメモリ次第。`check-history` が過去に `ERR_NO_BUFFER_SPACE` でフレークした実績あり)。
-4. 見返りは最大で 4分→1分程度だが、フレークの切り分けが難しくなるコストと引き換えになる。
+- ポートの動的割り当て(各本の空きポート実測・`check-all.mjs` からの環境変数渡し)は **R130 で実装済み**のため、残作業から除外した。
+1. Playwright の Chromium を同時に何個立てるかの上限を決める(Windows のメモリ次第。`check-history` が過去に `ERR_NO_BUFFER_SPACE` でフレークした実績あり)。
+2. 見返りは最大で 4分→1分程度だが、フレークの切り分けが難しくなるコストと引き換えになる。
 
 ## リンク切れ検査(R22/R34)が何を見ているか
 
@@ -77,7 +82,9 @@ R89(2026-09-16)実測: `check-hotelparam` は固定待ちを条件待ちに置�
 - 消してよいと判断したときだけ、みのるんが手で `screenshots/archive/` ごと消す(自動削除の仕組みは作らない)。
 - 目安: 月に1度 `node scripts/archive-shots.mjs --apply` を回すと `screenshots/` 直下が肥大しすぎない。
 
-## この表が古くなっていないかの確認方法(R106)
+## この表が古くなっていないかの確認方法(R106、R135で補強)
 
 - `node scripts/check-all.mjs` の実行結果の本数(冒頭または末尾の総数表示)と、この文書の `^| check` で始まる表行の数(`grep -c "^| check" docs/CHECKS.md`。docs/check.mjs の行も含む)を突き合わせる。
-- 一致しなければ、`scripts/check-all.mjs:14` の `SCRIPTS` 配列と本ファイルの表を名前ベースで比較し、増減分をこの表にも反映する。
+- 一致しなければ、`scripts/check-all.mjs:17` の `SCRIPTS` 配列と本ファイルの表を名前ベースで比較し、増減分をこの表にも反映する。
+- **(R135追加)本数の比較は総数だけでなく、節見出しに書いた本数(「サーバを立てる◯本」等)にも行う**。節見出しの数字・節内の表の行数・`grep -l ensureServer` / `grep -l playwright` の実測本数の3つが一致しているか確認すること。R135では表の行数は合っていたのに見出しの本数だけ古いままになっており、総数一致の確認だけでは見つからなかった。
+- **(R135追加)記述と実装の対応も見る**。「並列化できない理由」「必要な改修」など理由・手順を書いた節は、`grep -rn "PORT = 3000" scripts/` や `grep -rn "ensureServer\|findFreePort" scripts/lib/server.mjs` を実際に流し、書かれている技術的理由が現在のコードと矛盾していないかを確認する。本数だけ合わせて理由の文章を放置すると、存在しない仕組みを前提にした説明が生き残る(R135で発覚した事故はこのパターン)。

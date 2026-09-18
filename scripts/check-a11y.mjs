@@ -1,7 +1,8 @@
 // R13: タップ領域44pxの機械検査
 // 使い方: node scripts/check-a11y.mjs
-// 事前に別ターミナルでローカルサーバーを起動しておくか、このスクリプトが
-// 自分で `python -m http.server 3000` を起動して検証後に落とす。
+// 事前に別ターミナルでローカルサーバーを起動しておくか、単体実行時はこのスクリプトが
+// scripts/lib/server.mjs の ensureServer() 経由で python -m http.server を空きポートで起動し検証後に落とす
+// (check-all.mjs 経由なら親が YADOTABI_BASE で既存サーバーを渡すのでこの本は自分では起動しない)。
 //
 // Playwright は C:\workspace\tools\shot\node_modules のものを絶対パスで読む
 // (このプロジェクトに npm install はしない)。
