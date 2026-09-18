@@ -8,7 +8,7 @@
 // (このプロジェクトに npm install はしない。check-distance.mjs の作りを踏襲する)。
 //
 // 確認項目(5エリア共通):
-//   (a) 理由あり件数が cards(30件)中 10件以上20件以下
+//   (a) 表示カード(cards+more)が10件以上30件以下、かつ全て理由付き
 //   (b) 「この一帯で唯一のX」が付いたカードは、そのXのカテゴリラベルを持つカードが
 //       cards+more(=理由の母数から選ばれた表示分)内に本当に1件だけ
 //   (c) far に reason が付いていない(R152: more は理由付きのみを選ぶ仕様に変わったので reason を持つ)
@@ -66,13 +66,13 @@ async function main() {
     for (const area of AREAS) {
       const data = await suggestData(page, base, area);
 
-      // (a) R152: cards は理由付きのみを5件まで、more は続きを10件まで。
-      // 5エリアとも理由付きは14件以上あるので、表示分は必ず全て理由を持つ。
+      // (a) R155: cards は理由付きのみを5件まで、more は理由付き候補の残り全件(最大REASON_POOL=30件)。
+      // 5エリアとも理由付きは20件以上あるので、表示分は必ず全て理由を持つ。
       const shown = data.cards.concat(data.moreCards);
       const withReason = shown.filter((c) => c.reason).length;
       ok(data.cards.length === 5, `${area}: 初期カードが5件`, data.cards.length);
-      ok(withReason === shown.length && shown.length >= 10 && shown.length <= 15,
-        `${area}: 表示カード(cards+more)が10〜15件で全て理由付き`, { shown: shown.length, withReason });
+      ok(withReason === shown.length && shown.length >= 10 && shown.length <= 30,
+        `${area}: 表示カード(cards+more)が10〜30件で全て理由付き`, { shown: shown.length, withReason });
 
       // (b) 「この一帯で唯一のX」の X が cards 内に本当に1件だけ
       let uniqueOk = true;

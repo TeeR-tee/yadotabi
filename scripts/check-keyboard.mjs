@@ -138,7 +138,7 @@ async function main() {
     ok(flashed === 1, '3. .feedcard__no にフォーカスしEnterで.pin--flashが付く', flashed);
     await waitFor(1300);
 
-    // --- 4. #more-btn に到達しEnterで15枚に展開(R152: 初期5件+もっと見る10件) ---
+    // --- 4. #more-btn に到達しEnterで展開(R155: 初期5件+もっと見るは理由付き候補の実数、草津は25件) ---
     let reachedMoreBtn = false;
     for (let i = 0; i < 400; i++) {
       await page.keyboard.press('Tab');
@@ -158,10 +158,10 @@ async function main() {
       await page.keyboard.press('Enter');
       await waitFor(500);
       const cardCount = await page.locator('.feedcard').count();
-      ok(cardCount === 15, '4. Enterで.feedcardが15枚になる', cardCount);
+      ok(cardCount > 5, '4. Enterで.feedcardが5枚より増える', cardCount);
     } else {
       ok(false, '6. #more-btn フォーカス時に outlineWidth が 0px でない(未到達のためスキップ扱い)');
-      ok(false, '4. Enterで.feedcardが15枚になる(未到達のためスキップ扱い)');
+      ok(false, '4. Enterで.feedcardが5枚より増える(未到達のためスキップ扱い)');
     }
 
     ok(consoleErrors.length === 0, '状態B: コンソールエラー0件', consoleErrors);

@@ -1038,7 +1038,7 @@ console.log('\n(d) その他: context 無指定・不正ホテル');
 }
 
 // ---------------------------------------------------------------------------
-console.log('\n(e) present(): more(31〜60件目)');
+console.log('\n(e) present(): more(6件目以降、REASON_POOL=30件まで)');
 {
   // 40件の OSM スポットを距離違いで用意し、31件以上あるケースを作る
   const manySpots = Array.from({ length: 40 }, (_, i) => ({
@@ -1051,10 +1051,11 @@ console.log('\n(e) present(): more(31〜60件目)');
     fetchWikiNearby: () => Promise.resolve([])
   });
   const res = await E.suggest(HOTEL, CTX);
-  // R152: cards は5件・more は10件で打ち切る。この候補は全て category='other' で
-  // 理由が付かないため、present() の「理由付き0件フォールバック」(上位から出す)が働く。
+  // R155: cards は5件・more は REASON_POOL(30)まで打ち切る。この候補は全て category='other' で
+  // 理由が付かないため、present() の「理由付き0件フォールバック」(上位から出す)が働き、
+  // pool(REASON_POOL=30件)から cards5件を除いた25件が more に入る。
   eq(res.cards.length, 5, '候補6件以上のとき cards は5件のまま');
-  eq(res.more.length, 10, '40件中 cards5件を除いた次の10件が more に入る');
+  eq(res.more.length, 25, '40件中 pool30件から cards5件を除いた25件が more に入る');
   ok(res.cards.every(c => c.name.startsWith('候補')), 'cards は距離順の候補');
   ok(res.more.every(c => c.name.startsWith('候補')), 'more も候補由来');
   // rank 順が連続していること(cards末尾の距離 <= more先頭の距離)

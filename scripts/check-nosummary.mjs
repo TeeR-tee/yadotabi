@@ -7,14 +7,12 @@
 // Playwright は C:\workspace\tools\shot\node_modules のものを絶対パスで読む
 // (このプロジェクトに npm install はしない)。check-distance.mjs の作りを踏襲する。
 //
-// 確認項目(?fixture=dogo 上位30枚):
-//   1. 真に記事が無い12枚すべてに .feedcard__summary--none が付き、NO_SUMMARY_TEXT と一致
-//      (R123: 20枚だった「要約なし」のうち8枚は wikipedia/wikidata タグを持ち記事が実在するため、
+// 確認項目(?fixture=dogo 展開後全件。R155で打ち切りが理由付き候補の実数=28枚に変更):
+//   1. 真に記事が無い枚数すべてに .feedcard__summary--none が付き、NO_SUMMARY_TEXT と一致
+//      (R123: 「要約なし」のうち一部は wikipedia/wikidata タグを持ち記事が実在するため、
 //      NO_SUMMARY_TEXT ではなく HAS_ARTICLE_NO_SUMMARY_TEXT に切り替わる)
-//   2. 要約ありの10枚には --none が付かない(--none の件数がちょうど20 = 12+8)
-//      R119 で 19→20。要約を持つ「愛媛県立道後動物園」(既に無い施設)が候補から消え、
-//      代わりに要約を持たない「御幸寺山」が30位に繰り上がったため。検査項目は減らしていない。
-//   3. .feedcard__summary の総数が30(要約有無にかかわらず全カードに1本)
+//   2. 要約ありのカードには --none が付かない
+//   3. .feedcard__summary の総数が展開後の全件数と一致(要約有無にかかわらず全カードに1本)
 //   4. .feedcard__summary--none の getComputedStyle().color が .feedcard__summary の既定色と異なる
 //   5. コンソールエラー0件
 //   6. R123: 記事が実在する8枚(10位松山城 等)は HAS_ARTICLE_NO_SUMMARY_TEXT を含み、
@@ -64,7 +62,7 @@ function ok(cond, label, extra) {
 }
 
 // R152: 初期表示は5枚に絞られたので、枚数や要素数を数える検査は
-// 「もっと見る」を展開した15枚を母数にする。
+// 「もっと見る」を展開した全件(R155: 理由付き候補の実数)を母数にする。
 async function expandAll(p) {
   const btn = p.locator('#more-btn');
   if (await btn.count()) {
@@ -96,17 +94,20 @@ async function main() {
 
     // R152: 初期カードは5枚になり、その5枚は全て要約を持つ(--none が出ない)。
     // 「要約が無いときの文言」を検査するのがこの本の目的なので、「もっと見る」を
-    // 展開した15枚を母数にする。
+    // 展開した全件(R155実測: dogo 28件)を母数にする。
     if (await page.locator('#more-btn').count()) {
       await page.locator('#more-btn').click();
       await waitFor(900);
     }
 
+    const totalCardCount = await page.locator('.feedcard').count();
     const summaryCount = await page.locator('.feedcard__summary').count();
-    ok(summaryCount === 15, '3. .feedcard__summary の総数が15(展開後)', summaryCount);
+    // R155実測: dogo 展開後28件、全カードに.feedcard__summaryが1本ずつ付く。
+    ok(summaryCount === totalCardCount && totalCardCount === 28, '3. .feedcard__summary の総数が展開後の全件数(28)と一致', summaryCount);
 
     const noneCount = await page.locator('.feedcard__summary--none').count();
-    ok(noneCount === 7, '2. .feedcard__summary--none の件数が7(6+1)', noneCount);
+    // R155実測: dogo 展開後28件のうち19件が--none(記事ありHAS_ARTICLE 7 + 記事なし12)。
+    ok(noneCount === 19, '2. .feedcard__summary--none の件数が19(7+12)', noneCount);
 
     // R123: カードごとに名前と--none本文を突き合わせ、記事あり8枚/記事なし12枚の文言を確認
     const cardRows = await page.locator('.feedcard').evaluateAll((cards) =>
@@ -119,14 +120,15 @@ async function main() {
     const hasArticleRows = noneRows.filter((r) => DOGO_HAS_ARTICLE_NAMES.includes(r.name));
     const noArticleRows = noneRows.filter((r) => !DOGO_HAS_ARTICLE_NAMES.includes(r.name));
 
+    // R155実測(展開後28件が母数): 記事が実在するもの7枚、真に記事が無いもの12枚。
     ok(
-      hasArticleRows.length === 6 && hasArticleRows.every((r) => r.noneText.indexOf(HAS_ARTICLE_NO_SUMMARY_TEXT) === 0),
-      '6a. 記事が実在する6枚がHAS_ARTICLE_NO_SUMMARY_TEXTになっている',
+      hasArticleRows.length === 7 && hasArticleRows.every((r) => r.noneText.indexOf(HAS_ARTICLE_NO_SUMMARY_TEXT) === 0),
+      '6a. 記事が実在する7枚がHAS_ARTICLE_NO_SUMMARY_TEXTになっている',
       hasArticleRows
     );
     ok(
-      noArticleRows.length === 1 && noArticleRows.every((r) => r.noneText === NO_SUMMARY_TEXT),
-      '6b. 真に記事が無い1枚がNO_SUMMARY_TEXTちょうどのまま(誤爆0件)',
+      noArticleRows.length === 12 && noArticleRows.every((r) => r.noneText === NO_SUMMARY_TEXT),
+      '6b. 真に記事が無い12枚がNO_SUMMARY_TEXTちょうどのまま(誤爆0件)',
       noArticleRows
     );
 
@@ -284,12 +286,12 @@ async function main() {
     const dogoHoursCount = await page.locator('.feedcard__hours').count();
     const kinosakiHoursCount = await kinosakiPage.locator('.feedcard__hours').count();
     const total = kusatsuHoursCount + hakoneHoursCount + dogoHoursCount + beppuHoursCount + kinosakiHoursCount;
-    // 2026-09-19 R152 実測(展開後15枚が母数): kusatsu 4 / hakone 2 / dogo 2 / beppu 4 / kinosaki 2 = 合計14枚。
-    // 30枚→15枚に絞ったぶん、営業時間を持つカードも減っている。
+    // 2026-09-19 R155 実測(展開後は理由付き候補の全件が母数): kusatsu 5 / hakone 4 / dogo 3 / beppu 5 / kinosaki 3 = 合計20枚。
+    // 打ち切りを緩めたぶん、営業時間を持つカードも増えている。
     ok(
-      kusatsuHoursCount === 4 && hakoneHoursCount === 2 && dogoHoursCount === 2 && beppuHoursCount === 4 &&
-        kinosakiHoursCount === 2 && total === 14,
-      '(r136) c. 5エリアの .feedcard__hours 件数が実測(4/2/2/4/2=14)と一致',
+      kusatsuHoursCount === 5 && hakoneHoursCount === 4 && dogoHoursCount === 3 && beppuHoursCount === 5 &&
+        kinosakiHoursCount === 3 && total === 20,
+      '(r136) c. 5エリアの .feedcard__hours 件数が実測(5/4/3/5/3=20)と一致',
       { kusatsuHoursCount, hakoneHoursCount, dogoHoursCount, beppuHoursCount, kinosakiHoursCount, total }
     );
 
@@ -323,8 +325,8 @@ async function main() {
     // 定義文1文目のみに限定した結果、「長興山のシダレザクラ」が神社・寺院→スポットに
     // 変わって神社・寺院カテゴリの減点枠が1つ空き、公式サイトを持つ「阿弥陀寺」が
     // top30 に繰り上がったことによる正しい副作用(作業役実測)。
-    // 2026-09-19 R152 実測(展開後15枚が母数): kusatsu 6 / hakone 4 / dogo 4 / beppu 8 / kinosaki 3 = 合計25枚。
-    // 30枚→15枚に絞ったぶん、公式サイトを持つカードも減っている。
+    // 2026-09-19 R155 実測(展開後は理由付き候補の全件が母数): kusatsu 9 / hakone 6 / dogo 4 / beppu 11 / kinosaki 3 = 合計33枚。
+    // 打ち切りを緩めたぶん、公式サイトを持つカードも増えている。
     const officialCountKusatsu = await kusatsuPage.locator('.feedcard__official').count();
     const officialCountHakone = await hakonePage.locator('.feedcard__official').count();
     const officialCountDogo = await page.locator('.feedcard__official').count();
@@ -332,9 +334,9 @@ async function main() {
     const officialCountKinosaki = await kinosakiPage.locator('.feedcard__official').count();
     const officialTotal = officialCountKusatsu + officialCountHakone + officialCountDogo + officialCountBeppu + officialCountKinosaki;
     ok(
-      officialCountKusatsu === 6 && officialCountHakone === 4 && officialCountDogo === 4 &&
-        officialCountBeppu === 8 && officialCountKinosaki === 3 && officialTotal === 25,
-      '(r137) c. 5エリアの .feedcard__official 件数が実測(6/4/4/8/3=25)と一致',
+      officialCountKusatsu === 9 && officialCountHakone === 6 && officialCountDogo === 4 &&
+        officialCountBeppu === 11 && officialCountKinosaki === 3 && officialTotal === 33,
+      '(r137) c. 5エリアの .feedcard__official 件数が実測(9/6/4/11/3=33)と一致',
       { officialCountKusatsu, officialCountHakone, officialCountDogo, officialCountBeppu, officialCountKinosaki, officialTotal }
     );
 
@@ -404,7 +406,7 @@ async function main() {
     const allHaveOneNo = bareDetailRows.every((r) => r.noCount === 1);
     ok(
       allHaveOneNo,
-      '(r140) c. dogo 全30枚で .feedcard__no が1つずつ存在する(帯を畳んでもバッジは消えない)',
+      '(r140) c. dogo 展開後全件で .feedcard__no が1つずつ存在する(帯を畳んでもバッジは消えない)',
       bareDetailRows.filter((r) => r.noCount !== 1)
     );
 

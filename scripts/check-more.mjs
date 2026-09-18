@@ -7,9 +7,9 @@
 // Playwright は C:\workspace\tools\shot\node_modules のものを絶対パスで読む
 // (このプロジェクトに npm install はしない)。check-a11y.mjs の作りを踏襲する。
 //
-// 確認項目(R152 で 30+30 → 初期5件+もっと見る10件=最大15件 に変更):
+// 確認項目(R155 で 初期5件+もっと見るは理由付き候補の実数ぶん=最大30件 に変更):
 //   1. ?fixture=kusatsu を開き、初期状態で .feedcard が5枚、#more-btn が存在する
-//   2. #more-btn を click し、.feedcard の枚数が5枚より増える(理由付き候補の数ぶん、最大15枚)
+//   2. #more-btn を click し、.feedcard の枚数が5枚より増える(理由付き候補の数ぶん、最大30枚)
 //   3. 展開後の6枚目のカードの番号バッジが「6」である
 //   4. 展開後は #more-btn が消えている
 //   5. コンソールエラー0件
@@ -71,7 +71,9 @@ async function main() {
 
     const expandedCount = await page.locator('.feedcard').count();
     ok(expandedCount > 5, '.feedcard の枚数が5枚より増える', expandedCount);
-    ok(expandedCount <= 15, '.feedcard の枚数が15枚を超えない', expandedCount);
+    // R155: 打ち切りを理由付き候補の実数(REASON_POOL=30が上限)に合わせたので、
+    // 件数を固定値で比較せず「30件を超えない」不等式にする(草津の実測は25件)。
+    ok(expandedCount <= 30, '.feedcard の枚数が30枚を超えない', expandedCount);
 
     // R60: 展開後の注記
     const moreNote = page.locator('.morenote');
