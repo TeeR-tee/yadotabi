@@ -1429,6 +1429,41 @@
   }
 
   /**
+   * R151: カードに「なぜこれを出したか」の1文を作る。純粋関数(rank の重み・並び順には触れない)。
+   * `card._debug` と `cardsInView`(present で slice 済みの cards 配列)だけから計算する。
+   * 「記事と写真がある」単独、「宿から徒歩N分」は理由にしない(カードに既に出ている情報の重複になるため)。
+   * 優先順に1つだけ返す。どれにも当たらなければ null(呼び出し側は行ごと出さない)。
+   * @param {Object} card present() が作った Card(_debug 付き)
+   * @param {Array} cardsInView 同じ画面に出ている cards 配列(母数。more/far は含めない)
+   * @returns {?string}
+   */
+  function reasonFor(card, cardsInView) {
+    var d = card && card._debug;
+    if (!d) return null;
+    var label = card.categoryLabel || 'スポット';
+
+    if (d.categoryIndex === 0) {
+      // 'other' は「カテゴリが分からなかった」なので唯一/一番近いを名乗らせない
+      var sameCat = (Array.isArray(cardsInView) ? cardsInView : []).filter(function (c) {
+        return c && c.categoryLabel === label && c._debug && c._debug.category === d.category;
+      });
+      if (d.category !== 'other') {
+        if (sameCat.length === 1) return 'この一帯で唯一の' + label;
+        if (sameCat.length >= 2) return label + 'ではいちばん近い';
+      }
+    }
+
+    if (d.image && d.summary && d.official && d.both) {
+      return '写真・解説・公式サイトが揃っている';
+    }
+    var proofCount = (d.image ? 1 : 0) + (d.summary ? 1 : 0) + (d.official ? 1 : 0) + (d.both ? 1 : 0);
+    if (proofCount >= 3) {
+      return '記事と公式サイトで裏が取れている';
+    }
+    return null;
+  }
+
+  /**
    * 候補を並べる。★暫定実装(有名どころ・記事のある場所に偏る)。
    *
    * (1) 裏付け: Wikipedia の写真・要約、公式サイト、2ソース一致を加点
@@ -1518,7 +1553,8 @@
       openingHours: item.openingHours || null,
       wikipediaTitle: item.wikipediaTitle || null, // R123: 要約が無くても記事の存在を示す裏付け
       wikidataId: item.wikidataId || null, // R123: 同上(wikipediaタグが無い場合の裏付け)
-      _debug: item._debug || null // R84: ?debug=1 のときだけ描画する。通常動作では読まれない
+      _debug: item._debug || null, // R84: ?debug=1 のときだけ描画する。通常動作では読まれない
+      reason: null // R151: present() で cards 確定後に reasonFor() が埋める。more/far には付けない
     };
   }
 
@@ -1546,8 +1582,15 @@
       }
     });
 
+    var topCards = cards.slice(0, MAX_CARDS);
+    // R151: 理由は「今画面に出ている cards」だけを母数に数える。
+    // more/far を母数に入れると視界に入っていない候補で「唯一」を名乗ることになり嘘になるため付けない。
+    topCards.forEach(function (card) {
+      card.reason = reasonFor(card, topCards);
+    });
+
     return {
-      cards: cards.slice(0, MAX_CARDS),
+      cards: topCards,
       more: cards.slice(MAX_CARDS, MAX_CARDS + MAX_MORE),
       far: far.slice(0, MAX_FAR)
     };

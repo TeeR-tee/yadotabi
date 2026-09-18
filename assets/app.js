@@ -1028,11 +1028,15 @@
     var noBtn = '<button type="button" class="feedcard__no" data-no="' + (index + 1) + '" aria-label="' + (index + 1) + '番のピンを地図で光らせる">' + (index + 1) + '</button>';
     var mediaBlock = isBare ? '' : '<div class="feedcard__media">' + media + noBtn + '</div>';
 
+    // R151: 「なぜこれを出したか」の1行。理由が無いカードでは何も出さない(空欄も出さない)。
+    var reason = card.reason ? '<p class="feedcard__reason">💡 ' + escapeHtml(card.reason) + '</p>' : '';
+
     return '<article class="card feedcard' + (isBare ? ' feedcard--bare' : '') + '" data-index="' + index + '">' +
       mediaBlock +
       '<div class="feedcard__body">' +
         (isBare ? noBtn : '') +
         '<h2 class="feedcard__name">' + escapeHtml(card.name) + '</h2>' +
+        reason +
         '<p class="feedcard__meta">' +
           '<span class="feedcard__cat">' + escapeHtml(emoji) + ' ' + escapeHtml(card.categoryLabel || '') + '</span>' +
           '<span class="feedcard__times">🚶徒歩' + escapeHtml(String(card.walkMin)) + '分 · 🚗車' +

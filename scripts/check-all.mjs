@@ -1,5 +1,5 @@
 // scripts/check-all.mjs
-// check-*.mjs 28本 + docs/check.mjs の計29本を直列実行し、pass/fail と所要時間を表で出す。
+// check-*.mjs 29本 + docs/check.mjs の計30本を直列実行し、pass/fail と所要時間を表で出す。
 // 1本でも失敗なら exit 1。
 // R130: 共有サーバ方式。ここで ensureServer() を1回だけ呼び、空きポートのサーバを立てて
 // 各子プロセスに環境変数 YADOTABI_BASE で渡す。子は自分でサーバを起動しないので、
@@ -41,6 +41,7 @@ const SCRIPTS = [
   'scripts/check-passive.mjs',
   'scripts/check-pinflash.mjs',
   'scripts/check-r5.mjs',
+  'scripts/check-reason.mjs',
   'scripts/check-recent.mjs',
   'scripts/check-sample.mjs',
   'docs/check.mjs',
@@ -82,7 +83,7 @@ function saveFailLog(script, res, ms) {
 
 const results = [];
 
-// 親サーバを1本だけ立て、全29本に YADOTABI_BASE で渡す(読まない4本は無視するだけ)
+// 親サーバを1本だけ立て、全30本に YADOTABI_BASE で渡す(読まない4本は無視するだけ)
 const { base, stop } = await ensureServer();
 console.log(`共有サーバ: ${base}`);
 try {

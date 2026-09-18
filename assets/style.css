@@ -489,6 +489,17 @@ body {
   overflow-wrap: anywhere;
 }
 
+/* R151: 「なぜこれを出したか」の1行。絶対に2行にしない(高さが暴れない不変条件)。
+   メタ行(距離等)と同じ大きさだと二重に強調されるので、サブ文字色でメタ行よりわずかに控えめにする */
+.feedcard__reason {
+  margin: 2px 0 0;
+  font-size: var(--fs-sm);
+  color: var(--c-text-sub);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .feedcard__meta {
   margin: 0;
   display: flex;

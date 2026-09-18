@@ -145,9 +145,10 @@ console.log('\n(a) 統合・除外・far分離・Cardのフィールド・リン
 
   // Card の全フィールド(R84: _debug は ?debug=1 の描画元。通常動作では読まれない。
   // R123: wikipediaTitle/wikidataId は記事の存在を示す裏付け。画面には出さない。
-  // R136: openingHours は生の opening_hours 表記。整形・判定は app.js 側の責務)
+  // R136: openingHours は生の opening_hours 表記。整形・判定は app.js 側の責務。
+  // R151: reason は present() で cards 確定後に埋まる「なぜこれを出したか」の1文。toCard 単体では null)
   eq(Object.keys(saino).sort(),
-    ['_debug','categoryLabel','distanceM','driveMin','id','imageUrl','lat','links','lon','openingHours','source','summary','name','walkMin','wikidataId','wikipediaTitle'].sort(),
+    ['_debug','categoryLabel','distanceM','driveMin','id','imageUrl','lat','links','lon','openingHours','reason','source','summary','name','walkMin','wikidataId','wikipediaTitle'].sort(),
     'Card のフィールドが仕様どおり');
   eq(Object.keys(saino.links).sort(), ['gmap','instagram','official','tiktok','youtube'], 'links のキー');
 
