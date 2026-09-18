@@ -760,3 +760,8 @@
 - やったこと: `engine.js`の`merged`後段(R127フィルタと同じ統合・昇格の後)に新ブロックを追加し、「source=osm AND category=zoo/aquarium AND 記事の裏付け/公式サイト無し AND 名前がZOO_FACILITY_WORD(園・館・小屋・パーク・ランド・ZOO・Aquarium・サファリ・牧場・里・村・広場・舎)を1つも含まない」の4条件AND成立時のみ落とす。4エリアのtourism=zoo|aquarium全27要素(名前無し4件含む)を実測し、対象は**カピバラ・ニホンザル・ラマ、ヤギ、ヒツジ・ウサギ・ハクビシン・ドクターフィッシュ・爬虫類(kusatsu7件)+ふわふわ(hakone1件)=8件ちょうど**で誤爆0件を確認。**残したのはワンダーラクテンチ動物園・山地獄動物園・高崎山自然動物園・アフリカンサファリ(beppu)、箱根園水族館・だっこしてZOO・ふれあい動物園ほか(hakone)、愛媛県立とべ動物園(dogo)、草津熱帯圏・うみたまご**で全て名前で確認済み。`check-engine.mjs`に(r143)節9ケース追加(落とす5・残す4、既存ケース削除ゼロ)。
 - 見た目の確認結果: `dump-rank`4エリア比較でkusatsuのみ変化(cards22位ドクターフィッシュ消滅→繰り上げ、moreのニホンザル4位・ウサギ14位・ラマヤギヒツジ22位・カピバラ30位も消滅)、hakone/dogo/beppuは完全無差分(diff空)。kusatsu cards30枚+more30枚を全件目視し非観光対象0件。`?fixture=kusatsu`mobile/desktop・`?fixture=beppu`mobile(25位ワンダーラクテンチ動物園が健在)を撮影しRead目視、文字崩れ・重なり・はみ出しなし。
 - 次: `node scripts/check-engine.mjs` 342 pass/0 fail、`node scripts/check-all.mjs` **29本全緑(exit 0)**。外部API0回。rank・geo.js・fixtures無変更。次のROADMAP項目選定は計画役に引き継ぎ。
+
+### 2026-09-18 R81 城崎温泉の固定データ追加(中止・日を改める)
+- やったこと: `make-fixture.mjs`にkinosaki(35.6262,134.8055)を追加後、`node scripts/make-fixture.mjs kinosaki`を実行したところ環境側の異常(Bashツールのnodeプロセスが編集直後のファイルを反映せず引数解釈が不安定)で、デバッグ中に`node -e`経由でトップレベルコードが複数回誤発火し、kusatsu等の再slimログとWikipedia geosearchへの実フェッチが意図せず走った(Overpass「1回のみ」原則の外側での事故)。kinosaki向けOverpass呼び出しは1度も成功しておらず`fixtures/kinosaki.json`は未生成、既存fixturesにもgit diff無し(実データ破損なし)。
+- 見た目の確認結果: 撮影・線状地形の確認は未実施(fixtureが無いため未着手)。作業役の編集はmake-fixture.mjsのAREAS追加のみで、Editで追加前の状態に戻し、他ファイル(NEXT.md含む8箇所)は未着手のまま。
+- 次: 環境(node実行がファイル編集を即時反映しない不具合)の原因調査を先に行ってから再挑戦。日を改めてR81を再実行。
