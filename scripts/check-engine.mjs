@@ -1682,5 +1682,61 @@ console.log('\n(r146) castle 判定は裸の「城」ではなくタイトル末
     got146b && { category: got146b.category });
 }
 
+// ---------------------------------------------------------------------------
+console.log('\n(r145) 災害という「出来事」そのものの記事を定義文だけで落とす(名前では絶対に落とさない)');
+{
+  // 5エリア250記事の実測(2026-09-18): DEFINITION_DISASTER のヒットは kinosaki の
+  // 「北但馬地震」1件のみ・誤爆0件。落とす側はこの1件の実測 extract そのもの。
+  // 残す側は「〜のふもとにある/建てられた記念碑である」のように災害語を含むが
+  // 定義文の構造(で発生した〇〇である)に当たらない自作ケースで、構造一致の下限を確認する。
+  const R145_WIKI_CASES = [
+    // --- 落とす側: 実測ヒットそのもの(kinosaki 27位の extract) ---
+    { title: '北但馬地震', drop: true,
+      extract: '北但馬地震（きたたじまじしん）あるいは但馬地震（たじまじしん）は、1925年（大正14年）5月23日午前11時11分、兵庫県但馬地方北部で発生した地震である。地震の規模はM6.8。' },
+    // --- 残す側: 災害語(震災)を含むが定義文は「記念碑である」で、構造(で発生した〇〇である)に当たらない ---
+    { title: '関東大震災伝承碑', drop: false,
+      extract: '関東大震災伝承碑（かんとうだいしんさいでんしょうひ）は、神奈川県箱根町にある関東大震災の記憶を伝えるために建てられた記念碑である。' },
+    // --- 残す側: 台風の慰霊碑。「慰霊碑である」で終わり地震/噴火/水害/洪水のいずれの構造にも当たらない ---
+    { title: '狩野川台風殉難者慰霊碑', drop: false,
+      extract: '狩野川台風殉難者慰霊碑（かのがわたいふうじゅんなんしゃいれいひ）は、狩野川台風の犠牲者を弔うために建立された慰霊碑である。' }
+  ];
+
+  const E145 = loadEngine({
+    ...geoMock(),
+    fetchSpots: () => Promise.resolve([]),
+    fetchWikiNearby: () => Promise.resolve(R145_WIKI_CASES.map((c, i) => ({
+      id: 'wp/' + (9500 + i), title: c.title, lat: at(300 + i * 500), lon: HOTEL.lon,
+      distanceM: 300 + i * 500, thumbnailUrl: null, extract: c.extract, url: ''
+    })))
+  });
+  const got145 = new Set((await E145.collect(HOTEL)).map(i => i.name));
+  R145_WIKI_CASES.forEach(c => {
+    if (c.drop) ok(!got145.has(c.title), 'R145 落とす(定義文の構造一致): ' + c.title);
+    else ok(got145.has(c.title), 'R145 残す(構造に当たらない記念碑): ' + c.title);
+  });
+
+  // --- 残す側: OSM由来の実在の記念碑(extract を持たないので isExcludedName 側だけを通る)。
+  //     名前(タイトル)に災害語を含んでいても、DEFINITION_DISASTER は extract 側の
+  //     判定でありOSM要素には一切当たらないことを確認する(現に画面に出ている
+  //     「北但大震災伝承銅像」(kinosaki 24位)・「水害碑」(beppu 21位)の実例)。
+  const R145_OSM_CASES = [
+    { name: '北但大震災伝承銅像', category: 'memorial', label: '記念碑' },
+    { name: '水害碑', category: 'memorial', label: '記念碑' },
+    { name: '狩野川台風殉難者供養塔', category: 'memorial', label: '記念碑' }
+  ];
+  const E145b = loadEngine({
+    ...geoMock(),
+    fetchSpots: () => Promise.resolve(R145_OSM_CASES.map((c, i) => ({
+      id: 'node/' + (9600 + i), name: c.name, lat: at(200 + i * 400), lon: HOTEL.lon,
+      category: c.category, categoryLabel: c.label, distanceM: 200 + i * 400
+    }))),
+    fetchWikiNearby: () => Promise.resolve([])
+  });
+  const got145b = new Set((await E145b.collect(HOTEL)).map(i => i.name));
+  R145_OSM_CASES.forEach(c => {
+    ok(got145b.has(c.name), 'R145 残す(OSM由来の実在の記念碑、名前では判定しない): ' + c.name);
+  });
+}
+
 console.log('\n==== ' + pass + ' pass / ' + fail + ' fail ====');
 process.exit(fail ? 1 : 0);
