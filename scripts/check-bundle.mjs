@@ -182,16 +182,21 @@ async function main() {
       const countBad = headCounts.filter((h) => h.claimed !== h.actual);
       ok(countBad.length === 0, '見出しが名乗る件数と直下のカード枚数が一致', countBad);
 
-      // 5. 番号バッジ・data-index が過不足の無い集合(案A: 順序は束ごとなので連番ではない)
-      const nos = cards.map((c) => Number(c.no)).sort((a, b) => a - b);
-      ok(nos.every((n, i) => n === i + 1), '番号バッジが 1..N を欠落・重複なく1回ずつ使っている',
-        { n: nos.length, missing: nos.filter((n, i) => n !== i + 1).slice(0, 5) });
+      // 5. R159: 番号バッジは地図にピンがある初期5件(index 0..4)だけが持つ。
+      //    6件目以降(index >= 5)は地図にピンが無く押しても何も起きない死んだボタンになるため、
+      //    番号バッジ自体を出さない(no === null)。
       const idx = cards.map((c) => Number(c.index)).sort((a, b) => a - b);
       ok(idx.every((n, i) => n === i), 'data-index が 0..N-1 を欠落・重複なく1回ずつ使っている',
         { n: idx.length, bad: idx.filter((n, i) => n !== i).slice(0, 5) });
-      // 番号と data-index は同じカードで必ず no = index + 1(地図のピン番号の根拠)
-      const noIdxBad = cards.filter((c) => Number(c.no) !== Number(c.index) + 1);
-      ok(noIdxBad.length === 0, '番号バッジ = data-index + 1(ピン番号の根拠が保たれている)',
+      const firstFiveNos = cards.filter((c) => Number(c.index) < 5).map((c) => Number(c.no)).sort((a, b) => a - b);
+      ok(JSON.stringify(firstFiveNos) === JSON.stringify([1, 2, 3, 4, 5]),
+        '初期5件(index 0..4)だけが番号バッジ1..5を持つ', firstFiveNos);
+      const restWithNo = cards.filter((c) => Number(c.index) >= 5 && c.no !== null);
+      ok(restWithNo.length === 0, '6件目以降(index>=5)は番号バッジを持たない(no === null)',
+        restWithNo.map((c) => ({ no: c.no, index: c.index, name: c.name.trim() })));
+      // 番号と data-index は同じカードで必ず no = index + 1(地図のピン番号の根拠、初期5件のみ対象)
+      const noIdxBad = cards.filter((c) => Number(c.index) < 5 && Number(c.no) !== Number(c.index) + 1);
+      ok(noIdxBad.length === 0, '番号バッジ = data-index + 1(ピン番号の根拠が保たれている、初期5件)',
         noIdxBad.map((c) => ({ no: c.no, index: c.index, name: c.name.trim() })));
 
       // 6. 初期5件は rank 順 0..4 のまま先頭(地図のピン1〜5との対応が不変)

@@ -973,7 +973,7 @@
       ' <span class="dbg__b">' + escapeHtml(parts.join(' ')) + '</span></p>';
   }
 
-  function cardHtml(card, index) {
+  function cardHtml(card, index, withNo) {
     var emoji = emojiFor(card.categoryLabel);
     var isPortraitDemo = demoPortrait && index < 3;
     var imgSrc = demoImgFail && index < 3 ? './__imgfail_test__.png' : card.imageUrl;
@@ -1025,7 +1025,12 @@
     // R140: isBare のときは .feedcard__media(絵文字の帯)ごと出さない。
     // 番号バッジ(.feedcard__no)は data-no / aria-label / クラス名を変えず、
     // .feedcard__body の先頭に移すことで帯を畳む(帯が持っていた唯一の価値はバッジの置き場だったため)。
-    var noBtn = '<button type="button" class="feedcard__no" data-no="' + (index + 1) + '" aria-label="' + (index + 1) + '番のピンを地図で光らせる">' + (index + 1) + '</button>';
+    // R159: withNo が偽のカード(束の中=index>=5)は地図にピンが無く、押しても何も起きない
+    // 死んだボタンになるため、番号バッジ自体を出さない(data-index は残す)。
+    var showNo = withNo !== false;
+    var noBtn = showNo
+      ? '<button type="button" class="feedcard__no" data-no="' + (index + 1) + '" aria-label="' + (index + 1) + '番のピンを地図で光らせる">' + (index + 1) + '</button>'
+      : '';
     var mediaBlock = isBare ? '' : '<div class="feedcard__media">' + media + noBtn + '</div>';
 
     // R151: 「なぜこれを出したか」の1行。理由が無いカードでは何も出さない(空欄も出さない)。
@@ -1222,7 +1227,7 @@
 
     // 束分けに失敗したら従来どおり見出し無しで rank 順に並べる(提案そのものは落とさない)
     if (!bundles.length) {
-      return rest.map(function (c, i) { return cardHtml(c, i + offset); }).join('');
+      return rest.map(function (c, i) { return cardHtml(c, i + offset, false); }).join('');
     }
 
     var out = '';
@@ -1239,7 +1244,7 @@
       }
       b.indices.forEach(function (i) {
         // 番号・data-index は rank 順の添字のまま(案A)。並ぶ位置だけが束ごとになる。
-        out += cardHtml(rest[i], i + offset);
+        out += cardHtml(rest[i], i + offset, false);
       });
     });
     return out;
@@ -1276,7 +1281,7 @@
       return;
     }
 
-    var html = state.cards.map(cardHtml).join('');
+    var html = state.cards.map(function (c, i) { return cardHtml(c, i, true); }).join('');
     if (state.moreOpen) {
       html += moreBundledHtml();
     }

@@ -87,9 +87,10 @@ async function main() {
     await page.screenshot({ path: shotPath, fullPage: true });
     console.log('  撮影: ' + shotPath);
 
-    // 3. 6枚目のカードの番号バッジ
-    const badge6 = await page.locator('.feedcard').nth(5).locator('.feedcard__no').textContent();
-    ok(badge6 !== null && badge6.trim() === '6', '展開後6枚目の番号バッジが6', badge6);
+    // 3. R159: 6枚目以降のカードは地図にピンが無く押しても何も起きないため、
+    //    番号バッジ自体を出さない(反転: 以前は '6' であることを確認していた)
+    const badge6Count = await page.locator('.feedcard').nth(5).locator('.feedcard__no').count();
+    ok(badge6Count === 0, '展開後6枚目に番号バッジが存在しない(地図にピンが無いため)', badge6Count);
 
     // 4. #more-btn が消えている
     const moreBtnCountAfter = await moreBtn.count();

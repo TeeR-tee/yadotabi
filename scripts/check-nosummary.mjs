@@ -383,6 +383,7 @@ async function main() {
           bare: c.classList.contains('feedcard--bare'),
           hasMedia: !!c.querySelector('.feedcard__media'),
           hasPh: !!c.querySelector('.feedcard__ph'),
+          index: Number(c.getAttribute('data-index')),
           noCount: c.querySelectorAll('.feedcard__no').length,
           phFontSize: c.querySelector('.feedcard__ph') ? getComputedStyle(c.querySelector('.feedcard__ph')).fontSize : null,
         };
@@ -403,11 +404,13 @@ async function main() {
       '(r140) b. 非bare カード(愛媛大学ミュージアム=写真なし情報あり)には .feedcard__ph が引き続き存在しフォントサイズ44pxのまま',
       univMuseumR140
     );
-    const allHaveOneNo = bareDetailRows.every((r) => r.noCount === 1);
+    // R159: 地図にピンが無い6件目以降(index>=5)は押しても何も起きない死んだボタンになるため
+    // 番号バッジを出さない。初期5件(index<5)は今まで通り1つずつ持つ。
+    const noMismatch = bareDetailRows.filter((r) => (r.index < 5 ? r.noCount !== 1 : r.noCount !== 0));
     ok(
-      allHaveOneNo,
-      '(r140) c. dogo 展開後全件で .feedcard__no が1つずつ存在する(帯を畳んでもバッジは消えない)',
-      bareDetailRows.filter((r) => r.noCount !== 1)
+      noMismatch.length === 0,
+      '(r140) c. dogo 展開後、初期5件のみ .feedcard__no が1つずつ存在し6件目以降は無い(帯を畳んでもバッジ有無はindexで決まる)',
+      noMismatch
     );
 
     await hakonePage.close();
