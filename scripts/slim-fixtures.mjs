@@ -16,7 +16,7 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -92,4 +92,10 @@ function main() {
   targets.forEach(slimOne);
 }
 
-main();
+// このファイルを直接実行したときだけ main() を走らせる。
+// make-fixture.mjs のように import で KEEP_TAG_KEYS 等だけ使いたい呼び出し元では
+// main() が勝手に走らないようにする(Node 標準のエントリポイント判定。
+// pathToFileURL を使うことで日本語パス等のエンコード差異を吸収する)。
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main();
+}
