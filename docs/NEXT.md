@@ -1,103 +1,99 @@
-# NEXT — R140 情報ゼロ35枚の「同じ絵文字をもう一度言うだけ」の64px帯を畳む
+# NEXT — R141 歩いて行けない3県またぎの国立公園2枚を候補から落とす
 
-- タスクID: **R140**
-- 難易度: 小〜中(CSS 2ブロック + app.js の分岐1〜2行)
-- 所要目安: 40〜60分(実装15分 + 4エリア実測と撮影25分 + check-all 29本 約5分)
+- **タスクID**: R141
+- **難易度**: 低〜中(既存の枠組みに除外ルールを1つ足すだけ。R132/R133 と同型)
+- **所要目安**: 30〜45分
 
 ## 目的
 
-R139 で「情報が何も無い35枚」の `.feedcard__media` を 196px → 64px に詰めた。面積は減ったが、**その64pxが出しているものは、すぐ40px下のカテゴリ行とまったく同じ絵文字1個だけ**であることが今回の本番実測で判明した。帯を残す理由は番号バッジの置き場だけなので、**バッジを body 側へ移して帯そのものを畳む**。
+やどたびの根幹は「**宿からの距離**」と「**行き方(Googleマップ)**」の2つ。
+草津の **#8「上信越高原国立公園」・#9「妙高戸隠連山国立公園」** はこの2つが両方とも壊れている。
+この2件を候補から落とし、代わりに徒歩圏の実在する行き先2件を繰り上げる。
 
-## 実測で判明した前提(計画役が本番 https://teer-tee.github.io/yadotabi/ で測定・2026-09-18)
+## 実測で判明した前提(計画役が確認済み。作業役は自分でも数え直すこと)
 
-Playwright / mobile 375x812 / isMobile+hasTouch / `?fixture=<4エリア>`:
-
-| エリア | 全カード | bare | 絵文字が重複 | 帯の高さ | bareカード高さ | 非bareカード高さ | scrollHeight |
-|---|---|---|---|---|---|---|---|
-| kusatsu | 30 | 6 | **6/6** | 64px | 238px | 371/401/407/437px | 11706px |
-| hakone | 30 | 10 | **10/10** | 64px | 238px | (同上の範囲) | 11067px |
-| dogo | 30 | 11 | **11/11** | 64px | 238px | 371/401/407/437px | 10847px |
-| beppu | 30 | 8 | **8/8** | 64px | 238px | 371/407/437/460px | 11514px |
-| **合計** | 120 | **35** | **35/35 (100%)** | — | — | — | — |
-
-- 重複の判定方法: `.feedcard__ph` の `textContent` と `.feedcard__meta` の `textContent` の先頭を突き合わせ、**35枚すべてで `meta.startsWith(ph)` が true**(誤差0件)。
-- 実例(全て実測): dogo #16 商店街 → 帯 `📷` / カテゴリ行 `📷 観光名所`。dogo #30 御幸寺山 → 帯 `⛰` / カテゴリ行 `⛰ 山`。beppu 野口児童公園 → 帯 `🌳` / `🌳 公園`。beppu 水害碑 → 帯 `🗿` / `🗿 記念碑`。beppu ワンダーラクテンチ動物園 → 帯 `🦁` / `🦁 動物園`。
-- 35枚の要約欄は**全件が同一の1文**(`Wikipediaに記事がありません。地図の情報だけで表示しています。`)、リンクチップは全件4本。つまり帯以外に減らせる要素は無い。
-- 帯が残す価値のある唯一の中身は `.feedcard__no`(番号バッジ)。実測で **全カード min-width 24px / height 24px**、タップ領域は `.feedcard__no::after` の 44x44px で担保されている(`assets/style.css:462-470`)。
-- 35枚 × 64px = **2240px** が現状「同じ字を2回言うため」に使われている。
-
-### 本番(実データ)でも R136/R137/R139 が正しく効いていることを確認済み
-
-`?hotel=35.6262,134.8055,城崎温泉ごと地湯`(fixture の無いエリア・実API)で mobile 実測:
-- 営業時間行: 5枚(城崎美術館 `⏰ 月〜日 9:00-16:30`、鴻の湯 `⏰ 7:00-23:00 ほか`、城崎マリンワールド、御所の湯 `⏰ 金〜水 7:00-23:00`、まんだら湯 `⏰ 木〜火 15:00-23:00`)
-- 公式ドメイン行: 4枚(`kinosaki-onsenji.jp` 2枚、`marineworld.hiyoriyama.co.jp`、`genbudo-park.jp`)
-- bare(64px帯): 19枚 / 非bare の `.feedcard__media` は全件196px / コンソールエラー **0件**
-- 撮影: `screenshots/planner-r140-prod-kinosaki_mobile.png`(1枚目)、`screenshots/planner-r140-prod-kinosaki-scroll_mobile.png`(#4〜#6。同じ絵文字が縦に2つ並ぶのが見える)
-- `node docs/check.mjs` = **29件 全OK / 総計3732ms / 平均129ms / 合計1482.6KB**(本番の健全性に問題なし)
+1. `node scripts/dump-rank.mjs kusatsu` の cards に、**#8 上信越高原国立公園(wiki・2602m)**、
+   **#9 妙高戸隠連山国立公園(wiki・2602m)** が、**要約○・画像○**で並んでいる。
+2. `fixtures/kusatsu.json` の `wiki.query.pages` 内で、**この2記事の `coordinates` は完全に同一の
+   `36.6250, 138.6250`**。小数点以下が 1/8 グリッドに乗った**丸められた代表点**であり、実際の
+   行き先の座標ではない。だから距離が2枚とも同じ 2602m になる。
+   - 上信越高原国立公園は草津を含む一帯そのもの、妙高戸隠連山国立公園の実範囲は
+     新潟・長野県境で**草津から直線70km以上**。どちらも「2602m先の1地点」ではない。
+3. 定義文(extract 冒頭)は以下。**「またがる」と自分で書いている**のが決め手:
+   - 上信越高原国立公園: `…群馬県（上野国）、長野県（信濃国）及び新潟県（越後国）の3県の境界にまたがる国立公園である。`
+   - 妙高戸隠連山国立公園: `…新潟県と長野県にまたがる国立公園である。`
+4. **4エリア200記事に候補ルールを当てた実測**:
+   - `/にまたがる[^。]{0,12}(国立公園|国定公園|自然公園)である/` → **ヒット2件ちょうど・誤爆0件**
+   - `/(国立公園|国定公園)である/`(広い版) → 同じく2件・誤爆0だが、**採らない**
+     (将来「◯◯国定公園内にある滝」等の**単一地物**記事を巻き込む余地があるため)
+5. **落ちた後の繰り上がり**(`dump-rank kusatsu` の more 上位):
+   - more #1 **壹千参百年記念之碑**(osm・記念碑・**90m**)
+   - more #2 **地蔵源泉**(osm・温泉源・**197m**)
+   - どちらも草津温泉街の徒歩圏。国立公園より「宿の周りの提案」として明確に上等。
 
 ## 対象ファイル(絶対パス)
 
-- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\app.js`(`cardHtml()` 1023行付近の `isBare`、1025-1028行の `<article>` 組み立て)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\style.css`(438-444行の `.feedcard--bare` 2ブロック、446-470行の `.feedcard__no` は参考)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-nosummary.mjs`((r140) 節の追加のみ。既存ケースは1つも削除しない)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md` / `docs\NIGHTLOG.md`(完了記録)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\assets\engine.js` — 除外ルール1つ追加
+- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-engine.mjs` — (r141) 節を追加
+- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md` — 完了印
+- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\NIGHTLOG.md` — サイクル記録3行
 
 ## 実装方針
 
-1. `cardHtml()` の `isBare` 判定は**そのまま使う**(R139 の条件を変えない)。
-2. `isBare` が真のときだけ、`.feedcard__media` の中身から `.feedcard__ph`(絵文字)を出さず、**番号バッジを `.feedcard__body` の左上に絶対配置する**。実装の形は2案あり、**作業役が実測で選んで理由を NIGHTLOG に1行書く**:
-   - 案1: `isBare` のとき `<div class="feedcard__media">` ごと出さず、バッジを `.feedcard__body` の先頭に入れる(`.feedcard--bare .feedcard__body { position:relative; padding-top: … }` で名前行とバッジがぶつからないよう詰める)。
-   - 案2: `.feedcard--bare .feedcard__media { height:0; overflow:visible }` にして帯を潰し、バッジだけ既存の絶対配置のまま body の上に重ねる。
-   - どちらでも **DOM 上のバッジの `data-no` / `aria-label` / クラス名は変えない**(番号ピン連動 `check-pinflash.mjs` と `check-a11y.mjs` が依存しているため)。
-3. CSS の追加セレクタは **`.feedcard--bare` 配下に限る**。`.feedcard__media` / `.feedcard__ph` / `.feedcard__no` の素のセレクタは1文字も触らない(85枚が動く)。
-4. `?embed=1` でも同じ挙動になること(専用の分岐は書かない)。
-5. `@media print`(`style.css:852`)と `.feedcard--skeleton`(`:587`)は `.feedcard--bare` と無関係なので触らない。壊していないことを撮影で確認する。
-
-## 却下した案とその理由
-
-- **帯に距離や徒歩分数を出す**: すでに `.feedcard__meta` に `🚶徒歩2分 · 🚗車1分 · 94m` が出ており、今と同じ重複を作り直すだけ。
-- **帯の背景色だけ変える / 絵文字を小さくする**: 面積は1pxも減らず、重複も残る。
-- **bare カードを候補から外す**: R139 で既に却下済み(湯畑・グローバルタワー・道後ハイカラ通りなど、データが薄いだけの一級の行き先が35枚に多数)。rank も触らない。
-- **番号バッジを消す**: 地図のピンとの対応が切れる。R139 でも「絶対に消さない」と決めている。
-- **カテゴリ行の絵文字のほうを消す**: カテゴリ行は85枚と共通の要素なので、消すと写真ありカードまで変わる(本タスクの「85枚無改変」に反する)。
+1. `engine.js` の定数群(`DEFINITION_NOT_PLACE` `DEFINITION_INDEX_ARTICLE` の近く、
+   現状 380〜405行付近)に **`DEFINITION_WIDE_AREA`** を1つ追加する。
+   正規表現は上記4の**狭い版**を使う。なぜ広い版を採らないかをコメントに必ず書くこと。
+2. 判定を当てる場所は `isExcludedArticle()`(現状 632行付近)。
+   **R133 の `DEFINITION_INDEX_ARTICLE` と違い、生の extract ではなく
+   `definitionPredicate()` が返す述部に当てる**(= R117〜R121 と同じ範囲)。
+   理由: 記事名の言い直し(主題部)を落とした後でも `…にまたがる国立公園である` は
+   述部側に残るため、生 extract を見る特例を作る必要がない。
+   **保護リスト(末尾一致)の評価より後ろ**に置くこと(既存の並び順に従う)。
+3. `check-engine.mjs` に `(r141)` 節を追加:
+   - **落とす2件**: 上記3の2記事(実際の extract 文字列を使う)
+   - **残す対照**: 単一地物として正しい候補を数件。最低限
+     「道の駅 草津運動茶屋公園」「本白根山」「常布の滝」相当のケースと、
+     **`国立公園` の語を含むが単一地物である文**(例:
+     `◯◯滝（…）は、上信越高原国立公園内にある滝である。` のような自作ケース)を
+     **必ず1件入れる**(広い版との違いをテストで固定するため)。
+   - **既存ケースの削除はゼロ**。
 
 ## 完了条件
 
-1. 4エリア(kusatsu/hakone/dogo/beppu)で bare **35枚**のカード高さが **238px から下がる**(目標 180px 前後。作業役が実測値を NIGHTLOG に書く)。
-2. 非 bare **85枚**の `.feedcard__media` 高さ・カード高さが**変更前と完全一致**する(196px / 371・401・407・437・460px)。
-3. `.feedcard__no` が **全120枚**で可視かつ `::after` のタップ領域 44x44px を保つ(`check-a11y.mjs` 継続全OK)。
-4. mobile 375x812 の1画面に入る bare カードが **3枚 → 4枚以上**になる(撮影2枚を並べて確認)。
-5. `?fixture=kusatsu&embed=1` でも同じこと。
-6. `scripts/check-nosummary.mjs` に **(r140) 節**を追加(例: 「bare カードに `.feedcard__ph` が存在しないこと」「非 bare の `.feedcard__ph` はこれまで通り存在し44pxのままであること」「全カードで `.feedcard__no` が1つ存在すること」)。**既存ケースの削除は0件**。
-7. `node scripts/check-all.mjs` が **29本全緑(exit 0)**。
+1. `node scripts/dump-rank.mjs kusatsu` から当該2件が消えている。
+2. **hakone / dogo / beppu の3エリアは変更前後で完全無差分**。
+3. kusatsu の繰り上がりが「壹千参百年記念之碑」「地蔵源泉」の**2件ちょうど**で、
+   cards 30枚を**目視して誤爆0**。
+4. `scripts/check-engine.mjs` に (r141) 節が入り、既存ケースの削除が0件。
+5. `node scripts/check-all.mjs` が **29本中29本 PASS(exit 0)**。
 
 ## 検証手順
 
-1. `node --check assets/app.js`
-2. 撮影(すべて `node C:\workspace\tools\shot\shot.mjs <URL> --mobile` / PC幅は `--width 1280`):
-   - `http://127.0.0.1:<port>/?fixture=dogo` **mobile 375**(bare が最多の11枚。1画面の枚数を数える)
-   - `http://127.0.0.1:<port>/?fixture=beppu` **mobile 375**
-   - `http://127.0.0.1:<port>/?fixture=kusatsu` **mobile 375**(写真ありカードが無改変であること)
-   - `http://127.0.0.1:<port>/?fixture=hakone` **desktop 1280**
-   - `http://127.0.0.1:<port>/?fixture=kusatsu&embed=1` **mobile 375**
-   画像を `Read` で開いて、文字崩れ・重なり・はみ出し・番号バッジの欠けや名前行との衝突・空白の異常が無いことを**目で**確認する。
-3. Playwright で4エリアの実測値(bare件数・bareカード高さ・非bareカード高さ・`.feedcard__no` の有無と `::after` サイズ)を**自分で数え直し**、上の表と突き合わせる。
-4. `node scripts/check-all.mjs` → **29本全緑(exit 0)** を確認。落ちたら同サイクルで直す。
+1. 変更**前**に `node scripts/dump-rank.mjs kusatsu|hakone|dogo|beppu` を4回流して保存。
+2. 実装 → `node --check assets/engine.js`。
+3. 変更**後**に同じ4回を流し、**4エリアとも変更前と全件突き合わせ**(2〜3の確認)。
+4. `node scripts/check-engine.mjs` が全 pass。
+5. **`node scripts/check-all.mjs` が 29本全緑(exit 0)** ← 必須。
+6. 撮影と目視: `node C:\workspace\tools\shot\shot.mjs "http://127.0.0.1:<port>/?fixture=kusatsu" --mobile`
+   と desktop、加えてデグレ確認用に `?fixture=dogo` mobile を1枚。
+   画像を Read で開き、**8位・9位が繰り上がった2件に変わっていること**、
+   文字崩れ・重なり・はみ出し・番号バッジ欠け・帰属表示の欠落が無いことを目視。
 
 ## 変更禁止範囲
 
-- **rank の重み・閾値**(順位は1つも動かさない。表示面積だけの変更)
-- **`assets/geo.js`**・**`fixtures/*.json`**(1バイトも触らない)
-- **入力UIの追加禁止**(入力欄・設定・チュートリアルを増やさない)
-- **外部APIの呼び出しは 0回**(Overpass / Nominatim / Wikipedia を一度も叩かない。検証は全て `?fixture=` で行う)
-- **`.feedcard--bare` 以外のセレクタを CSS に書かない**(85枚を動かさないための構造的な保証)
-- **`.feedcard__no` の `data-no` / `aria-label` / クラス名は変更しない**
-- **本 NEXT.md の数値は計画役の実測値だが、作業役は自分で実測し直して NIGHTLOG に自分の数値を書くこと**(過去サイクルで想定と実測が1〜2枚ずれた例が2回ある)
+- **rank の重み・閾値は変更禁止**(除外ルールを足すだけ。スコア計算式に触らない)
+- **`assets/geo.js` と `fixtures/` は変更禁止**
+- **入力UIの追加禁止**(泊数・移動手段・○△×・行った！を復活させない)
+- **外部API 0回**(fixture のみで完結する)
+- `git stash` / `reset --hard` / `checkout` でのファイル復元は禁止
+- **数値は作業役が自分で実測して書く**。上の数値は計画役の実測値なので、
+  食い違ったら**自分の実測値を採用**し、その旨を NIGHTLOG に書くこと。
 
 ## 終わったら
 
-1. `docs/ROADMAP.md` の R140 行を **`- [x] 2026-09-18 R140 …`** にする。
-2. `docs/NIGHTLOG.md` の**ファイル末尾**の「## サイクル記録」節の**末尾**に、`### 2026-09-18 R140 <一言>` の見出しを付けて **3行**(やったこと / 見た目の確認結果 / 次)を追記する。**ファイル先頭に新しい節を作らない**。
-3. **先にコミット**(1行の日本語メッセージ)。
-4. `git push`。
-5. 報告は簡潔に(長文の報告書を書かない)。
+1. `docs/ROADMAP.md` の R141 を **[x] 2026-09-18** に
+2. `docs/NIGHTLOG.md` の**ファイル末尾**の「## サイクル記録」節の**末尾**に、
+   `### 2026-09-18 R141 <一言>` の見出し付きで**3行**(やったこと/見た目の確認結果/次)
+3. **先にコミット**(1行の日本語メッセージ)
+4. `git push`
+5. **報告は簡潔に**(長文の報告書を書かない)
