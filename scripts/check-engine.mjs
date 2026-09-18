@@ -1633,5 +1633,54 @@ console.log('\n(r143) 動物園・水族館の「中の展示」(動物の種名
     'R143 残す: 草津熱帯圏(施設語に当たらないが wiki/website の裏付けで先に keep)');
 }
 
+// ---------------------------------------------------------------------------
+console.log('\n(r146) castle 判定は裸の「城」ではなくタイトル末尾一致(城崎などの地名を誤爆しない)');
+{
+  // 5エリア250記事の実測で判明した誤爆(地名の一部に「城」を含むだけ)の代表3件+本物の城3件。
+  // 誤爆側は castle にならないこと、本物の城側は castle のままであることを確認する。
+  const R146_CASES = [
+    // --- 誤爆側(地名「城崎」「城崎郡」を含むだけで城ではない) ---
+    { title: '城崎国際アートセンター', extract: '城崎国際アートセンターは兵庫県豊岡市城崎町にある文化施設である。', category: 'other', label: 'スポット' },
+    { title: 'ひのそ島', extract: '兵庫県豊岡市城崎町に属する無人島である。', category: 'other', label: 'スポット' },
+    { title: '竹野鉱山', extract: '兵庫県城崎郡竹野町にあった鉱山である。', category: 'other', label: 'スポット' },
+    // --- 本物の城(名前が「城」で終わる) ---
+    { title: '羽根尾城', extract: '群馬県吾妻郡長野原町にあった日本の城である。', category: 'castle', label: '城・城跡' },
+    { title: '長野原城', extract: '群馬県吾妻郡長野原町にあった日本の城である。', category: 'castle', label: '城・城跡' },
+    { title: '湯築城', extract: '愛媛県松山市道後公園にあった日本の城である。', category: 'castle', label: '城・城跡' }
+  ];
+
+  const E146 = loadEngine({
+    ...geoMock(),
+    fetchSpots: () => Promise.resolve([]),
+    fetchWikiNearby: () => Promise.resolve(R146_CASES.map((c, i) => ({
+      id: 'wp/' + (9300 + i), title: c.title, lat: at(300 + i * 500), lon: HOTEL.lon,
+      distanceM: 300 + i * 500, thumbnailUrl: null, extract: c.extract, url: ''
+    })))
+  });
+  const items146 = await E146.collect(HOTEL);
+  const byName146 = Object.fromEntries(items146.map(i => [i.name, i]));
+  R146_CASES.forEach(c => {
+    const got = byName146[c.title];
+    ok(!!got && got.category === c.category && got.categoryLabel === c.label,
+      'R146 カテゴリ推定: ' + c.title + ' → ' + c.label,
+      got && { category: got.category, label: got.categoryLabel });
+  });
+
+  // 曖昧さ回避カッコ付きでも末尾一致が効くこと(「〜城 (市)」のような形は今回の実測に
+  // 実例は無いが、stripDisambiguation を再利用している設計を裏付ける対照ケース)。
+  const E146b = loadEngine({
+    ...geoMock(),
+    fetchSpots: () => Promise.resolve([]),
+    fetchWikiNearby: () => Promise.resolve([
+      { id: 'wp/9400', title: '湯築城 (愛媛県)', lat: at(300), lon: HOTEL.lon,
+        distanceM: 300, thumbnailUrl: null, extract: '愛媛県松山市にあった日本の城である。', url: '' }
+    ])
+  });
+  const got146b = (await E146b.collect(HOTEL))[0];
+  ok(!!got146b && got146b.category === 'castle',
+    'R146 曖昧さ回避カッコを剥がしても末尾一致が効く: 湯築城 (愛媛県)',
+    got146b && { category: got146b.category });
+}
+
 console.log('\n==== ' + pass + ' pass / ' + fail + ' fail ====');
 process.exit(fail ? 1 : 0);

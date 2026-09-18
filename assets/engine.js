@@ -478,7 +478,7 @@
     { category: 'hot_spring', label: '温泉', words: ['温泉'],
       deny: ['バスターミナル', 'スキー場', '遊園地', '球技場', 'ゴルフ場', '競馬場',
         '空港', '駅である', '山。', '山である', '岳。', '岳である'] },
-    { category: 'castle', label: '城・城跡', words: ['城跡', '城址', '城'] },
+    { category: 'castle', label: '城・城跡', words: ['城跡', '城址'] },
     { category: 'place_of_worship', label: '神社・寺院', words: ['神社', '寺院', '大社', '神宮', '寺'] },
     { category: 'museum', label: '美術館・博物館', words: ['美術館', '博物館', '資料館', '記念館'] },
     { category: 'nature', label: '自然・景勝', words: ['湖', '渓谷', '峠', '高原', '湿原', '鍾乳洞', '洞窟'] },
@@ -909,9 +909,14 @@
     var e = typeof extract === 'string' ? extract : '';
     var scope = definitionScope(t, e);
     var i, j, hint;
+    // R146: 裸の「城」は「城崎」「城崎郡」などの地名にも当たってしまうため words から外した。
+    // 代わりに castle 行だけ、タイトル(曖昧さ回避カッコを剥がした形)の末尾一致で判定する。
+    // words ループ(タイトル部分一致の周)と同じ優先順位の位置で評価すること。
+    var strippedTitle = stripDisambiguation(t);
     for (i = 0; i < WIKI_CATEGORY_HINTS.length; i++) {
       hint = WIKI_CATEGORY_HINTS[i];
       if (isDenied(hint, scope)) continue;
+      if (hint.category === 'castle' && /(城跡|城址|城)$/.test(strippedTitle)) return hint;
       for (j = 0; j < hint.words.length; j++) {
         if (t.indexOf(hint.words[j]) !== -1) return hint;
       }
