@@ -1,117 +1,133 @@
-# NEXT: R149 5エリア化の取りこぼしを6箇所まとめて塞ぐ
+# NEXT: R150 死活チェックの「遅い日」の印を、相対倍率でなく絶対しきい値で付ける
 
-- タスクID: **R149**
-- 難易度: 低〜中(検査の期待値更新4箇所 + 文書3箇所。ロジック改変なし)
-- 所要目安: 40〜60分(うち `check-all` 1回が約1〜2分)
+- タスクID: **R150**
+- 難易度: 低(`docs/check.mjs` の集計節に数行 + `docs/CHECKS.md` に1行。判定ロジックの追加のみ)
+- 所要目安: 30〜45分(うち `check-all` 1回が約4〜5分)
 
 ## 目的
 
-城崎温泉(kinosaki)を5エリア目として追加したのに、**「エリアを列挙している箇所」が4エリアのまま残っている**。
-とくに `check-nosummary.mjs` の3つの regression ガードが城崎を一度も開いていないため、
-**城崎だけ品質の網が掛かっていない**。R145〜R148 の4サイクルは全て城崎で穴が見つかったエリアであり、
-そこにガードが無いのは最も危険。あわせて文書の数字も古い。同種の作業なので**6件まとめて1サイクルで直す**。
+`docs/check.mjs` は毎日 GitHub Actions で本番を叩いているが、集計は
+`合計 N件 / 総計 Xms / 平均 Yms` と `最遅: <label> <ms>ms` の2行だけで、
+**どれが異常に遅いのかは人が30行の数字を見比べるしかない**。Actions のログは毎日流れていくので、
+遅い日に気づける仕組みが無い。ROADMAP R103 の起票内容そのもの。
 
-## 実測で判明した前提(計画役が Playwright mobile 375x812 と dump-rank で測った)
+ただし **R103 が提案している「平均の2倍を超えた項目に印を付ける」は、計画役の実測で不成立と判明した**。
+下の実測前提のとおり、この案は採らない。**絶対しきい値で印を付ける**。
 
-### 漏れの一覧(ファイル名・行番号つき)
+## 実測で判明した前提(計画役が本番 https://teer-tee.github.io/yadotabi/ に対して `node docs/check.mjs` を計4回実行して測った)
 
-| # | 場所 | 現状 | 直す内容 |
+**(1) 本番は健全**: 4回とも **30件すべて OK・exit 0**・失敗0件。`fixtures/kinosaki.json` も HTTP 200 で
+`meta.lat` を持ち、5エリアすべてが本番に載っている。今回のタスクは不具合の修正ではなく、監視の精度向上。
+
+**(2) 計測値は「コールドかウォームか」で平均が 6.7倍swing する**(これが最重要):
+
+| 実行 | 平均 | 総計 | 最遅 |
 |---|---|---|---|
-| 1 | `scripts/check-nosummary.mjs:167` | `const AREAS = ['kusatsu','hakone','dogo','beppu']` | `'kinosaki'` を足して5エリアに。R124「行き止まりカード」検査が城崎を開くようにする |
-| 2 | `scripts/check-nosummary.mjs:250-268` | `(r136) c.` 営業時間の総数ガードが `5/4/4/5=18` の**4エリア合計** | kinosaki を加えた5エリア合計に。期待値は**作業役の実測値** |
-| 3 | `scripts/check-nosummary.mjs:291-311` | `(r137) c.` 公式ドメインの総数ガードが `9/7/5/11=32` の**4エリア合計** | 同上。kinosaki を加えた5エリア合計に |
-| 4 | `README.md:95-103` | 「写真があるカードの割合」表が**4行**・草津の数字も古い(表 15件/50% vs 実測14件) | 5行にし、5エリアとも**作業役の実測値**に直す |
-| 5 | `docs/FIXTURES.md:108` | 「`dump-rank` を**4エリア分**取り差分ゼロを確認」 | 「5エリア分」に直す |
-| 6 | `docs/NIGHTLOG.md:9` | 朝のまとめ「触ってみるURL」が `?fixture=kusatsu / ?fixture=hakone` の2つだけ | `?fixture=kinosaki` を足す(1行の編集。過去のサイクル記録は1行も消さない) |
+| 1回目(コールド) | **135ms** | 4045ms | index.html 230ms |
+| 2回目(ウォーム) | 20ms | 594ms | index.html 68ms |
+| 3回目 | 20ms | 596ms | index.html 60ms |
+| 4回目 | 20ms | 598ms | index.html 68ms |
+| 5回目 | 20ms | 612ms | index.html 61ms |
 
-### 計画役の実測値(**参考。作業役は必ず自分で測り直して書くこと**)
+ウォーム時は3回とも平均 20ms・総計 594〜612ms で**極めて安定**している(揺れは 3% 以内)。
+遅いのは GitHub Pages の CDN キャッシュが冷えている初回だけ。
 
-`?fixture=<area>` を mobile 375x812 で開いて DOM を数えた値:
+**(3) コールド時の分布は bimodal で、平均が「谷」に落ちる**。1回目の30件の ms を昇順に並べた実測:
 
-| area | .feedcard | .feedcard__hours | .feedcard__official | .feedcard--bare | 行き止まり |
-|---|---|---|---|---|---|
-| kusatsu | 30 | 5 | 9 | 7 | 0 |
-| hakone | 30 | 4 | 7 | 9 | 0 |
-| dogo | 30 | 4 | 5 | 11 | 0 |
-| beppu | 30 | 5 | 11 | 8 | 0 |
-| **kinosaki** | 30 | **4** | **4** | **8** | 0 |
+```
+8 21 25 27 28 29 31 31 31 36 | 132 174 175 177 179 182 182 184 187 187 193 200 205 209 215 229 230 230 | 3973
+```
 
-`dump-rank` の上位30件で「画像有 ○」の枚数: 草津14 / 箱根11 / 道後10 / 別府11 / **城崎18**(城崎が5エリアで最多)。
+- 前半10件(8〜36ms)= **HEAD のみのリンク検査**(`checkLink`。本文を読まない)
+- 後半18件(132〜230ms)= **本文を読む検査**(`checkTarget`。index.html・assets 7本・fixtures 5本 ほか)
+- 末尾の 3973ms は集計行の「総計」であって1項目ではない(grep の副産物。項目ではないので無視してよい)
 
-### 漏れていなかった箇所(**確認済み・触らなくてよい**)
+**平均 135ms は、36ms と 132ms の間の「何も無い谷」に落ちている**。
+よって **2倍(=270ms)を超える項目は 1件も無い**(最遅が 230ms)。
+つまり R103 の案をそのまま実装すると、**コールドの遅い日にこそ印が1つも出ない**。
 
-`scripts/make-fixture.mjs:20-25` AREAS(5件) / `scripts/slim-fixtures.mjs:61`(5件) /
-`docs/check.mjs:20-24` TARGETS(5件) / `assets/app.js:1929-1934` SAMPLE_LINKS(5件) /
-`scripts/check-sample.mjs:73-78`(6本・前サイクルで修正済み) / `scripts/check-attrib.mjs:185-189`(5件) /
-`README.md:3,29,114` パラメータ表(5件) / `README.md:216-220` サイズ表(5行) /
-`docs/FIXTURES.md:17-21` 対象エリア表・`:29-33` far 実測表(5行)。
+**(4) 逆にウォーム時に2倍ルールを当てると誤検知が量産される**: 平均 20ms の2倍 = 40ms を超える項目は、
+2回目の実測で **index.html 68ms のみならず本文系が軒並み該当しうる**(ウォーム時の本文系は 8〜9ms まで落ちるため
+実際には該当0〜1件だが、境界が 40ms という極小値に張り付くので、わずかな揺れで印が付いたり消えたりする)。
 
-**`assets/engine.js` のコメント中の「4エリア200記事」は変更しない** — それらは各ルールを実測した
-**当時の記録**であり、R145/R148 が追記した「5エリア250記事」と併存しているのが正しい状態。
+**結論: 「平均の N 倍」は、母数である平均自身が 20ms〜135ms と 6.7倍 swing するため基準にならない。**
+速い日は基準が下がって誤検知、遅い日は基準が上がって見逃す、という**逆向きに壊れる**性質を持つ。
+
+**(5) 採用する絶対しきい値の根拠**: ウォーム最遅 68ms、コールド最遅 230ms、コールド本文系の上限 230ms。
+**500ms を「遅い」の線にすると、実測4回のどれでも印は1つも出ない**(=平常日は静か)。
+GitHub Pages が実際に不調な日(数百ms〜秒オーダー)にだけ出る。
+2000ms を「かなり遅い」の第2段にすると、コールド最遅 230ms の約8.7倍で、明確な異常だけを拾える。
 
 ## 対象ファイル(絶対パス)
 
-- `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-nosummary.mjs`(#1〜#3)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\README.md`(#4)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\FIXTURES.md`(#5)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\NIGHTLOG.md`(#6 + サイクル記録)
-- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md`(完了マーク)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\check.mjs` — 集計節(336〜357行目あたり)
+- `C:\workspace\claude\旅行先用サイト\yadotabi\docs\CHECKS.md` — 1行追記
 
 ## 実装方針
 
-1. **先に自分で実測する**。`?fixture=kinosaki` を含む5エリアを Playwright で開き、
-   `.feedcard__hours` / `.feedcard__official` / `.feedcard--bare` / 行き止まりカードを数える。
-   `dump-rank` 5エリアで「画像有 ○」も数える。**上の表は照合用で、書き込むのは自分の数字**。
-2. `check-nosummary.mjs:167` の `AREAS` に `'kinosaki'` を追加。
-   同ファイルはページを使い回す構造(`beppuPage` / `page`=dogo / `kusatsuPage` / `hakonePage`)なので、
-   **kinosaki 用のページを1つ足して同じ形で開き、`finally` の前で `close()` するのを忘れない**。
-3. `(r136) c.` と `(r137) c.` の合計計算に kinosaki の件数を加え、`ok()` の条件式・メッセージ・
-   デバッグ出力オブジェクトを5エリアぶんに揃える。コメントに
-   `2026-09-18 R149 実測: kusatsu …/ kinosaki … = 合計…` を1行残す。
-4. README の表に城崎の行を足し、5行とも実測値に直す(割合は 30 で割った整数%)。
-5. FIXTURES.md の「4エリア分」→「5エリア分」。
-6. NIGHTLOG の「触ってみるURL」に城崎を1つ足す。
+1. `docs/check.mjs` の R33 集計節(`if (timings.length > 0) {` の中、`最遅:` を出した直後)に、
+   **絶対しきい値を超えた項目を列挙する行**を足す。
+   - `const SLOW_MS = 500;` `const VERY_SLOW_MS = 2000;` をファイル上部の定数域(`const timings = []` の近く)に置く。
+   - `timings.filter(t => t.ms >= SLOW_MS)` が空なら **何も出さない**(平常日はログを増やさない)。
+   - 1件以上あれば `遅い項目(${SLOW_MS}ms以上): <label> <ms>ms, <label> <ms>ms` の形で1行。
+   - `VERY_SLOW_MS` 以上のものは同じ行の中で `<label> <ms>ms(かなり遅い)` のように注記する。
+2. **`hasFailure` には一切触らない**。`docs/check.mjs:30` の `hasFailure` と `:358` の `process.exitCode = 1`
+   は無編集。遅さで赤くしないのは R33/R46 からの方針(GitHub Pages の揺らぎで Actions を赤くしない)。
+3. `docs/CHECKS.md` に1行、「`docs/check.mjs` は 500ms 以上かかった項目を集計行の後に列挙する(失敗判定はしない)」旨を追記する。
 
-**やらないこと**: 新しい検査ファイルの追加、`check-nosummary` の既存ケースの削除、
-engine/app/style の変更、カードの順位や枚数を動かす変更。
+## 却下した案とその理由
+
+- **(却下) R103 が書いている「平均の2倍」**: 上記実測(3)(4)のとおり、平均が 20ms〜135ms で 6.7倍 swing し、
+  しかもコールド時は平均が bimodal の谷に落ちるため **遅い日に限って印が出ない**。基準として成立しない。
+- **(却下) 中央値やパーセンタイルを基準にする**: 分布が bimodal(HEAD 系と本文系の2群)なので、
+  中央値も2群の境目で不安定に飛ぶ。同じ欠陥を持つ。
+- **(却下) HEAD 系と本文系で別々の相対基準を持つ**: 群の判定ロジックを新設することになり、
+  「印を付けるだけ」のタスクに対して実装が重い。絶対値で足りる。
+- **(却下) 過去の実行結果をファイルに保存して日ごとに比較する**: Actions は実行ごとに使い捨ての環境で、
+  状態を持たせるにはリポジトリへのコミットかアーティファクトが要る。コスト0円方針と釣り合わない。
+- **(却下) 遅さで exit 1 にする**: R33/R46 で明示的に否定済みの方針。GitHub Pages の揺らぎで毎日赤くなる。
+
+## 実装上の罠
+
+- **`timings` には集計行の「総計」は入っていない**。上の実測(3)で見えた 3973 は計画役の grep が
+  集計行の数字を拾っただけで、`timings.push`(`docs/check.mjs:46`)されるのは各 fetch 1件ずつ。
+  `filter` は素直に書いてよい。
+- **同じ label が複数回入る**(`リンク demo/hotel-page.html → index.html` が2件ある)。
+  列挙時に重複を潰す必要はない(どちらが遅かったか分かる方が有益)。
+- `timedFetch` は `res.body` を消費しないので、集計節を触っても本文の読み取りには影響しない。
+- 出力は日本語で、既存の集計2行と語調を揃える。
+- **印が出ない状態が正常**。実装後に `node docs/check.mjs` を流して**何も増えない**ことを確認し、
+  さらに `SLOW_MS` を一時的に 10 に下げて**印の行が実際に出る**ことを確認してから 500 に戻すこと
+  (R149 で作業役がガードを1つずらして赤を確認したのと同じ手順)。
 
 ## 完了条件
 
-1. 上記6箇所すべてが5エリアに揃っている(`grep -n "kinosaki" scripts/check-nosummary.mjs README.md docs/FIXTURES.md docs/NIGHTLOG.md` で確認できる)。
-2. `check-nosummary` の3ガードが城崎を含み、期待値が**作業役自身の実測値**である。
-3. 城崎の件数を1つずらした値を一時的に入れると**その検査が赤くなる**ことを1回だけ確かめる(ガードが効いている証拠。確認後は必ず正しい値に戻す)。
-4. カードの順位・枚数が1つも動いていない(`dump-rank` 5エリアが作業前後で**完全無差分**)。
+1. `docs/check.mjs` に絶対しきい値の列挙が入り、**通常実行では出力が1行も増えない**こと。
+2. しきい値を一時的に下げると列挙行が出ることを実測で確認したこと(戻すのを忘れない)。
+3. `hasFailure` と exit code の挙動が**変更前と完全に同じ**(30件 OK・exit 0)であること。
+4. `docs/CHECKS.md` に1行追記されていること。
 5. `node scripts/check-all.mjs` **29本全緑**。
 
 ## 検証手順
 
-```
-cd C:\workspace\claude\旅行先用サイト\yadotabi
-for a in kusatsu hakone dogo beppu kinosaki; do node scripts/dump-rank.mjs $a > before-$a.txt; done
-# (実測 → 編集)
-for a in kusatsu hakone dogo beppu kinosaki; do node scripts/dump-rank.mjs $a > after-$a.txt; diff before-$a.txt after-$a.txt; done   # 全て差分ゼロ
-node scripts/check-nosummary.mjs      # 単体で緑
-node scripts/check-all.mjs            # 29本全緑
-```
-
-`before-*.txt` / `after-*.txt` は確認後に削除する(リポジトリに残さない)。
+1. `node docs/check.mjs` → 30件 OK・exit 0・集計行の後に余計な行が出ないこと。
+2. `SLOW_MS` を 10 に一時変更 → 列挙行が出ることを目視 → **500 に戻す**。
+3. `node scripts/check-all.mjs` → **29本全緑(exit 0)**。
+4. `git diff --stat -- assets fixtures` が**空**であること。
 
 ## 変更禁止範囲
 
-- **rank の重み・閾値の変更禁止**(検査と文書だけ。カードの順位・枚数は1つも動かさない)。
-- **`assets/geo.js`・`fixtures/*.json` の変更禁止**。
-- **入力UIの追加禁止**(ユーザー入力ゼロの原則)。
-- **外部API 0回**(全て `?fixture=` で行う)。
-- **数値は作業役が自分で実測して書く**(この文書の表を写経しない)。
-- `git stash` / `reset --hard` / `checkout` でファイルを戻す操作は禁止。
+- **rank の重み・閾値は変更禁止**。
+- **`assets/geo.js`・`fixtures/` は変更禁止**。
+- **入力UIの追加禁止**。
+- `hasFailure` / `process.exitCode` のロジックは変更禁止(遅さで赤くしない)。
+- **作業役の外部API は `node docs/check.mjs` の本番URLへの GET のみ**(従来どおり。Overpass/Nominatim/Wikipedia は0回)。
+- **数値は作業役が自分で実測して書くこと**(計画役の数字を写経しない)。
 
 ## 終わったら
 
-1. `docs/ROADMAP.md` の R149 を **`[x] 2026-09-18`** に変える。
-2. `docs/NIGHTLOG.md` の**ファイル末尾**の「## サイクル記録」節の末尾に
-   `### 2026-09-18 R149 <一言>` の見出しを付けて3行(やったこと / 見た目の確認結果 / 次)を追記する。
-   **ファイル先頭に新しい節を作らない**。
-3. **先にコミット**する(1行の日本語メッセージ)。報告文を書く前にコミットすること。
-4. `git push`。
-5. **報告前に `git log --oneline -1` を実行して実際のハッシュを確認する**(推測で書かない)。
-6. 報告は簡潔に。長文の報告書は書かない。
+1. `docs/ROADMAP.md` の R103 の行を **`[x] 2026-09-18`** に(R150 として実施した旨を1行添える)。
+2. `docs/NIGHTLOG.md` の**ファイル末尾**の「## サイクル記録」の末尾に
+   `### 2026-09-18 R150 <一言>` の見出しを付けて3行(やったこと / 見た目の確認結果 / 次)を追記する。
+3. **先にコミット** → `git push`。
+4. **報告前に `git log --oneline -1` で実際のハッシュを確認する**(推測で書かない)。

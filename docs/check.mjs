@@ -37,6 +37,12 @@ let hasFailure = false;
 // 実バイト数で recordBytes() により上書きする(HEAD だけのリンク検査はヘッダ値のままでよい)。
 const timings = []; // { label, ms, bytes }
 
+// --- R150: 絶対しきい値による「遅い項目」の印 ---
+// 平均比(N倍)は不採用。平均自体がコールド/ウォームで6.7倍swingし(実測20ms〜135ms)、
+// 速い日は誤検知、遅い日(コールド時は平均がbimodal分布の谷に落ちる)は見逃す、逆向きに壊れる基準だったため。
+const SLOW_MS = 500;
+const VERY_SLOW_MS = 2000;
+
 async function timedFetch(label, url, options) {
   const t0 = performance.now();
   const res = await fetch(url, options);
@@ -345,6 +351,13 @@ if (timings.length > 0) {
   const slowest = timings.reduce((a, b) => (b.ms > a.ms ? b : a));
   console.log(`合計 ${timings.length}件 / 総計 ${total}ms / 平均 ${avg}ms`);
   console.log(`最遅: ${slowest.label} ${slowest.ms}ms`);
+
+  // --- R150: 絶対しきい値を超えた項目の列挙(失敗判定はしない。平常日は何も出さない) ---
+  const slowOnes = timings.filter((t) => t.ms >= SLOW_MS);
+  if (slowOnes.length > 0) {
+    const parts = slowOnes.map((t) => `${t.label} ${t.ms}ms${t.ms >= VERY_SLOW_MS ? '(かなり遅い)' : ''}`);
+    console.log(`遅い項目(${SLOW_MS}ms以上): ${parts.join(', ')}`);
+  }
 
   // --- R46: サイズの集計行(計測できたものだけを合計する) ---
   const sized = timings.filter((t) => t.bytes !== null);
