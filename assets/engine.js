@@ -382,6 +382,29 @@
   var DEFINITION_NOT_PLACE = ['戦いである', '合戦である'];
 
   /**
+   * R133: **単一の場所ではない Wikipedia の索引記事**を落とすための冒頭一致。
+   *
+   * 実例は `別府駅商業施設`(beppu 9位・source=wiki・982m)。extract 冒頭が
+   * 「本項では、かつて別府駅商業施設（べっぷえきしょうぎょうしせつ）と総称されていた、
+   * 大分県別府市のJR九州別府駅に併設されている以下の商業施設について述べる。」で、
+   * 複数の商業施設をまとめて解説する記事に座標を1つ持たせて「宿から982m」と
+   * 出すこと自体が誤り。R119/R120 の「かつて」軸は definitionPredicate()(述部)を
+   * 見るが、この記事の「かつて」は主題部にあるため当たらず、R132 の
+   * DEFINITION_NOT_PLACE(`戦いである`/`合戦である`)にも当たらない、既存3軸の隙間。
+   *
+   * **他の判定と違い definitionPredicate() / definitionScope() を通さず、
+   * extract の生の先頭に当てる**(主題部を捨てると `本項では` 自体が消えるため)。
+   *
+   * `本項では` は Wikipedia の索引記事・曖昧さ回避まわりの定型句で、単一の地物記事は
+   * 必ず「〇〇（よみ）は、…」という記事名の言い直しから始まるため構造的に当たらない。
+   * 4エリア200記事の実測ヒットは1件(別府駅商業施設)のみで誤爆0件。
+   *
+   * **`について述べる` 単体は絶対に入れない**(「〜の由来について述べる」のような
+   * 地物記事本文に当たりうるため)。必ず**冒頭一致(`^本項では`)**の形で持つ。
+   */
+  var DEFINITION_INDEX_ARTICLE = /^本項では/;
+
+  /**
    * Wikipedia 単独候補のカテゴリ推定表。
    *
    * Wikipedia 記事には OSM のようなタグが無いため、そのままだと全部 'other' になり、
@@ -655,6 +678,13 @@
     for (var p = 0; p < DEFINITION_NOT_PLACE.length; p++) {
       if (predicate.indexOf(DEFINITION_NOT_PLACE[p]) !== -1) return true;
     }
+
+    // R133: 単一の場所ではない Wikipedia の索引記事。他の判定と違い definitionPredicate() /
+    // definitionScope() を通さず、extract の生の先頭に当てる(主題部を捨てると
+    // `本項では` 自体が消えるため)。R132 と同じく保護リストより後ろに置く。実装時に
+    // 「保護語で終わり かつ ^本項では に当たる」記事が4エリアに0件であることを確認済みで、
+    // 保護リストの前後どちらに置いても結果は同一。
+    if (e && DEFINITION_INDEX_ARTICLE.test(e)) return true;
 
     if (e) {
       for (var i = 0; i < EXTRACT_KEYWORD_NG.length; i++) {
