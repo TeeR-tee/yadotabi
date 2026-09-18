@@ -144,9 +144,10 @@ console.log('\n(a) 統合・除外・far分離・Cardのフィールド・リン
   ok(res.cards.every(c => c.driveMin <= 60), 'cards は全て driveMin<=60');
 
   // Card の全フィールド(R84: _debug は ?debug=1 の描画元。通常動作では読まれない。
-  // R123: wikipediaTitle/wikidataId は記事の存在を示す裏付け。画面には出さない)
+  // R123: wikipediaTitle/wikidataId は記事の存在を示す裏付け。画面には出さない。
+  // R136: openingHours は生の opening_hours 表記。整形・判定は app.js 側の責務)
   eq(Object.keys(saino).sort(),
-    ['_debug','categoryLabel','distanceM','driveMin','id','imageUrl','lat','links','lon','source','summary','name','walkMin','wikidataId','wikipediaTitle'].sort(),
+    ['_debug','categoryLabel','distanceM','driveMin','id','imageUrl','lat','links','lon','openingHours','source','summary','name','walkMin','wikidataId','wikipediaTitle'].sort(),
     'Card のフィールドが仕様どおり');
   eq(Object.keys(saino.links).sort(), ['gmap','instagram','official','tiktok','youtube'], 'links のキー');
 
@@ -1446,6 +1447,48 @@ console.log('\n(r133) 単一の場所ではない Wikipedia の索引記事を�
     if (c.drop) ok(!got133.has(c.title), 'R133 落とす: ' + c.title);
     else ok(got133.has(c.title), 'R133 残す: ' + c.title);
   });
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n(r136) 営業時間(openingHours)がカードまで運ばれる(engine.js は判定・整形をしない)');
+{
+  // geo.js の pickOpeningHours() が拾った生の opening_hours 文字列を、
+  // fromOsmSpot → mergeOsmDuplicates → toCard の3経路すべてで欠落なく運ぶことを確認する。
+  // 整形・営業中判定は app.js 側の責務であり、engine.js は素通しするだけでよい。
+  const E136 = loadEngine({
+    ...geoMock(),
+    fetchSpots: () => Promise.resolve([
+      { id: 'node/8888001', name: '御座之湯', lat: at(120), lon: HOTEL.lon,
+        category: 'attraction', categoryLabel: '共同浴場', distanceM: 120,
+        openingHours: 'Mo-Su 08:00-21:00' },
+      // opening_hours を持たないスポット(通常経路。openingHours は null のまま運ばれる)
+      { id: 'node/8888002', name: '光泉寺', lat: at(200), lon: HOTEL.lon,
+        category: 'shrine', categoryLabel: '神社・寺院', distanceM: 200 }
+    ]),
+    fetchWikiNearby: () => Promise.resolve([])
+  });
+  const res136 = await E136.suggest(HOTEL, CTX);
+  const byName136 = Object.fromEntries(res136.cards.concat(res136.far).map(c => [c.name, c]));
+  eq(byName136['御座之湯'].openingHours, 'Mo-Su 08:00-21:00', 'openingHours が生の表記のままカードまで運ばれる');
+  eq(byName136['光泉寺'].openingHours, null, 'opening_hours を持たないスポットは openingHours が null のまま');
+
+  // mergeOsmDuplicates 経由(名前包含+150m以内で1件に寄せられるケース)でも欠落しない。
+  // 「短い名前」を代表に選んでも、website 同様 openingHours は失われないことの確認。
+  const E136b = loadEngine({
+    ...geoMock(),
+    fetchSpots: () => Promise.resolve([
+      { id: 'node/8888003', name: '御座之湯 入口', lat: at(50), lon: HOTEL.lon,
+        category: 'attraction', categoryLabel: '共同浴場', distanceM: 50 },
+      { id: 'node/8888004', name: '御座之湯', lat: at(60), lon: HOTEL.lon,
+        category: 'attraction', categoryLabel: '共同浴場', distanceM: 60,
+        openingHours: 'Mo-Su 08:00-21:00' }
+    ]),
+    fetchWikiNearby: () => Promise.resolve([])
+  });
+  const res136b = await E136b.suggest(HOTEL, CTX);
+  const merged136b = res136b.cards.concat(res136b.far).find(c => c.name === '御座之湯');
+  ok(!!merged136b, 'mergeOsmDuplicates: 短い名前(御座之湯)が代表として残る');
+  eq(merged136b && merged136b.openingHours, 'Mo-Su 08:00-21:00', 'mergeOsmDuplicates 後も openingHours が失われない');
 }
 
 console.log('\n==== ' + pass + ' pass / ' + fail + ' fail ====');

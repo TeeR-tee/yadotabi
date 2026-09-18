@@ -501,6 +501,17 @@ body {
 /* R83: 要約が無いカードの代替文(事実のみの1行)を淡色にして本文と区別する */
 .feedcard__summary--none { color: var(--c-text-faint); }
 
+/* R136: 営業時間。判定はせず表記を出すだけ。絶対に2行にしない(高さが暴れない不変条件) */
+.feedcard__hours {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--c-text-sub);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* R84: ?fixture=…&debug=1 のときだけ出る rank の内訳行(開発者・研究向け)。
    本文より一段小さく淡くして、通常の読み筋を邪魔しない。375px で2行に収める */
 .dbg {

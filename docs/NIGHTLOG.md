@@ -717,3 +717,8 @@
 - やったこと: `docs/CHECKS.md` を自分の実測で6箇所直した(SCRIPTS行番号 `:14→:17`、見出し「サーバを立てる24本」→**実測25本**に、Playwright使用は`docs/check.mjs`含め25本ではなく**check-*.mjsのみ25本(docs/check.mjsは不使用)で server 使用集合と完全一致**と訂正、「並列化できない理由」をポート衝突前提から**現状(ensureServer一本化・findFreePort実測)**に書き換え、済んだ改修2項目を「必要な改修」節から除外、所要目安を**実測283.5s・最遅check-attrib 24.6s**に更新。追加でR106確認手順に「見出し本数まで突き合わせる」「記述と実装の対応もgrepで見る」の2点を補強。司令塔追加指示で`scripts/check-*.mjs`16本の冒頭コメント(「自分でpython http.server起動」の古い前提部分)も**コメント文のみ**実装(ensureServer/YADOTABI_BASE経由)に合わせて修正、`git diff`で非コメント行の差分0行・`node --check`16本全通過を確認。
 - 見た目の確認結果: ドキュメントとコメントのみの変更で画面に影響なし。
 - 次: `node scripts/check-all.mjs` **29本中29本PASS(exit 0・合計275.1s)**。外部API0回。ROADMAP残りは朝の相談項目から計画役が選定。
+
+### 2026-09-18 R136 geo.js が運んでいた営業時間を engine が捨てず app.js で読める形にして出す
+- やったこと: `engine.js` の4箇所(`fromOsmSpot`/wiki側item/`mergeOsmDuplicates`/`toCard`)に `website` と同じ経路で `openingHours` を1行ずつ写経(geo.js・fixturesは無改変)。`app.js` に判定を一切せず「先頭の1区間だけを読める日本語1行にする」`openingHoursText()` を新設し、`.feedcard__meta` の直後に `⏰` 付きで1行だけ表示(`?embed=1` でも出る)。`style.css` に `.feedcard__hours`(nowrap+ellipsisで2行化を禁止)を追加。
+- 見た目の確認結果: 4エリア実測は **kusatsu 5・hakone 4・dogo 4(季節分岐の松山城のみnullに倒れ表示0件、実際にopening_hoursを持つのは5枚)・beppu 5 = 合計18枚**でNEXT.md想定と一致(自分の実測でも確認)。dogo #27椿の湯・#9愛媛大学ミュージアム・#1伊佐爾波神社・kusatsu #5尻焼温泉(24時間)・#6大滝乃湯・beppu #2別府タワーの表示、松山城(#10)に出ないこと、`?fixture=kusatsu&embed=1`での表示をmobile/desktop撮影で目視、1行に収まり折り返し・崩れなし・コンソールエラーなし。
+- 次: `scripts/check-nosummary.mjs`(既存の1本)に(r136)節を9ケース追加、`scripts/check-engine.mjs`にengine側の運搬確認2ケースを追加(いずれも既存ケース削除なし)。`node scripts/check-all.mjs` **29本中29本PASS(exit 0)**。外部API0回。ROADMAP残りは朝の相談項目から計画役が選定。

@@ -766,6 +766,7 @@
       categoryLabel: spot.categoryLabel || 'スポット',
       distanceM: distanceM,
       website: spot.website || null,
+      openingHours: spot.openingHours || null,
       imageUrl: null,
       summary: null,
       // OSM 要素自身が持つ Wikipedia 紐づけ。geosearch の 50件上限の外にある記事
@@ -865,6 +866,7 @@
       distanceM: distanceM,
       // Wikipedia 記事の url は「公式サイト」ではないので official には使わない
       website: null,
+      openingHours: null,
       imageUrl: article.thumbnailUrl || null,
       summary: article.extract || null,
       source: 'wiki'
@@ -987,6 +989,7 @@
         var base = kept[i];
         // 片方にしか無い裏付けは捨てない
         var website = base.website || item.website || null;
+        var openingHours = base.openingHours || item.openingHours || null;
         var wikipediaTitle = base.wikipediaTitle || item.wikipediaTitle || null;
         var wikidataId = base.wikidataId || item.wikidataId || null;
         // 短い名前(＝より一般に通る呼び名)の方を代表にする
@@ -1005,6 +1008,7 @@
           base.categoryLabel = item.categoryLabel;
         }
         base.website = website;
+        base.openingHours = openingHours;
         base.wikipediaTitle = wikipediaTitle;
         base.wikidataId = wikidataId;
         return;
@@ -1332,6 +1336,7 @@
       driveMin: minutesFor(distanceM, DRIVE_M_PER_MIN),
       links: buildLinks(item, hotel),
       source: item.source || 'osm',
+      openingHours: item.openingHours || null,
       wikipediaTitle: item.wikipediaTitle || null, // R123: 要約が無くても記事の存在を示す裏付け
       wikidataId: item.wikidataId || null, // R123: 同上(wikipediaタグが無い場合の裏付け)
       _debug: item._debug || null // R84: ?debug=1 のときだけ描画する。通常動作では読まれない

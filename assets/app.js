@@ -886,6 +886,53 @@
   // R123: 記事の存在(wikipedia/wikidataタグ)は確認できるが本文を取得できていないカード用
   var HAS_ARTICLE_NO_SUMMARY_TEXT = 'Wikipediaに記事はありますが、要約をここに出せていません。';
 
+  // R136: 曜日の英語略号 → 日本語1文字
+  var WEEKDAY_JA = { Mo: '月', Tu: '火', We: '水', Th: '木', Fr: '金', Sa: '土', Su: '日' };
+
+  /**
+   * R136: OSM の opening_hours 独自記法を、読める日本語1行に直す。
+   * 「今開いているか」の判定は絶対にしない(記法が86通りあり誤判定の実害が出るため)。
+   * やることは「先頭の1区間だけを読める形にする」だけ。解釈できなければ null を返し、
+   * 呼び出し側は何も出さない(空欄・「不明」も出さない)。
+   */
+  function openingHoursText(raw) {
+    if (typeof raw !== 'string' || !raw.trim()) return null;
+    var trimmed = raw.trim();
+    if (trimmed === '24/7') return '24時間';
+
+    var segments = trimmed.split(';').map(function (s) { return s.trim(); }).filter(Boolean);
+    if (!segments.length) return null;
+    var head = segments[0];
+
+    // 月名(季節分岐)が先頭にあるものは、1区間だけ出すと嘘になるので出さない
+    if (/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/.test(head)) return null;
+
+    // 曜日部分(あれば)を取り出す。例: "Mo-Su", "We"
+    var dayMatch = head.match(/^((?:Mo|Tu|We|Th|Fr|Sa|Su)(?:-(?:Mo|Tu|We|Th|Fr|Sa|Su))?)\s+/);
+    var dayText = '';
+    var rest = head;
+    if (dayMatch) {
+      rest = head.slice(dayMatch[0].length);
+      var dayToken = dayMatch[1];
+      var rangeMatch = dayToken.match(/^(Mo|Tu|We|Th|Fr|Sa|Su)-(Mo|Tu|We|Th|Fr|Sa|Su)$/);
+      if (rangeMatch) {
+        dayText = WEEKDAY_JA[rangeMatch[1]] + '〜' + WEEKDAY_JA[rangeMatch[2]] + ' ';
+      } else if (WEEKDAY_JA[dayToken]) {
+        dayText = WEEKDAY_JA[dayToken] + ' ';
+      }
+    }
+
+    // 時刻(HH:MM-HH:MM)を取り出す。取れなければ null。
+    var timeMatch = rest.match(/^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})/);
+    if (!timeMatch) return null;
+    var timeText = String(Number(timeMatch[1])) + ':' + timeMatch[2] + '-' +
+      String(Number(timeMatch[3])) + ':' + timeMatch[4];
+
+    var result = dayText + timeText;
+    if (segments.length > 1) result += ' ほか';
+    return result;
+  }
+
   /**
    * R84: rank のスコア内訳を1行にする(`?fixture=…&debug=1` のときだけ呼ばれる)。
    * 09_研究ノートの「なぜこの順位か」を dump-rank.mjs を回さずに画面で追うためのもの。
@@ -942,6 +989,9 @@
             : '') +
         '</p>'
       : '<p class="feedcard__summary feedcard__summary--none">' + escapeHtml(NO_SUMMARY_TEXT) + '</p>';
+    // R136: 営業中/閉店の判定はしない。取得した表記を読める形にするだけ。無ければ何も出さない。
+    var hoursText = openingHoursText(card.openingHours);
+    var hours = hoursText ? '<p class="feedcard__hours">⏰ ' + escapeHtml(hoursText) + '</p>' : '';
 
     return '<article class="card feedcard" data-index="' + index + '">' +
       '<div class="feedcard__media">' + media +
@@ -956,6 +1006,7 @@
             (distanceText(card.distanceM) ? ' · ' + escapeHtml(distanceText(card.distanceM)) : '') +
             '</span>' +
         '</p>' +
+        hours +
         summary +
         linkRowHtml(card) +
         (debugRank && card._debug ? debugHtml(card._debug) : '') +

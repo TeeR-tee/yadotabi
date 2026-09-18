@@ -23,6 +23,13 @@
 //      要約行にリンクが出ること(Wikidata転送URL経由。行き止まり修正の不変条件)
 //   8. R124: 4エリア全カードで、HAS_ARTICLE_NO_SUMMARY_TEXT を含む .feedcard__summary--none には
 //      必ず a[href] が1本以上あること(「記事はあります」と言っておいてリンクが無い行き止まりが無い)
+//   (r136) 営業時間(.feedcard__hours)の表示。判定はせず表記を読める形にするだけの検査:
+//      a. 営業時間があるカード(dogo #27 椿の湯・#9 愛媛大学ミュージアム 等)に .feedcard__hours が
+//         正しい文言で出る(正常系5例をカード実測で突き合わせる)
+//      b. 営業時間がある(取得済みの)季節分岐カード(dogo #10 松山城)には .feedcard__hours が
+//         出ない(null に倒す)こと。opening_hours を持たない通常カード(dogo #1)にも出ないこと
+//      c. .feedcard__hours の総数が「4エリアで openingHoursText が読める枚数」ちょうどと一致
+//         (engine.js が openingHours を捨てずカードまで運んでいることの確認)
 
 import { chromium } from 'file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs';
 import { ensureServer } from './lib/server.mjs';
@@ -173,6 +180,89 @@ async function main() {
       if (area !== 'beppu' && area !== 'dogo') await areaPage.close();
     }
     ok(deadEnds.length === 0, '8. 4エリアで「記事はあります」文言なのにリンクが0本のカードが無い', deadEnds);
+
+    // (r136) 営業時間表示。dogo は page(既に開いている)を再利用する。
+    const dogoHours = await page.locator('.feedcard').evaluateAll((cards) =>
+      cards.map((c) => ({
+        name: c.querySelector('.feedcard__name') ? c.querySelector('.feedcard__name').textContent : '',
+        hoursText: c.querySelector('.feedcard__hours') ? c.querySelector('.feedcard__hours').textContent : null,
+      }))
+    );
+    const tsubakinoyu = dogoHours.find((r) => r.name === '椿の湯');
+    ok(
+      !!tsubakinoyu && tsubakinoyu.hoursText === '⏰ 月〜日 6:30-23:00',
+      '(r136) a1. 椿の湯(言い訳カード)に営業時間が出る',
+      tsubakinoyu
+    );
+    const univMuseum = dogoHours.find((r) => r.name === '愛媛大学ミュージアム');
+    ok(
+      !!univMuseum && univMuseum.hoursText === '⏰ 10:00-16:30',
+      '(r136) a2. 愛媛大学ミュージアムに営業時間が出る',
+      univMuseum
+    );
+    const matsuyamajo = dogoHours.find((r) => r.name === '松山城');
+    ok(
+      !!matsuyamajo && matsuyamajo.hoursText === null,
+      '(r136) b1. 松山城(季節分岐)には営業時間が出ない(null に倒す)',
+      matsuyamajo
+    );
+    const isaniwa = dogoHours.find((r) => r.name === '伊佐爾波神社');
+    ok(
+      !!isaniwa && isaniwa.hoursText === '⏰ 月〜日 9:00-17:00',
+      '(r136) a3. 伊佐爾波神社に営業時間が出る',
+      isaniwa
+    );
+    const kojisenji = dogoHours.find((r) => r.name === '光泉寺');
+    ok(
+      !kojisenji || kojisenji.hoursText === null,
+      '(r136) b2. opening_hours を持たないカード(光泉寺)には出ない',
+      kojisenji
+    );
+
+    // kusatsu で「24時間」「ほか」付きの正常系も確認する
+    const kusatsuPage = await context.newPage();
+    await kusatsuPage.goto(`${BASE}/?fixture=kusatsu`, { waitUntil: 'load' });
+    await waitFor(1500);
+    const kusatsuHours = await kusatsuPage.locator('.feedcard').evaluateAll((cards) =>
+      cards.map((c) => ({
+        name: c.querySelector('.feedcard__name') ? c.querySelector('.feedcard__name').textContent : '',
+        hoursText: c.querySelector('.feedcard__hours') ? c.querySelector('.feedcard__hours').textContent : null,
+      }))
+    );
+    const shiriyaki = kusatsuHours.find((r) => r.name === '尻焼温泉 川風呂');
+    ok(
+      !!shiriyaki && shiriyaki.hoursText === '⏰ 24時間',
+      '(r136) a4. 尻焼温泉 川風呂(24/7)が「24時間」になる',
+      shiriyaki
+    );
+    const otakinoyu = kusatsuHours.find((r) => r.name === '大滝乃湯');
+    ok(
+      !!otakinoyu && otakinoyu.hoursText === '⏰ 月〜日 9:00-21:00',
+      '(r136) a5. 大滝乃湯に営業時間が出る',
+      otakinoyu
+    );
+
+    // (r136) c. 4エリア合計の .feedcard__hours 件数が実測どおりであることの確認
+    // (rank・候補集合は不変のため、この本数が動いたら engine 側で openingHours を
+    // 取りこぼした/余計に付けた regression の合図になる)
+    const hakonePage = await context.newPage();
+    await hakonePage.goto(`${BASE}/?fixture=hakone`, { waitUntil: 'load' });
+    await waitFor(1500);
+    const beppuHoursCount = await beppuPage.locator('.feedcard__hours').count();
+    const hakoneHoursCount = await hakonePage.locator('.feedcard__hours').count();
+    const kusatsuHoursCount = await kusatsuPage.locator('.feedcard__hours').count();
+    const dogoHoursCount = await page.locator('.feedcard__hours').count();
+    const total = kusatsuHoursCount + hakoneHoursCount + dogoHoursCount + beppuHoursCount;
+    // 2026-09-18 R136 実測: kusatsu 5 / hakone 4 / dogo 4 / beppu 5 = 合計18枚(NEXT.md想定どおり)。
+    // dogo は opening_hours を持つカードが5枚(#1伊佐爾波神社・#9愛媛大学ミュージアム・
+    // #10松山城・#24萬翠荘・#27椿の湯)だが、#10松山城は季節分岐で null に倒れるため表示は4枚。
+    ok(
+      kusatsuHoursCount === 5 && hakoneHoursCount === 4 && dogoHoursCount === 4 && beppuHoursCount === 5 && total === 18,
+      '(r136) c. 4エリアの .feedcard__hours 件数が実測(5/4/4/5=18)と一致',
+      { kusatsuHoursCount, hakoneHoursCount, dogoHoursCount, beppuHoursCount, total }
+    );
+    await hakonePage.close();
+    await kusatsuPage.close();
 
     await beppuPage.close();
 
