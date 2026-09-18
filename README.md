@@ -199,6 +199,8 @@ git push
 
 ## 開発者向け
 
+検査を回すには **Node.js と Python 3** が必要です(`scripts/lib/server.mjs` がローカル確認用のサーバを `python -m http.server` で起動するため)。本番サイトを見るだけなら何も要りません。
+
 `node scripts/check-all.mjs` を実行すると、`scripts/check-*.mjs` の28本と `docs/check.mjs` の1本、計29本を1コマンドで直列実行し、結果を表(PASS/FAIL・所要時間)で確認できます。1本でも失敗すると exit code 1 で終了します。検査はローカルサーバを内部で立ち上げますが、そのサーバは Node.js の子プロセスとして `python -m http.server` を起動しています。そのため検査の実行には別途 Python 3 のインストールが必要です(アプリ本体をブラウザで開くだけなら不要)。
 
 「もっと遠く」に振り分ける far の閾値(`FAR_DRIVE_MIN`、車60分超)は 60分×500m/分＝30km で、`scripts/make-fixture.mjs` の収集半径(`osmRadiusM`)とは独立に決まっている定数です。収集半径が30kmに満たないエリアでは far が構造上0件になる点に注意してください(実測は [docs/FIXTURES.md](docs/FIXTURES.md) の「far 実測表」を参照)。
