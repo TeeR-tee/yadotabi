@@ -1,6 +1,6 @@
 /**
  * fixtures/*.json の軽量化スクリプト — 実行方法: `node scripts/slim-fixtures.mjs [area]`
- * (area 省略時は kusatsu/hakone/dogo/beppu の4エリア全部)
+ * (area 省略時は kusatsu/hakone/dogo/beppu/kinosaki の5エリア全部)
  *
  * Overpass は `out center tags;` で全タグを返すため、生の fixture JSON には
  * アプリ(assets/geo.js)が読まないタグキーが大量に含まれている。
@@ -58,7 +58,7 @@ export function slimOverpassElements(elements) {
   return droppedKeys;
 }
 
-const AREAS = ['kusatsu', 'hakone', 'dogo', 'beppu'];
+const AREAS = ['kusatsu', 'hakone', 'dogo', 'beppu', 'kinosaki'];
 
 function slimOne(area) {
   const path = join(ROOT, 'fixtures', area + '.json');

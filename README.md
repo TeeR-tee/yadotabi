@@ -1,6 +1,6 @@
 # やどたび (v3)
 
-**What this is**: Yadotabi is a static, mobile-first web app that suggests nearby sights around a hotel from just its coordinates — no user input required. **How to try**: open `https://teer-tee.github.io/yadotabi/`, or add `?fixture=` with `kusatsu` / `hakone` / `dogo` / `beppu` (or `random` to pick one at runtime) to see a demo with no external API calls; add `&debug=1` alongside `?fixture=` to also show the rank score breakdown on each card. **Embedding**: add `?embed=1` together with `?hotel=` to show only the mini map and the feed, sized for pasting into a hotel's own booking page as an iframe (height auto-resizes). **No API keys needed**: it only uses free public APIs (OpenStreetMap / Overpass / Wikipedia), at zero cost. See the parameter table below (in Japanese) for the full list.
+**What this is**: Yadotabi is a static, mobile-first web app that suggests nearby sights around a hotel from just its coordinates — no user input required. **How to try**: open `https://teer-tee.github.io/yadotabi/`, or add `?fixture=` with `kusatsu` / `hakone` / `dogo` / `beppu` / `kinosaki` (or `random` to pick one at runtime) to see a demo with no external API calls; add `&debug=1` alongside `?fixture=` to also show the rank score breakdown on each card. **Embedding**: add `?embed=1` together with `?hotel=` to show only the mini map and the feed, sized for pasting into a hotel's own booking page as an iframe (height auto-resizes). **No API keys needed**: it only uses free public APIs (OpenStreetMap / Overpass / Wikipedia), at zero cost. See the parameter table below (in Japanese) for the full list.
 
 <table>
   <tr>
@@ -26,7 +26,7 @@
 
 1. **地図の宿ピンをタップする**: 最初に開くと地図(初期表示は草津温泉)が出て、表示範囲内の宿・旅館が自動でピン表示されます。地図を動かすとその範囲の宿を取り直します。ピンをタップするだけで選択完了です。
 2. **検索欄に打って候補をタップする**: 上部の検索欄に宿名やエリア名を打つと、打つそばから候補が一覧で出ます。宿の候補をタップすれば選択完了、地名の候補をタップすると地図がそこへ寄ります(選択にはなりません)。検索欄をフォーカスすると、直前に選んだ「最近の宿」も候補として出ます。
-3. **URLで直接指定する**: `?hotel=<緯度>,<経度>,<宿名>` を付けてアクセスすると、その宿を選んだ状態で直接フィード画面が開きます。`?q=<エリア名>` を付けると、そのエリア名で検索して地図を寄せた状態(宿の選択はしない)で開きます。`?fixture=hakone`(または `kusatsu` / `dogo` / `beppu`)を付けると、外部APIを叩かずに保存済みの固定データでフィード画面を再現します(撮影・検証用)。
+3. **URLで直接指定する**: `?hotel=<緯度>,<経度>,<宿名>` を付けてアクセスすると、その宿を選んだ状態で直接フィード画面が開きます。`?q=<エリア名>` を付けると、そのエリア名で検索して地図を寄せた状態(宿の選択はしない)で開きます。`?fixture=hakone`(または `kusatsu` / `dogo` / `beppu` / `kinosaki`)を付けると、外部APIを叩かずに保存済みの固定データでフィード画面を再現します(撮影・検証用)。
 
 その他の操作:
 - 画面上部の「草津」「伊香保」「箱根」などの**エリアチップ**をタップすると、その温泉地へ地図が飛びます。
@@ -111,7 +111,7 @@
 |---|---|---|---|
 | `?hotel=` | `35.61,138.59,ホテル紅葉亭` | 緯度,経度,宿名(名前省略可)で「この宿の周辺」画面を開く | 叩く |
 | `?q=` | `?q=草津` | エリア名で検索し地図を寄せる(宿の選択はしない。該当エリアチップを強調) | 叩く |
-| `?fixture=` | `kusatsu` / `hakone` / `dogo` / `beppu` / `random` | 保存済みの生レスポンスで画面を再現する(`random` は4エリアから実行時に1つ選ぶ) | 叩かない |
+| `?fixture=` | `kusatsu` / `hakone` / `dogo` / `beppu` / `kinosaki` / `random` | 保存済みの生レスポンスで画面を再現する(`random` は5エリアから実行時に1つ選ぶ) | 叩かない |
 | `?debug=1` | `?fixture=kusatsu&debug=1` | `?fixture=` と併用したときだけ有効。カードの下端に rank のスコア内訳(順位・source・カテゴリ・距離・合計と加減点の明細)を淡色の極小文字で出す。`?fixture=` が無ければ一切効かない | 叩かない |
 | `?embed=1` | `?embed=1` | `?hotel=` か `?fixture=` と併用したときだけ有効。埋め込み表示に切り替える | 併用先に従う |
 | `?bg=` | `?bg=fff7e6` | `?embed=1` と併用したときだけ有効。背景色を6桁の16進で指定し宿ページに馴染ませる(不正な値は無視)。**相対輝度が0.5未満の暗い色(例: `000000`)は地色に直接乗る淡色テキストが読めなくなるため無視され、既定の地色に戻る**(閾値0.5は淡色テキスト `--c-text-faint` #9494a3 が黒地でちらつく実測に基づく) | 併用先に従う |
@@ -151,7 +151,7 @@
 - `assets/ui.css` — 検索欄・チップ・ボタンなど共通UI部品のスタイル。
 - `assets/tokens.css` — 色・余白・フォントサイズなどのデザイントークン(共通の値の置き場)。
 - `scripts/` — 開発用の検査スクリプト群(`check-*.mjs` と `check-all.mjs`)、および固定データを作る `make-fixture.mjs` など。
-- `fixtures/` — `?fixture=` で使う保存済みの外部API応答データ(草津・箱根・道後・別府の4エリア)。固定データの作り方・再生成の判断基準は [docs/FIXTURES.md](docs/FIXTURES.md) を参照。
+- `fixtures/` — `?fixture=` で使う保存済みの外部API応答データ(草津・箱根・道後・別府・城崎の5エリア)。固定データの作り方・再生成の判断基準は [docs/FIXTURES.md](docs/FIXTURES.md) を参照。
 - `demo/` — 営業用デモページ(`hotel-page.html` など)や埋め込み確認用HTML。
 - `docs/` — 計画書・研究ノート・自動継続ループの規約(AUTOPILOT/NEXT/NIGHTLOG/ROADMAP)・死活チェックスクリプトの置き場。
 
@@ -217,9 +217,10 @@ git push
 | hakone(箱根湯本) | **30,000** | 4,186 | 50 | 585.7 KB | 900.1 KB |
 | dogo(道後温泉) | 15,000 | 463 | 50 | 93.7 KB | 117.1 KB |
 | beppu(別府温泉) | 15,000 | 667 | 50 | 122.7 KB | 172.7 KB |
+| kinosaki(城崎温泉) | 15,000 | 455 | 50 | 86.2 KB | -(R81で生成時に軽量化済み) |
 
-- **hakone だけ 10倍近く大きい理由は収集半径**です。hakone のみ `osmRadiusM=30000` で、他3エリアの 15,000 に対して面積が4倍になり OSM 要素が 4,186件(他の6〜22倍)になります。ファイルサイズはほぼ OSM 要素数で決まります。
-- Wikipedia 側は4エリアとも 50件でファイルサイズに効いていません(geosearch の1リングあたり上限が 50件のため)。
+- **hakone だけ 10倍近く大きい理由は収集半径**です。hakone のみ `osmRadiusM=30000` で、他4エリアの 15,000 に対して面積が4倍になり OSM 要素が 4,186件(他の6〜22倍)になります。ファイルサイズはほぼ OSM 要素数で決まります。
+- Wikipedia 側は5エリアとも 50件でファイルサイズに効いていません(geosearch の1リングあたり上限が 50件のため)。
 - R14 の keep-list 除去で全体が 30〜35% 縮みました。詳細は [docs/FIXTURES.md](docs/FIXTURES.md) を参照してください。
 
 ## v1 からの変更点

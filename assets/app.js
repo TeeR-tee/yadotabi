@@ -1930,7 +1930,8 @@
     { fixture: 'kusatsu', label: '草津の例' },
     { fixture: 'hakone', label: '箱根の例' },
     { fixture: 'dogo', label: '道後の例' },
-    { fixture: 'beppu', label: '別府の例' }
+    { fixture: 'beppu', label: '別府の例' },
+    { fixture: 'kinosaki', label: '城崎の例' }
   ];
   function renderSampleLinks() {
     if (!els.samples) return;

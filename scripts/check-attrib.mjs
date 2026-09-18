@@ -186,6 +186,7 @@ async function main() {
     await checkUrl(browser, `${BASE}/?fixture=hakone`, 'hakone');
     await checkUrl(browser, `${BASE}/?fixture=dogo`, 'dogo');
     await checkUrl(browser, `${BASE}/?fixture=beppu`, 'beppu');
+    await checkUrl(browser, `${BASE}/?fixture=kinosaki`, 'kinosaki');
     await checkUrl(browser, `${BASE}/?fixture=kusatsu&embed=1`, 'kusatsu-embed');
   } finally {
     await browser.close();

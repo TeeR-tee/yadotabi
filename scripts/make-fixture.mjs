@@ -20,7 +20,8 @@ const AREAS = {
   kusatsu: { lat: 36.6226, lon: 138.5960, label: '草津温泉' },
   hakone: { lat: 35.2324, lon: 139.1069, label: '箱根湯本', osmRadiusM: 30000 },
   dogo: { lat: 33.8520, lon: 132.7860, label: '道後温泉' },
-  beppu: { lat: 33.2846, lon: 131.4914, label: '別府温泉' }
+  beppu: { lat: 33.2846, lon: 131.4914, label: '別府温泉' },
+  kinosaki: { lat: 35.6262, lon: 134.8055, label: '城崎温泉' }
 };
 
 const AREA = (process.argv[2] || 'kusatsu').trim();

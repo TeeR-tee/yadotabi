@@ -18,10 +18,11 @@ URLパラメータ全体の一覧は [README.md](../README.md#urlパラメータ
 | hakone | 箱根湯本 | 35.2324 | 139.1069 | 30000(個別指定) | 10000 |
 | dogo | 道後温泉 | 33.8520 | 132.7860 | 15000(既定) | 10000 |
 | beppu | 別府温泉 | 33.2846 | 131.4914 | 15000(既定) | 10000 |
+| kinosaki | 城崎温泉 | 35.6262 | 134.8055 | 15000(既定) | 10000 |
 
 ## far 実測表(R76+R19・2026-09-16)
 
-`node scripts/dump-rank.mjs <area>` で4エリアの far(車60分超)を実測した結果。far の実効距離しきい値は `FAR_DRIVE_MIN`(60分) × `DRIVE_M_PER_MIN`(500m/分) = **30,000m ちょうど**(`assets/engine.js:26,33`)。
+`node scripts/dump-rank.mjs <area>` で各エリアの far(車60分超)を実測した結果(kinosaki は R81・2026-09-18 に追記)。far の実効距離しきい値は `FAR_DRIVE_MIN`(60分) × `DRIVE_M_PER_MIN`(500m/分) = **30,000m ちょうど**(`assets/engine.js:26,33`)。
 
 | area | osmRadiusM | cards最遠 | far件数 | far最短 | far最遠 |
 |---|---|---|---|---|---|
@@ -29,8 +30,9 @@ URLパラメータ全体の一覧は [README.md](../README.md#urlパラメータ
 | hakone | 30000(個別指定) | 5732m | 10(`MAX_FAR`上限) | 30003m | 30495m |
 | dogo | 15000(既定) | 4476m | 0 | - | - |
 | beppu | 15000(既定) | 5311m | 0 | - | - |
+| kinosaki | 15000(既定) | 7557m | 0 | - | - |
 
-osmRadiusM=15000 の3エリアは収集半径がしきい値(30km)の半分しかないため far が構造上必ず0件になり、osmRadiusM=30000 の hakone だけ収集円の外周ぎりぎり(30,003m〜30,495mの薄い殻)にある候補が far として拾われる。つまり **far の件数はランキングの質ではなく `osmRadiusM` としきい値の大小関係だけで決まる**。詳細な考察と是正案は [09_研究ノート](../../計画書一式/09_研究ノート_認知外を提案するアルゴリズム.md) の「R76+R19 far の4エリア実測」節を参照。
+osmRadiusM=15000 の4エリアは収集半径がしきい値(30km)の半分しかないため far が構造上必ず0件になり、osmRadiusM=30000 の hakone だけ収集円の外周ぎりぎり(30,003m〜30,495mの薄い殻)にある候補が far として拾われる。つまり **far の件数はランキングの質ではなく `osmRadiusM` としきい値の大小関係だけで決まる**。詳細な考察と是正案は [09_研究ノート](../../計画書一式/09_研究ノート_認知外を提案するアルゴリズム.md) の「R76+R19 far の4エリア実測」節を参照。
 
 ## 実行方法
 
@@ -102,9 +104,9 @@ Overpass は `out center tags;` で全タグを返すため、生の fixture に
 
 - keep-list(14種、geo.js を全読みして確定): `name` / `name:ja` / `tourism` / `historic` / `leisure` / `amenity` / `natural` / `man_made` / `wikidata` / `wikipedia` / `wikipedia:ja` / `website` / `contact:website` / `opening_hours`。加えて `wikipedia` で始まる全キーを前方一致で残す(`detectWikipedia()` の判定に合わせる)。
 - `json.meta` / `json.wiki` / 要素の `type`/`id`/`lat`/`lon`/`center` には一切触れない。
-- 既存 fixture を後から軽量化する手順: `node scripts/slim-fixtures.mjs [area]`(引数省略で4エリア全部)。**書き戻しは `JSON.stringify(json)`(第2・第3引数なし)** — pretty print すると逆に増える(hakone で 900KB→1056KB になった実測あり)。
+- 既存 fixture を後から軽量化する手順: `node scripts/slim-fixtures.mjs [area]`(引数省略で5エリア全部)。**書き戻しは `JSON.stringify(json)`(第2・第3引数なし)** — pretty print すると逆に増える(hakone で 900KB→1056KB になった実測あり)。
 - 実施前後で `node scripts/dump-rank.mjs <area>` を4エリア分取り、**差分ゼロ**を確認すること。差分が出たら落としたキーが実は使われているので keep-list に戻す。
-- 2026-09-16 実施時のサイズ: kusatsu 65.3KB→55.5KB / hakone 900.1KB→585.7KB / dogo 117.1KB→93.7KB / beppu 172.7KB→122.7KB(dump-rank 差分ゼロ確認済み)。
+- 2026-09-16 実施時のサイズ: kusatsu 65.3KB→55.5KB / hakone 900.1KB→585.7KB / dogo 117.1KB→93.7KB / beppu 172.7KB→122.7KB(dump-rank 差分ゼロ確認済み)。kinosaki は R81(2026-09-18)の生成時に軽量化込みで 86.2KB。
 - 今後 `make-fixture.mjs` で新規生成する fixture は保存時に最初からこの keep-list を通るため、生成直後から軽量。
 
 関連: R14(hakone.json 900KB の軽量化)・R19(far 分布)・R40(別府追加)はいずれもこの手順を前提にする。

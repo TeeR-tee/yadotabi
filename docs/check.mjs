@@ -21,6 +21,7 @@ const TARGETS = [
   'fixtures/hakone.json',
   'fixtures/dogo.json',
   'fixtures/beppu.json',
+  'fixtures/kinosaki.json',
 ];
 
 const JS_FILES = new Set(['assets/app.js', 'assets/geo.js', 'assets/engine.js']);

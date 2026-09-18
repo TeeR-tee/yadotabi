@@ -8,12 +8,12 @@
 // (このプロジェクトに npm install はしない)。check-hotelparam.mjs の作りを踏襲する。
 //
 // 確認項目:
-//   a. ?demo=zoomout(状態A)で .samples が可視、リンクが5本(サンプル4本+おまかせ)。
-//   b. 4本の href がそれぞれ fixture=kusatsu / hakone / dogo / beppu を含み、5本目が fixture=random を含む。
+//   a. ?demo=zoomout(状態A)で .samples が可視、リンクが6本(サンプル5本+おまかせ)。
+//   b. 5本の href がそれぞれ fixture=kusatsu / hakone / dogo / beppu / kinosaki を含み、6本目が fixture=random を含む。
 //   c. 1本目をクリックすると状態Bに遷移し、#feed-title が「草津温泉」、.feedcard が30枚。
 //   d. ?fixture=kusatsu では .samples が不可視(fixture中は出さない)。
 //   e. ?fixture=kusatsu&embed=1 でも .samples が不可視。
-//   f. ?fixture=random で4エリアのいずれかが開き、.feedcard が30枚、.samples が不可視。
+//   f. ?fixture=random で5エリアのいずれかが開き、.feedcard が30枚、.samples が不可視。
 //   g. 各ケースでコンソールエラー0件。
 //   h. R131: ?demo=nohotels で #pickbar-lead が可視・テキストが空でなく24文字以内。
 //   i. R131: 同URLで .pickbar の offsetHeight <= 200(mobile相当)。
@@ -67,14 +67,15 @@ async function checkSamplesVisible(browser) {
 
     const links = page.locator('.samples a');
     const count = await links.count();
-    ok(count === 5, 'a. サンプルリンクが5本', count);
+    ok(count === 6, 'a. サンプルリンクが6本', count);
 
     const hrefs = await links.evaluateAll((els) => els.map((el) => el.getAttribute('href')));
     ok(hrefs.some((h) => (h || '').includes('fixture=kusatsu')), 'b. 1本目が fixture=kusatsu を含む', hrefs);
     ok(hrefs.some((h) => (h || '').includes('fixture=hakone')), 'b. 2本目が fixture=hakone を含む', hrefs);
     ok(hrefs.some((h) => (h || '').includes('fixture=dogo')), 'b. 3本目が fixture=dogo を含む', hrefs);
     ok(hrefs.some((h) => (h || '').includes('fixture=beppu')), 'b. 4本目が fixture=beppu を含む', hrefs);
-    ok(hrefs.some((h) => (h || '').includes('fixture=random')), 'b. 5本目が fixture=random を含む', hrefs);
+    ok(hrefs.some((h) => (h || '').includes('fixture=kinosaki')), 'b. 5本目が fixture=kinosaki を含む', hrefs);
+    ok(hrefs.some((h) => (h || '').includes('fixture=random')), 'b. 6本目が fixture=random を含む', hrefs);
 
     ok(consoleErrors.length === 0, 'a/b. コンソールエラー0件', consoleErrors);
   });
