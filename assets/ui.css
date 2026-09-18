@@ -361,6 +361,11 @@ code {
   font-weight: 400;
   color: var(--c-text-faint);
 }
+/* R158: テーマを名乗らない端数置き場。束の見出しより一段弱く見せる */
+.feedbundle--rest {
+  font-weight: 400;
+  color: var(--c-text-faint);
+}
 
 /* ---------- 区切り・ユーティリティ ---------- */
 .divider { border: none; border-top: 1px solid var(--c-border); margin: var(--sp-5) 0; }

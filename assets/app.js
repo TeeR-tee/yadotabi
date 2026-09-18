@@ -1193,56 +1193,55 @@
   }
 
   /**
-   * R157: 「もっと見る」で開いた 6件目以降に、テーマの束の見出しを挿し込む。
+   * R158: 「もっと見る」で開いた 6件目以降を、テーマの束ごとにまとめて並べる。
    *
-   * カードは1枚も並べ替えない(rank 順のまま)。束が切り替わる位置に見出しを
-   * 挟むだけなので、data-index・番号バッジ・地図のピン番号は一切変わらない
-   * (並べ替えると番号が 1,2,3,4,5,8,14... と飛び、地図との対応が読めなくなる)。
+   * R157 は rank 順の並びを保ったまま見出しだけを挿していたため、
+   * 「屋内でじっくり」の見出しの下に松山城や神社が並ぶ状態になり、
+   * 見出しが何も意味していなかった(束を読み飛ばせない)。今回は**カードを
+   * 束ごとに寄せて**、見出しの下にはその束のカードだけが並ぶようにする。
    *
-   * 束分けは初期5件を含む全カードで行う。初期5件は見出し無しの現状維持で、
-   * 6件目以降で初めてその束の切れ目に見出しが出る。
+   * 番号の付け方は **案A**(番号は元の rank 順のまま保持し、並び順だけ束ごと)。
+   * 地図のピンは初期5件にしか無く(`renderFeedMap` は `state.cards` だけを打つ)、
+   * その初期5件は束にせず現状維持なので、番号バッジと地図のピンは完全に一致し続ける。
+   * 案B(並べ替え後に振り直す)を採ると、同じ場所の番号が展開の前後で変わり、
+   * 1〜5番のピンとカードの対応まで崩れるため採らない。
    *
-   * 同じ束が rank 順の都合で離れて再登場することがあるため、一度出した束の
-   * 見出しは二度出さない(「歴史を歩く」が3回出ると束に見えない)。
-   * 見出しに添える件数は、その束の 6件目以降にある残り全部の件数。
+   * 束分けは 6件目以降だけで行う(初期5件は見出し無しの現状維持)。全カードで
+   * 束ねると、初期5件が属する束の見出しが 6件目以降にだけ出て件数が合わなくなる。
+   * 束の並びは「その束の最上位カードの rank が高い順」= bundle() が返す順。
    */
   function moreBundledHtml() {
-    var all = state.cards.concat(state.more);
     var offset = state.cards.length;
+    var rest = state.more;
     var bundles = [];
     try {
-      bundles = window.YadoEngine.bundle(all) || [];
+      bundles = window.YadoEngine.bundle(rest) || [];
     } catch (e) {
       bundles = [];
     }
 
-    // 束分けに失敗したら従来どおり見出し無しで並べる(提案そのものは落とさない)
+    // 束分けに失敗したら従来どおり見出し無しで rank 順に並べる(提案そのものは落とさない)
     if (!bundles.length) {
-      return state.more.map(function (c, i) { return cardHtml(c, i + offset); }).join('');
+      return rest.map(function (c, i) { return cardHtml(c, i + offset); }).join('');
     }
-
-    // 添字 -> 束 の逆引きと、束ごとの「6件目以降の残り件数」
-    var labelOf = {};
-    var restOf = {};
-    bundles.forEach(function (b) {
-      var rest = b.indices.filter(function (i) { return i >= offset; }).length;
-      restOf[b.label] = rest;
-      b.indices.forEach(function (i) { labelOf[i] = b.label; });
-    });
 
     var out = '';
-    var shown = {};
-    for (var i = offset; i < all.length; i++) {
-      var label = labelOf[i];
-      // 見出しは束の初出時だけ。残り1件しかない束は見出しを出さず本文に混ぜる
-      // (「見出し1本に中身1件」を作らない)。
-      if (label && !shown[label] && restOf[label] >= 2) {
-        shown[label] = true;
-        out += '<h3 class="feedbundle">' + escapeHtml(label) +
-          ' <span class="feedbundle__n">' + escapeHtml(String(restOf[label])) + '件</span></h3>';
+    bundles.forEach(function (b) {
+      // bundle() は 1件しかないテーマを label:null の端数束にまとめて最後に置く。
+      // そのまま見出し無しで続けると直前の束の見出しの下にぶら下がって見えるので、
+      // テーマを名乗らない見出しで縁を切る(嘘のテーマ名を付けない)。
+      if (b.label) {
+        out += '<h3 class="feedbundle">' + escapeHtml(b.label) +
+          ' <span class="feedbundle__n">' + escapeHtml(String(b.indices.length)) + '件</span></h3>';
+      } else {
+        out += '<h3 class="feedbundle feedbundle--rest">そのほか' +
+          ' <span class="feedbundle__n">' + escapeHtml(String(b.indices.length)) + '件</span></h3>';
       }
-      out += cardHtml(all[i], i);
-    }
+      b.indices.forEach(function (i) {
+        // 番号・data-index は rank 順の添字のまま(案A)。並ぶ位置だけが束ごとになる。
+        out += cardHtml(rest[i], i + offset);
+      });
+    });
     return out;
   }
 

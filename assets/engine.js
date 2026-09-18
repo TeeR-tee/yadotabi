@@ -1717,9 +1717,14 @@
   /**
    * カード配列をテーマの束にまとめる。純関数。
    *
-   * 並べ替えは一切しない。返すのは元配列の添字だけを持つ
-   * [{ label, indices: [...] }] で、束の並びは「その束の最小の添字」の昇順
+   * 返すのは元配列の添字だけを持つ [{ label, indices: [...] }]。
+   * indices は昇順(= rank 順)のままで、束の並びは「その束の最小の添字」の昇順
    * (= 上位カードを持つ束が上)。
+   *
+   * R158: 呼び出し側はこの indices の順にカードを並べ替えて描画する。
+   * 見出しだけを rank 順の並びに挿すと、見出しの下に他の束のカードが混ざり
+   * 「興味のない束を読み飛ばす」という目的が果たせないため(R157 の不具合)。
+   * 添字そのものは保持するので、番号バッジ・data-index は rank 順のまま動かない。
    *
    * 1件しかない束は作らず FALLBACK_THEME へ寄せる(見出し1本に中身1件を構造的に作らない)。
    * 寄せた結果 FALLBACK_THEME も1件なら label を null にして見出しを出さない。
@@ -1736,19 +1741,18 @@
       byLabel[label].push(i);
     });
 
-    // 1件だけの束を FALLBACK_THEME へ寄せる
+    // R158: 1件だけの束は「見出し1本に中身1件」になるので見出しを持てない。
+    // R157 はこれを FALLBACK_THEME(「この土地の名物」)へ寄せていたが、
+    // 公園1件が「この土地の名物」の見出しの下に並ぶなど**見出しが嘘になる**ため、
+    // 寄せるのをやめ、ラベルを持たない束(label: null)に集めて最後に置く。
+    // これで「見出しの下にはその束のカードしか無い」が構造的に保証される。
     var strays = [];
     order.forEach(function (label) {
-      if (label === FALLBACK_THEME) return;
       if (byLabel[label].length === 1) {
         strays.push(byLabel[label][0]);
         byLabel[label] = [];
       }
     });
-    if (strays.length) {
-      if (!byLabel[FALLBACK_THEME]) { byLabel[FALLBACK_THEME] = []; order.push(FALLBACK_THEME); }
-      byLabel[FALLBACK_THEME] = byLabel[FALLBACK_THEME].concat(strays).sort(function (a, b) { return a - b; });
-    }
 
     var out = order.filter(function (label) {
       return byLabel[label] && byLabel[label].length;
@@ -1756,11 +1760,13 @@
       return { label: label, indices: byLabel[label] };
     });
 
-    // 束の並び = その束の最小の添字の昇順
+    // 束の並び = その束の最上位カード(最小の添字)の順位が高い順
     out.sort(function (a, b) { return a.indices[0] - b.indices[0]; });
 
-    // 束が1つだけ、かつ中身も1件なら見出しを出さない
-    if (out.length === 1 && out[0].indices.length === 1) out[0].label = null;
+    // 見出しの付かない端数は必ず最後。並びは rank 順のまま
+    if (strays.length) {
+      out.push({ label: null, indices: strays.sort(function (a, b) { return a - b; }) });
+    }
 
     return out;
   }
