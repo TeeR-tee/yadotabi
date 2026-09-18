@@ -154,6 +154,68 @@ async function main() {
 
       await context.close();
     }
+
+    // R2-1: 候補が開いている間は .chip / .samples a / .pickbar__lead の中心が
+    // suggest__item / suggest__name を返さない(=誤タップの余地が無い)こと、
+    // 候補を閉じたら(Escキー)元の要素に戻ることを elementFromPoint で確認する。
+    {
+      const suggestUrl = `${BASE}/?demo=suggest`;
+      const context = await browser.newContext({ viewport: { width: 375, height: 812 } });
+      const page = await context.newPage();
+      await page.goto(suggestUrl, { waitUntil: 'load' });
+      await waitFor(1500);
+      await page.focus('#search-input');
+      await waitFor(200);
+
+      const hitInfo = await page.evaluate(() => {
+        function centerHitClass(el) {
+          const r = el.getBoundingClientRect();
+          const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+          return hit ? hit.className : null;
+        }
+        const chips = Array.from(document.querySelectorAll('.chip'));
+        const samples = Array.from(document.querySelectorAll('.samples a'));
+        const lead = document.querySelector('.pickbar__lead');
+        return {
+          chips: chips.map((el) => centerHitClass(el)),
+          samples: samples.map((el) => centerHitClass(el)),
+          lead: lead ? centerHitClass(lead) : null,
+        };
+      });
+
+      // 「.chip 自身」「.samples a 自身」がヒットしなければ良い(visibility:hidden で
+      // タップ判定も消えるので、下に重なる候補(suggest__item/suggest__name)がヒットするのは
+      // 見た目どおりで問題ない=誤タップにならない)。
+      const isChipOrSampleItself = (cls) => cls === 'chip' || cls === '';
+      const openOk = !hitInfo.chips.some(isChipOrSampleItself) && !hitInfo.samples.some(isChipOrSampleItself) && hitInfo.lead !== null && !/\bpickbar__lead\b/.test(hitInfo.lead || '');
+      console.log(`[${openOk ? 'OK' : 'NG'}] ?demo=suggest(候補を開いた状態) チップ/サンプル/リード文の中心が自分自身(chip/samples a/pickbar__lead)を返さない(見えている候補がヒットするのはOK): chips=${JSON.stringify(hitInfo.chips)} samples=${JSON.stringify(hitInfo.samples)} lead=${JSON.stringify(hitInfo.lead)}`);
+      if (!openOk) hasFailure = true;
+
+      // 閉じる(Escキー): 3行が元どおりのタップ対象に戻ることを確認
+      await page.keyboard.press('Escape');
+      await waitFor(300);
+
+      const closedInfo = await page.evaluate(() => {
+        function centerHitClass(el) {
+          const r = el.getBoundingClientRect();
+          const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+          return hit ? hit.className : null;
+        }
+        const chip = document.querySelector('.chip');
+        const sample = document.querySelector('.samples a');
+        return {
+          chip: chip ? centerHitClass(chip) : null,
+          sample: sample ? centerHitClass(sample) : null,
+        };
+      });
+      const isChipHit = (cls) => typeof cls === 'string' && /\bchip\b/.test(cls);
+      const isSampleLinkHit = (cls) => cls === '';
+      const closedOk = isChipHit(closedInfo.chip) && isSampleLinkHit(closedInfo.sample);
+      console.log(`[${closedOk ? 'OK' : 'NG'}] ?demo=suggest(Escで候補を閉じた後) チップ/サンプルの中心が元の要素に戻る: chip=${JSON.stringify(closedInfo.chip)} sample=${JSON.stringify(closedInfo.sample)}`);
+      if (!closedOk) hasFailure = true;
+
+      await context.close();
+    }
   } finally {
     await browser.close();
     await stop();

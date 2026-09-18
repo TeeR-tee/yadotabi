@@ -546,6 +546,8 @@
     els.suggest.hidden = true;
     els.suggest.innerHTML = '';
     suggestItems = [];
+    var pickbar = els.suggest.closest('.pickbar');
+    if (pickbar) pickbar.classList.remove('pickbar--suggesting');
   }
 
   // 検索欄に入力があるときだけ×ボタンを見せる(空白1文字でも「入力あり」扱い)。
@@ -579,6 +581,8 @@
     }).join('');
     els.suggest.innerHTML = html;
     els.suggest.hidden = false;
+    var pickbar = els.suggest.closest('.pickbar');
+    if (pickbar) pickbar.classList.add('pickbar--suggesting');
   }
 
   /** 最近見た宿を最大 limit 件、候補行の形に変換する純粋関数。 */

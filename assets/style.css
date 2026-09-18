@@ -88,6 +88,15 @@ body {
   z-index: 600;
 }
 
+/* R2-1: 候補が開いている間は下の3行(チップ・リード文・サンプル)を隠す。
+   display:none だと .pickbar が縮んで #map が入力のたびに揺れるため、
+   場所を占めたまま消える visibility:hidden を使う(タップ判定も同時に消える)。 */
+.pickbar--suggesting .chips,
+.pickbar--suggesting .pickbar__lead,
+.pickbar--suggesting .samples {
+  visibility: hidden;
+}
+
 .suggest__item {
   display: flex;
   align-items: center;
