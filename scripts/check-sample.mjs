@@ -181,7 +181,7 @@ async function checkFixtureRandom(browser) {
     await waitFor(1500);
 
     const title = (await page.locator('#feed-title').textContent() || '').trim();
-    ok(['草津温泉', '箱根湯本', '道後温泉', '別府温泉'].includes(title), 'f. #feed-title が4エリアのいずれか', title);
+    ok(['草津温泉', '箱根湯本', '道後温泉', '別府温泉', '城崎温泉'].includes(title), 'f. #feed-title が5エリアのいずれか', title);
 
     const cardCount = await page.locator('.feedcard').count();
     ok(cardCount === 30, 'f. .feedcard が30枚', cardCount);

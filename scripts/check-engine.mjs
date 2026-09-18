@@ -1638,11 +1638,17 @@ console.log('\n(r146) castle 判定は裸の「城」ではなくタイトル末
 {
   // 5エリア250記事の実測で判明した誤爆(地名の一部に「城」を含むだけ)の代表3件+本物の城3件。
   // 誤爆側は castle にならないこと、本物の城側は castle のままであることを確認する。
+  //
+  // 注(R148): `竹野鉱山` はここでは「地名に『城』が付くだけで城ではない」代表として
+  // R146 が置いたケースだが、その extract(「にあった」+「鉱山」)は R148 の AND 判定
+  // そのものに一致するため、R148 導入後は candidate 自体が collect() 結果から消える
+  // (= そもそも castle 誤爆の心配をする段階にすら残らない)。ケースは削除せず、
+  // gone:true として「そもそも候補に残らない」ことを検証する形に変える。
   const R146_CASES = [
     // --- 誤爆側(地名「城崎」「城崎郡」を含むだけで城ではない) ---
     { title: '城崎国際アートセンター', extract: '城崎国際アートセンターは兵庫県豊岡市城崎町にある文化施設である。', category: 'other', label: 'スポット' },
     { title: 'ひのそ島', extract: '兵庫県豊岡市城崎町に属する無人島である。', category: 'other', label: 'スポット' },
-    { title: '竹野鉱山', extract: '兵庫県城崎郡竹野町にあった鉱山である。', category: 'other', label: 'スポット' },
+    { title: '竹野鉱山', extract: '兵庫県城崎郡竹野町にあった鉱山である。', gone: true },
     // --- 本物の城(名前が「城」で終わる) ---
     { title: '羽根尾城', extract: '群馬県吾妻郡長野原町にあった日本の城である。', category: 'castle', label: '城・城跡' },
     { title: '長野原城', extract: '群馬県吾妻郡長野原町にあった日本の城である。', category: 'castle', label: '城・城跡' },
@@ -1661,6 +1667,10 @@ console.log('\n(r146) castle 判定は裸の「城」ではなくタイトル末
   const byName146 = Object.fromEntries(items146.map(i => [i.name, i]));
   R146_CASES.forEach(c => {
     const got = byName146[c.title];
+    if (c.gone) {
+      ok(!got, 'R146→R148 そもそも候補に残らない(にあった+鉱山): ' + c.title);
+      return;
+    }
     ok(!!got && got.category === c.category && got.categoryLabel === c.label,
       'R146 カテゴリ推定: ' + c.title + ' → ' + c.label,
       got && { category: got.category, label: got.categoryLabel });
@@ -1782,6 +1792,56 @@ console.log('\n(r147) 要約(extract)2文目以降ではなく定義文(1文目)
   R147_CHANGE_CASES.concat(R147_UNCHANGED_CASES).forEach(c => {
     const got = guess147(c.title, c.extract);
     eq(got.label, c.after, 'R147 定義文1文目のみで判定: ' + c.title + ' -> ' + c.after);
+  });
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n(r148) 「かつて」を書かずに「にあった」だけで廃止を述べる記事を落とす(AND判定)');
+{
+  // R119/R120 が見ていなかった第3の型: 「かつて」も「存在した/存在していた」も無く、
+  // 「にあった」だけで廃止を述べる記事(kinosaki cards 18位 竹野鉱山)。
+  // `にあった` を単独で落とすと湯築城(dogo cards 4位)ら城跡4件・旧町村9件を
+  // 巻き込むため、消滅しうる人工施設の種別語との AND でのみ落とす。
+  // drop=true が落ちる側、drop=false が残る側(城跡4件を必ず含む・1件でも落ちたら条件が広すぎる)。
+  // extract は5エリア250記事の実測(2026-09-18)で実際にヒットした/しなかった記事の
+  // 冒頭文をそのまま使う。
+  const R148_CASES = [
+    // --- 落とす側: 「にあった」+ 消滅しうる人工施設の種別語(実測11件のうち代表3件) ---
+    { title: '竹野鉱山', drop: true,
+      extract: '竹野鉱山（たけのこうざん）は、兵庫県豊岡市竹野町（旧城崎郡竹野町）にあった鉱山。' },
+    { title: '太子駅', drop: true,
+      extract: '太子駅（おおしえき）は、かつて群馬県吾妻郡六合村（現在の中之条町）大字太子にあった日本国有鉄道（国鉄）吾妻線（太子支線）の駅（廃駅）である。' },
+    { title: '豊岡市立竹野小学校', drop: true,
+      extract: '豊岡市立竹野小学校（とよおかしりつたけのしょうがっこう）は、かつて兵庫県豊岡市竹野町竹野300にあった公立小学校。' },
+    // --- 残す側: 城跡4件(必ず含む)。跡地が公園等として整備され現地に行ける ---
+    { title: '湯築城', drop: false,
+      extract: '湯築城（ゆづきじょう）は、愛媛県松山市道後公園にあった日本の城。堀や土塁が現存する。' },
+    { title: '石垣山城', drop: false,
+      extract: '石垣山城（いしがきやまじょう）は、神奈川県小田原市早川にあった日本の城。石垣山一夜城または太閤一夜城とも呼ばれている。' },
+    { title: '羽根尾城', drop: false,
+      extract: '羽根尾城（はねおじょう）は、群馬県吾妻郡長野原町（上野国吾妻郡羽根尾）にあった日本の城。かつては国衆・羽尾氏の本拠であり' },
+    { title: '長野原城', drop: false,
+      extract: '長野原城（ながのはらじょう）は、群馬県吾妻郡長野原町（上野国吾妻郡長野原）にあった日本の城。別名箱岩城。' }
+    // 注: NEXT.md(R148)は「にあった」26件の実測に旧町村9件(道後村・城崎町・竹野町・
+    // 中竹野村・田鶴野村・港村・内川村・竹野村・道後湯之町・六合村)も挙げているが、
+    // これらは名前が TITLE_SUFFIX_NG の `村`/`町` 末尾一致で isExcludedName により
+    // **名前の時点で**既に除外されており、この AND 判定(述部の `にあった`)には
+    // そもそも到達しない。collect() 経由のケースに混ぜると意図と違う理由(名前ルール)で
+    // drop:false が通ってしまい R148 の検証にならないため、ここでは城跡4件のみを置く。
+  ];
+
+  const E148 = loadEngine({
+    ...geoMock(),
+    fetchSpots: () => Promise.resolve([]),
+    fetchWikiNearby: () => Promise.resolve(R148_CASES.map((c, i) => ({
+      id: 'wp/' + (9700 + i), title: c.title, lat: at(300 + i * 500), lon: HOTEL.lon,
+      distanceM: 300 + i * 500, thumbnailUrl: null, extract: c.extract, url: ''
+    })))
+  });
+  const got148 = new Set((await E148.collect(HOTEL)).map(i => i.name));
+  R148_CASES.forEach(c => {
+    if (c.drop) ok(!got148.has(c.title), 'R148 落とす(にあった+種別語): ' + c.title);
+    else ok(got148.has(c.title), 'R148 残す(城跡・旧町村は「にあった」単独では落とさない): ' + c.title);
   });
 }
 
