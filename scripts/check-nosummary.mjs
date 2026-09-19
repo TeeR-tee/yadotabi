@@ -117,9 +117,11 @@ async function main() {
     // R154実測: dogo 展開後15件、全カードに.feedcard__summaryが1本ずつ付く。
     // R168実測: 16件に増えた。親記事の言及回数で配点するようにした結果、道後温泉の
     // 記事によく出る候補(道後公園・湯神社ほか)が表示圏に入ったため。
+    // R170実測: 18件に増えた。BACKLINK_MAX を 48→18 に下げた結果、被リンクだけで
+    // 上位に居た候補(愛媛県美術館ほか)の点が下がり、理由付き候補の並びが入れ替わったため。
     // **検査の本体は summaryCount === totalCardCount(全カードに1本ずつ)** で、
     // ここは緩めていない。件数は実測値の記録なので追従させる。
-    ok(summaryCount === totalCardCount && totalCardCount === 16, '3. .feedcard__summary の総数が展開後の全件数(16)と一致', summaryCount);
+    ok(summaryCount === totalCardCount && totalCardCount === 18, '3. .feedcard__summary の総数が展開後の全件数(18)と一致', summaryCount);
 
     const noneCount = await page.locator('.feedcard__summary--none').count();
     // 2026-09-19 R164実測: dogo 展開後15件のうち9件が--none(記事あり8 + 記事なし1)。
@@ -298,11 +300,18 @@ async function main() {
         hoursText: c.querySelector('.feedcard__hours') ? c.querySelector('.feedcard__hours').textContent : null,
       }))
     );
-    const shiriyaki = kusatsuHours.find((r) => r.name === '尻焼温泉 川風呂');
+    // R170: 見る相手を 尻焼温泉 川風呂 → 千代の湯 に変えた。
+    // この検査の目的は **OSM の `24/7` を「⏰ 24時間」と書けているか**であって、
+    // 特定のカードが表示圏に居ることではない。
+    // R170 で BACKLINK_MAX を 48→18 に下げた結果、尻焼温泉 川風呂は
+    // 草津の表示24件の **#23 → 圏外** に落ちた(元々最下位付近だった)。
+    // 千代の湯も OSM の営業時間が `24/7` で、草津の #14 と安定して表示圏内にあるため、
+    // **検査したい書式変換はそのまま検査できる**。
+    const chiyonoyu = kusatsuHours.find((r) => r.name === '千代の湯');
     ok(
-      !!shiriyaki && shiriyaki.hoursText === '⏰ 24時間',
-      '(r136) a4. 尻焼温泉 川風呂(24/7)が「24時間」になる',
-      shiriyaki
+      !!chiyonoyu && chiyonoyu.hoursText === '⏰ 24時間',
+      '(r136) a4. 千代の湯(24/7)が「24時間」になる',
+      chiyonoyu
     );
     const otakinoyu = kusatsuHours.find((r) => r.name === '大滝乃湯');
     ok(

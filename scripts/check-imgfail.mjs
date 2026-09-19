@@ -79,14 +79,34 @@ async function main() {
       ok(cardCount === 5, '?demo=imgfail でも .feedcard が5枚', cardCount);
 
       // 先頭3枚: .feedcard__ph になっている(.feedcard__img が残っていない)
+      //
+      // R170: ただし **isBare のカードは .feedcard__media ごと出ない**(R140の仕様)。
+      // 写真・要約・記事リンク・営業時間・公式サイトが1つも無いカードは帯を畳むため、
+      // `.feedcard__ph` も `.feedcard__img` も 0件になるのが**正しい姿**。
+      // demo=imgfail は imgSrc に相対パスを入れるが safeUrl() は https? しか通さないので、
+      // 強制失敗させたカードも「写真なし」扱いになり、素の isBare 判定がそのまま効く。
+      //
+      // R170 で BACKLINK_MAX を 48→18 に下げた結果、草津の3枚目が
+      // 草津白根山(写真あり)から **湯畑**(写真も要約も無い = isBare)に変わり、
+      // この検査が落ちた。**アプリの不具合ではなく、検査側が
+      // 「上位3枚は必ず帯を持つ」と決め打ちしていた**のが原因なので、検査側を仕様に合わせる。
       for (let i = 0; i < 3; i++) {
         const card = cards.nth(i);
+        const isBare = (await card.locator('.feedcard--bare').count()) > 0
+          || (await card.evaluate((el) => el.classList.contains('feedcard--bare')));
         const phCount = await card.locator('.feedcard__ph').count();
         const imgCount = await card.locator('.feedcard__img').count();
-        ok(phCount === 1 && imgCount === 0, `先頭${i + 1}枚目が .feedcard__ph に置換されている`, { phCount, imgCount });
 
-        const emojiText = (await card.locator('.feedcard__ph span').textContent()) || '';
-        ok(emojiText.trim().length > 0, `先頭${i + 1}枚目のプレースホルダに絵文字が入っている`, emojiText);
+        if (isBare) {
+          // 帯を畳むカード: 画像もプレースホルダも持たないのが正しい
+          ok(phCount === 0 && imgCount === 0,
+            `先頭${i + 1}枚目は isBare なので帯ごと無い(.feedcard__media が出ない)`, { phCount, imgCount });
+        } else {
+          ok(phCount === 1 && imgCount === 0, `先頭${i + 1}枚目が .feedcard__ph に置換されている`, { phCount, imgCount });
+
+          const emojiText = (await card.locator('.feedcard__ph span').textContent()) || '';
+          ok(emojiText.trim().length > 0, `先頭${i + 1}枚目のプレースホルダに絵文字が入っている`, emojiText);
+        }
 
         const badgeText = (await card.locator('.feedcard__no').textContent()) || '';
         ok(badgeText.trim() === String(i + 1), `先頭${i + 1}枚目の番号バッジが${i + 1}のまま`, badgeText);
