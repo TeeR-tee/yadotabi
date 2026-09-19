@@ -13,7 +13,9 @@
 //   3. 展開後の6枚目のカードの番号バッジが「6」である
 //   4. 展開後は #more-btn が消えている
 //   5. コンソールエラー0件
-//   R60: 展開前は .morenote が存在せず、展開後は1つ存在し「6」と「地図」を含む
+//   R153: 展開後は more もピンに含めてカードと地図を完全一致させたので、
+//   「◯番以降は地図に表示していません」の .morenote 自体が不要になった。
+//   展開前後どちらも .morenote は存在しないことを確認する(R60の逆)。
 //   R152: #more-btn の文言に件数の数字が出ていない
 
 import { chromium } from 'file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs';
@@ -75,12 +77,10 @@ async function main() {
     // 件数を固定値で比較せず「30件を超えない」不等式にする(草津の実測は25件)。
     ok(expandedCount <= 30, '.feedcard の枚数が30枚を超えない', expandedCount);
 
-    // R60: 展開後の注記
-    const moreNote = page.locator('.morenote');
-    const moreNoteCountAfter = await moreNote.count();
-    ok(moreNoteCountAfter === 1, '展開後は .morenote が1つ存在する', moreNoteCountAfter);
-    const moreNoteText = moreNoteCountAfter === 1 ? await moreNote.textContent() : '';
-    ok(moreNoteText.includes('6') && moreNoteText.includes('地図'), '.morenote に「6」と「地図」を含む', moreNoteText);
+    // R153: 展開後も more にピンを打ってカードと地図を一致させたので、
+    // 「◯番以降は地図に表示していません」の言い訳(.morenote)は出ないはず
+    const moreNoteCountAfter = await page.locator('.morenote').count();
+    ok(moreNoteCountAfter === 0, '展開後も .morenote が存在しない(地図と一致するため注記不要)', moreNoteCountAfter);
 
     // 撮影(展開後): 目視用にフルページを保存する
     const shotPath = path.join(PROJECT_ROOT, 'screenshots', dateStamp() + '_r60-expanded_mobile.png');

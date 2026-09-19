@@ -1201,12 +1201,12 @@
   /**
    * フィード末尾の「もっと見る」行。展開済みならボタンは出さない
    * (カード本体は renderFeed 側で state.more を連結して描く)。
+   * R153: 展開後は more もピンを打つようになったため、「◯番以降は地図に
+   * 表示していません」の注記は不要になった(地図とカードが完全に一致する)。
    */
-  function moreHtml(more, open, startNo) {
+  function moreHtml(more, open) {
     if (!more.length) return '';
-    if (open) {
-      return '<p class="morenote">' + escapeHtml(String(startNo)) + '番以降は地図に表示していません。</p>';
-    }
+    if (open) return '';
     return '<button type="button" class="morebtn" id="more-btn">もっと見る</button>';
   }
 
@@ -1273,8 +1273,9 @@
    * 束ごとに寄せて**、見出しの下にはその束のカードだけが並ぶようにする。
    *
    * 番号の付け方は **案A**(番号は元の rank 順のまま保持し、並び順だけ束ごと)。
-   * 地図のピンは初期5件にしか無く(`renderFeedMap` は `state.cards` だけを打つ)、
-   * その初期5件は束にせず現状維持なので、番号バッジと地図のピンは完全に一致し続ける。
+   * R153以降、地図のピンは展開後 `state.more` 分も打つ(`renderFeedMap` は
+   * `state.moreOpen ? state.cards.concat(state.more) : state.cards` を使う)が、
+   * 番号バッジは初期5件にしか出さない(R159)ため、初期5件は束にせず現状維持のまま。
    * 案B(並べ替え後に振り直す)を採ると、同じ場所の番号が展開の前後で変わり、
    * 1〜5番のピンとカードの対応まで崩れるため採らない。
    *
@@ -1361,7 +1362,7 @@
     perfMarkFirstCard();
 
     // 「もっと見る」は読み込み中は出さない(スケルトンと並ぶと意味が分からないため)
-    var more = loading ? '' : moreHtml(state.more, state.moreOpen, state.cards.length + 1);
+    var more = loading ? '' : moreHtml(state.more, state.moreOpen);
     if (els.feedMore) {
       els.feedMore.hidden = !more;
       els.feedMore.innerHTML = more;
@@ -1568,9 +1569,12 @@
     var hotel = state.hotel;
     if (!hotel) return;
     ensureFeedMap();
+    // R153: 展開後は state.more もピンに含めるので、地図に打つ件数の母数はこちらで統一する
+    // (state.cards だけだと展開後にカードと地図が食い違い、注記で言い訳する必要が生じていた)。
+    var mapSpots = state.moreOpen ? state.cards.concat(state.more) : state.cards;
     // R152: カードが5件打ち切りになったので閾値を 25 → 5 に緩める
     // (25 のままだと 15件化後は永久に false になり、背の高い地図が二度と出ない)
-    els.feedMap.classList.toggle('feedmap--tall', state.cards.length >= 5);
+    els.feedMap.classList.toggle('feedmap--tall', mapSpots.length >= 5);
 
     feedMarkers.forEach(function (m) { feedMap.removeLayer(m); });
     feedMarkers = [];
@@ -1588,10 +1592,14 @@
 
     var points = [[hotel.lat, hotel.lon]];
     var spotMarkers = [];
-    state.cards.forEach(function (c, i) {
+    mapSpots.forEach(function (c, i) {
+      // R159: 6番以降はバッジを出していないので、ピンも番号なし(地味な見た目)にする。
+      // バッジと1:1対応しないピンに番号を振ると、番号を見て探すユーザーを誤誘導するため。
+      var isTop = i < 5;
       var icon = L.divIcon({
-        className: 'pin pin--spot' + (i < 5 ? ' pin--top' : ''),
-        html: '<span role="img" aria-label="' + escapeHtml((i + 1) + '番 ' + c.name) + '">' + (i + 1) + '</span>',
+        className: 'pin pin--spot' + (isTop ? ' pin--top' : ' pin--sub'),
+        html: '<span role="img" aria-label="' + escapeHtml((isTop ? (i + 1) + '番 ' : '') + c.name) + '">' +
+          (isTop ? (i + 1) : '・') + '</span>',
         iconSize: [24, 24],
         iconAnchor: [12, 12]
       });
@@ -1634,9 +1642,9 @@
           });
         }
       }
-      // marker は setLatLng で動かすので、元の緯度経度(state.cards)を基準に計算する
+      // marker は setLatLng で動かすので、元の緯度経度(mapSpots)を基準に計算する
       var markerPoints = spotMarkers.map(function (m, i) {
-        var c = state.cards[i];
+        var c = mapSpots[i];
         return {
           marker: m,
           point: feedMap.latLngToContainerPoint(L.latLng(c.lat, c.lon)),

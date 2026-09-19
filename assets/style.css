@@ -287,6 +287,15 @@ body {
   box-shadow: var(--shadow-md), 0 0 0 2px #fff, 0 0 0 3px var(--c-primary);
   transform: scale(1.12);
 }
+/* R153: 展開後(6件目以降)のピン。番号バッジ(R159)と対応しないので番号は打たず、
+   小さく・控えめな色にして、件数が多いエリアでも上位5件のピンが埋もれないようにする */
+.pin--sub span {
+  background: var(--c-surface);
+  color: var(--c-primary);
+  box-shadow: var(--shadow-md), 0 0 0 2px var(--c-primary);
+  font-size: 10px;
+  transform: scale(0.72);
+}
 .pin--flash span {
   animation: pin-flash 1s ease-out;
 }
