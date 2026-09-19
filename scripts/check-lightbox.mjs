@@ -57,7 +57,10 @@ async function main() {
     page.on('pageerror', (err) => consoleErrors.push(String(err)));
 
     await page.goto(`${BASE}/?fixture=kusatsu`, { waitUntil: 'load' });
-    await waitFor(2000);
+    // R172: 固定waitFor(2000)は箱根のような候補が多いエリアだとcollect()に3秒以上かかり
+    // 追い越されることがある(今回はkusatsu固定なので実害は薄いが、check-all.mjs一括実行時の
+    // 全体的な描画待ち方針を揃えるため他の検査と同様に条件待ちへ変更する)。判定内容は変えない。
+    await page.waitForFunction(() => document.querySelectorAll('.feedcard[data-index]').length >= 5, null, { timeout: 15000 });
 
     const firstImg = page.locator('.feedcard__img').first();
     ok(await firstImg.count() >= 1, '写真つきカードのimgが存在する', await firstImg.count());

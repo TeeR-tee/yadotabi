@@ -105,7 +105,10 @@ async function main() {
     for (const area of AREAS) {
       console.log('\n[' + area + ']');
       await page.goto(`${base}/?fixture=${area}`, { waitUntil: 'load' });
-      await waitFor(2000);
+      // R172: 固定waitFor(2000)だと箱根(候補2855件・collect()に約3秒)で描画待ちを
+      // 追い越し、初期カードが0枚のまま次の操作に進んでFAILすることがあった。
+      // 「初期カード5枚が揃うまで」の条件待ちに変える(判定内容・待ち時間の上限は変えない)。
+      await page.waitForFunction(() => document.querySelectorAll('.feedcard[data-index]').length >= 5, null, { timeout: 15000 });
 
       // 1. 展開前は見出し0本
       const before = await page.locator('.feedbundle').count();

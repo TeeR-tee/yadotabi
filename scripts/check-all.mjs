@@ -5,6 +5,7 @@
 // 各子プロセスに環境変数 YADOTABI_BASE で渡す。子は自分でサーバを起動しないので、
 // 以前のようにポート3000を奪い合って毎回違う1本が ERR_CONNECTION_REFUSED で落ちることがなくなる。
 import { spawnSync } from 'node:child_process';
+import net from 'node:net';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +13,21 @@ import { ensureServer } from './lib/server.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
+
+// R172: 「毎回違う検査が落ちる」現象を調べたところ、主因は検査コード自体ではなく
+// 過去に手動起動して放置された python -m http.server が port 3000 に居座り続け、
+// ポート競合・ソケット枯渇を起こしていたことだった(別作業役が特定)。
+// ensureServer() は R130 で空きポートを実測してから起動する方式に変わっているため
+// 新規の3000固定競合は起きないが、「放置サーバーがまだ残っている」ことに気付かず
+// 検査してしまう事故を防ぐため、開始時に一度だけ検出して警告する(kill はしない)。
+function warnIfPortBusy(port) {
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ port, host: '127.0.0.1' });
+    const done = (busy) => { socket.destroy(); resolve(busy); };
+    socket.once('connect', () => done(true));
+    socket.once('error', () => done(false));
+  });
+}
 
 // 明示リスト(自動 glob にしない。新しい検査を足すときは人が1行足す)
 const SCRIPTS = [
@@ -83,6 +99,14 @@ function saveFailLog(script, res, ms) {
 }
 
 const results = [];
+
+// 開始前に旧来のポート3000が塞がっていないか確認する(検出のみ・killはしない)。
+// ensureServer() 自体は空きポートを使うので動作には影響しないが、居座っている
+// プロセスがあるなら人が気付いて片付けられるよう警告だけ出す。
+if (await warnIfPortBusy(3000)) {
+  console.warn('警告: ポート3000が既に使用中です(過去に手動起動した python -m http.server の残存が疑われます)。');
+  console.warn('       netstat -ano | findstr :3000 でPIDを確認し、不要なら手動で終了してください。');
+}
 
 // 親サーバを1本だけ立て、全30本に YADOTABI_BASE で渡す(読まない4本は無視するだけ)
 const { base, stop } = await ensureServer();

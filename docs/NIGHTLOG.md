@@ -1,5 +1,10 @@
 # 夜間ログ(みのるんが朝に読む)
 
+## R172(2026-09-19 作業役が更新)
+- **「毎回違う検査が落ちる」問題は、検査コードの不具合ではなく、過去に放置された `python -m http.server` プロセスによるポート競合・ソケット枯渇が主因でした**(別作業役R153が特定・感謝)。クリーンなプロセス状態なら安定して31本中30本PASS(既知FAILのみ)を再現します。
+- 対処は2点だけ。(1) `check-all.mjs` にポート3000の残存を検出し警告する軽量チェックを追加(kill はしない・報告のみ)。(2) 予防として `check-bundle.mjs`・`check-lightbox.mjs` の初回ロード後の固定待ちを条件待ち(`.feedcard` 5件出現待ち)に変更、判定内容は無変更です。
+- `check-all.mjs` を4回連続実行し(変更前後合わせて)、**4回とも同じ結果**(31本中30本PASS・FAILは常にcheck-nosummayのみ)を確認しました。所要時間も340〜349秒台で変化なしです。
+
 ## R171(2026-09-19 作業役が更新)
 - **Wikipedia/Wikidataへの並列アクセスを直列化しました。** `assets/geo.js` の `resolveWikipediaTitles`・`fetchBacklinkCounts`・`fetchWikiByTitles`・`fetchSitelinks`・`fetchPageviews`(計5箇所)と、`enrichFame` 内で2関数を同時発火していた箇所を、`chunk().map(async)+Promise.allSettled` から `for...of + await` に変更しました。リクエスト回数・打ち切りロジック(`BACKLINK_SATURATE`)は無変更です。`make-fixture.mjs` は元々直列実装済みで変更不要でした。
 - **速度への影響はありません。** fixture モードは外部fetchを一切行わないため、`collect()` の所要時間は before/after で誤差の範囲でした(箱根 2891ms→2946ms)。本番(ネットワーク)での体感速度差は測れませんが、市場調査役の指摘どおり「1エリア最大20リクエスト・1回数百ms」の規模なので大きな遅延は見込みにくいです。
