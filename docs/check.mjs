@@ -119,6 +119,9 @@ for (const path of TARGETS) {
 
 const HTML_PAGES = ['index.html', 'demo/embed-check.html', 'demo/hotel-page.html', 'demo/hotel-page-en.html'];
 
+// --- R214: 4ページの favicon href が全て同一であることを確認するための収集先 ---
+const faviconHrefs = new Map();
+
 async function collectLinks(page) {
   const url = BASE + page;
   let res, ms;
@@ -147,11 +150,27 @@ async function collectLinks(page) {
     if (c) rawValues.push(c[1]);
   }
 
+  // --- R214: favicon(rel="icon")がインラインSVGデータURIで入っていることの検査 ---
+  // HTMLコメントを除去してから探す(コメントアウトされた link タグを誤って「ある」と
+  // 判定しないため)。
+  const bodyWithoutComments = body.replace(/<!--[\s\S]*?-->/g, '');
+  const iconMatch = /<link[^>]+rel\s*=\s*"?icon"?[^>]*>/i.exec(bodyWithoutComments);
+  if (!iconMatch) {
+    report(`${page} に rel="icon" の link がある`, false, 'rel="icon" が見つからない');
+  } else {
+    const hrefMatch = /href\s*=\s*"([^"]*)"/.exec(iconMatch[0]);
+    const href = hrefMatch ? hrefMatch[1] : '';
+    report(`${page} に rel="icon" の link がある`, true);
+    report(`${page} の favicon href が data:image/svg+xml で始まる`, href.startsWith('data:image/svg+xml'), href.slice(0, 40));
+    faviconHrefs.set(page, href);
+  }
+
   const internalPaths = new Set();
   let externalCount = 0;
 
   for (const raw of rawValues) {
-    if (!raw || raw.startsWith('#') || raw.startsWith('javascript:') || raw.startsWith('mailto:')) {
+    // R214: data: URI(favicon 等)は外部ファイルではないためリンク検査の対象外とする
+    if (!raw || raw.startsWith('#') || raw.startsWith('javascript:') || raw.startsWith('mailto:') || raw.startsWith('data:')) {
       continue;
     }
     if (/^https?:\/\//.test(raw)) {
@@ -208,6 +227,14 @@ for (const page of HTML_PAGES) {
   }
 }
 // --- ここまで R22 ---
+
+// --- R214: 4ページの favicon href が全て同一であることの検査(1枚だけ更新し忘れる事故を防ぐ) ---
+{
+  const hrefs = [...faviconHrefs.values()];
+  const allSame = hrefs.length === HTML_PAGES.length && hrefs.every((h) => h === hrefs[0]);
+  report('4ページの favicon href がすべて同一', allSame, `${faviconHrefs.size}/${HTML_PAGES.length}件取得`);
+}
+// --- ここまで R214 ---
 
 // --- R34: README.md の画像もリンク検査に含める ---
 // GitHub Pages は README.md をそのまま配信し、本番で HTTP 200 を返すことを確認済み。
