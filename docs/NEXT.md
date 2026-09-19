@@ -77,74 +77,75 @@
 
 判断ポイント: **このリクエスト数のまま様子見でよいか、それとも上限を設けて減らす対処を次サイクルで検討すべきか**。今のところ実害(エラー・規約違反)は出ていないため、急ぎではありません。
 
+
 ## 3. ★次のサイクルでやる1件(計画役が選定・判断待ちに依存しません)
 
-### R213: `demo/embed-check.html` に説明書きを入れ、README の営業デモ記述を実態に合わせる
+### まず: バックログを7件補充しました(R214〜R220)
 
-**なぜこれを選んだか**: R212 と同じ「文書と実態のズレ」を他の場所でも探したところ、**デモまわりで2件見つかりました**。
-最新スクリーンショット2枚(草津モバイル / ライトボックスPC)は目視済みで、**アプリ本体の見た目に不具合はありません**
-(1位=湯畑・地図のピン1〜5・カードの写真と理由行・ライトボックスの暗転と×ボタン、すべて崩れなし)。
+**理由**: 着手前の時点で ROADMAP の未消化は6件だけで、うち4件(R177・R138・R64の残り・箱根神社)は**すべて上の「判断待ち2件」に紐づいていて動かせません**。判断不要なのは R211・R102 の2件だけで、次の数サイクルで尽きる状態でした。
 
-1. **README のズレ(新発見)**: R207 で README **冒頭の英語段落**には英語/日本語デモの2本リンクを足しましたが、
-   本文(日本語)側の **README.md:53 行目「営業用デモ: `demo/hotel-page.html`…」は日本語版1枚しか挙げていないまま**です。
-   日本語で読み進めたみのるん自身が英語版の存在に気づけません。R207 の「入口を作る」が**半分しか届いていない**状態です。
-2. **R210(既存起票)**: `demo/embed-check.html` は中身が `<h1>埋め込み確認用(ローカル)</h1>` と iframe だけで、
-   **何を見るページなのかがページ上に一言も書かれていません**。`docs/check.mjs` の `HTML_PAGES` には入っており本番にも出ています。
+そこで計画役が本番配信ファイルの実物と検査32本の守備範囲を実際に調べ、**判断不要・0円・入力ゼロ・順位ロジック不変**を満たす7件を `docs/ROADMAP.md` 末尾に追記しました(調べて分かった事実つき)。
 
-どちらもコード不変・判断不要・外部API 0回・0円で、**ユーザー入口を毎スライスで整備する**方針にも合致します。
+| ID | 見つけた穴(実測) |
+|---|---|
+| R214 | `index.html` に `rel="icon"` が**0件**。タブとホーム画面が白紙アイコン |
+| R215 | `<noscript>` が**0件**。JSが失敗すると**真っ白な画面**になる |
+| R216 | `404.html` が**無い**。URL打ち間違いで GitHub の英語404が出る |
+| R217 | `embed-check.html` だけ `og:` が**0行**(他の2デモは各10行)・description も無し |
+| **R218** | **`demo/hotel-page-en.html` と `demo/embed-check.html` の2枚をブラウザで開く検査が無い**(リンク切れ検査は3枚を見ており、`check-embedheight` が `hotel-page.html` 1枚を開いている)。この2枚は壊れても緑のまま → **R218 で解消済み** |
+| R219 | README「ファイル構成」と実際の `ls` の照合が未実施(R212・R213 と同種のズレ) |
+| R220 | NIGHTLOG が2092行で朝に読めない(目次が無い) |
 
-- **タスクID**: R213(ROADMAP の **R210 を包含して消化する**)
-- **目的**: (a) `demo/embed-check.html` の冒頭に「このページが何で、何を見ればよいか」を2〜3行で表示する。
-  (b) README の日本語側の営業デモ記述に英語版デモの行を足し、冒頭の英語段落と食い違わないようにする。
-- **変える対象ファイル(絶対パス・この3+1件のみ)**:
-  - `C:\workspace\claude\旅行先用サイト\yadotabi\demo\embed-check.html`(説明文の追加のみ)
-  - `C:\workspace\claude\旅行先用サイト\yadotabi\README.md`(53行目付近の1行を2行に)
-  - `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md`(R210 を `[x] 2026-09-20 R213 で消化` に。R213 の行も追記)
-  - `C:\workspace\claude\旅行先用サイト\yadotabi\docs\NIGHTLOG.md`(末尾「## サイクル記録」に `### 2026-09-20 R213 …` 見出し+3行)
-- **作り方**:
-  1. `embed-check.html` の `<h1>` の直後に `<p>` を1〜2個入れる。書く内容は
-     **「これは `?embed=1`(埋め込み表示)をローカルで目視確認するためのページです」「iframe の高さが中身に合わせて
-     伸びるか、検索欄・エリアチップ・戻るボタンが消えているかを見ます」「本番の営業用デモは `hotel-page.html` です」**の3点。
-     CSS は既存の `<style>` に `p { font-size: 14px; color: #444; line-height: 1.6; max-width: 640px; }` 程度を足すに留める。
-  2. `README.md:53` の「営業用デモ: `demo/hotel-page.html`(本番URL …)」の行に、
-     **英語版 `demo/hotel-page-en.html`(本番URL https://teer-tee.github.io/yadotabi/demo/hotel-page-en.html )も併記**する。
-     冒頭5行目の英語リンク行は**既に正しいので触らない**。
+### そのうち最優先の1件: **R218**(タスクID = R218)
+
+**なぜ R218 か**: 他の6件は「気づいた人が損をする」程度ですが、R218 だけは**壊れても誰も気づかない**種類の穴です。営業用デモ3枚はみのるんが人に見せる本番の素材なのに、`check-all.mjs` 32本が全部 `index.html` しか見ておらず、デモが白紙になっても緑のまま通ります。R213 でまさに `embed-check.html` を編集しましたが、守ってくれたのは `docs/check.mjs`(本番URLへのGETのみ)だけでした。**今後の全サイクルの安全網になる**ので先に入れます。
+
+- **目的**: `demo/` 3枚を検査する `scripts/check-demo.mjs` を新設し、`check-all.mjs` を33本にする。
+- **新規作成**: `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-demo.mjs`
+- **変更するファイル(絶対パス・この4件のみ)**:
+  - `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-all.mjs`(`SCRIPTS` 配列に `check-demo.mjs` を**1行足すだけ**。並び順は既存のアルファベット順に合わせる)
+  - `C:\workspace\claude\旅行先用サイト\yadotabi\docs\CHECKS.md`(**本数 32→33** を全箇所+表に1行追加。R212 の再発防止のため必ず同じサイクルで直す)
+  - `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md`(R218 を `[x] 2026-09-20` に)
+  - `C:\workspace\claude\旅行先用サイト\yadotabi\docs\NIGHTLOG.md`(末尾「## サイクル記録」に `### 2026-09-20 R218 …` 見出し+3行)
+- **作り方**: 既存の `scripts/check-links-target.mjs` を**書き方のお手本にする**(Playwright の import は環境変数 `PLAYWRIGHT_IMPORT` 方式・ローカルサーバは `scripts/lib/server.mjs` を使う。R204/R205 でCI対応済みの型に必ず合わせること)。検査する項目は次の5つだけ:
+  1. 3枚とも HTTP 200 で開ける
+  2. 3枚とも `<title>` が空文字でない
+  3. `lang` 属性が `hotel-page.html`=`ja` / `hotel-page-en.html`=`en` / `embed-check.html`=`ja`
+  4. 3枚ともJSコンソールに `error` レベルのログが出ない
+  5. `embed-check.html` の iframe の `src` に `embed=1` が含まれる
 - **完了条件(検証可能な形)**:
-  1. `grep -c "hotel-page-en" README.md` が **2以上**(冒頭の英語行+日本語側の新しい行)。
-  2. `grep -n "hotel-page-en" demo/embed-check.html` は **0件**(embed-check からは本番デモの日本語版だけ案内すれば十分。増やさない)。
-  3. `demo/embed-check.html` に `<p>` が1つ以上あり、`iframe` の `src` が
-     **`../index.html?embed=1&fixture=kusatsu` のままバイト一致**である(`git diff` で iframe 行に差分が出ないこと)。
-  4. `node docs/check.mjs` が **exit 0**(`HTML_PAGES` に embed-check が入っているのでリンク切れを検知できる)。
-  5. `node scripts/check-all.mjs` が **32本全PASS**。
-  6. `git diff --stat` の変更が上記4ファイルのみで、**`assets/` と `scripts/` と `index.html` と `fixtures/` が1ファイルも含まれない**。
+  1. `node scripts/check-demo.mjs` が単体で exit 0、5項目以上 pass / 0 fail。
+  2. `node scripts/check-all.mjs` が **33本中33本PASS**(exit 0)。合計時間を NIGHTLOG に記録する。
+  3. `grep -c "check-" docs/CHECKS.md` の表の行が **33**、CHECKS.md 内に **「32本」という文字列が1つも残っていない**(`grep -n "32本" docs/CHECKS.md` が0件)。
+  4. `git diff --stat` に `assets/` `fixtures/` `index.html` `demo/` が **1ファイルも含まれない**(検査を足すだけで、見られる側は一切変えない)。
+  5. 既存の `scripts/check-*.mjs` 32本の `git diff` が **空**(`check-all.mjs` の1行追加を除く)。
+  6. 外部API消費 **0回**(すべてローカルサーバ配信)。
 - **検証手順(撮影)**:
-  - `node C:\workspace\tools\shot\shot.mjs http://127.0.0.1:3000/demo/embed-check.html --mobile`(375px)と
-    **PC幅(オプション無し)の2枚**を撮り、**画像を Read で開いて目視**する。見るのは
-    「説明文が読める大きさか」「iframe に重なっていないか」「モバイルで横にはみ出していないか」の3点。
-  - README は Markdown なので撮影不要。`git diff README.md` で1行増だけを確認する。
-  - 外部API消費は **0回**(embed-check の iframe は `fixture=kusatsu` 固定のため)。
-- **変更禁止範囲(絶対に触らない)**: `assets/engine.js` / `assets/geo.js` / `assets/rank*` / `WEIGHT` 定数 /
-  `assets/app.js` / `assets/style.css` / `index.html` / `fixtures/*.json` /
-  `demo/hotel-page.html` / `demo/hotel-page-en.html` / `scripts/check-*.mjs` 全32本 / `scripts/check-all.mjs` /
-  `docs/check.mjs`(`HTML_PAGES` 行を含め**読むだけ**) / `.github/workflows/*` / `.gitignore` /
-  `demo/embed-check.html` の **iframe 要素そのもの**(src・width・height・style・sandbox の有無すべて)。
-- **所要目安**: 20〜35分(HTML編集5分・README 3分・撮影と目視5分・`check-all.mjs` 6分・記録とコミット10分)。
+  - 検査の追加なのでアプリの見た目は変わらないが、AUTOPILOT 規約5に従い**撮影は行う**。
+    `node C:\workspace\tools\shot\shot.mjs http://127.0.0.1:3000/demo/hotel-page.html --mobile`(375px)と
+    `node C:\workspace\tools\shot\shot.mjs http://127.0.0.1:3000/demo/hotel-page.html`(PC幅)の2枚。
+  - **画像を Read で開いて目視**し、「営業デモの文字崩れ・重なり・はみ出しが無い」ことを確認する
+    (= 今回の変更で壊していないことの確認)。
+- **変更禁止範囲(絶対に触らない)**: `assets/geo.js` / `assets/engine.js` / `WEIGHT` 定数 / `assets/app.js` /
+  `assets/style.css` / `assets/tokens.css` / `assets/ui.css` / `index.html` / `fixtures/*.json` /
+  `demo/` 配下の3枚すべて(**見られる側なので1バイトも変えない**) / 既存の `scripts/check-*.mjs` 32本の中身 /
+  `scripts/lib/server.mjs` / `docs/check.mjs` / `.github/workflows/*` / `.gitignore` / README.md。
+- **所要目安**: 35〜50分(新規検査の作成15分・CHECKS.md 8分・撮影と目視5分・`check-all.mjs` 7分・記録とコミット10分)。
 
-### (参考)前サイクル完了: R212 — CHECKS.md が「30本」のままで `check-bundle`(R157/R158)と
-`check-osmfallback`(R181)の2本が表から抜けていた件を是正済み。R209 も同時消化(b5db866)。
+### (参考)前サイクル完了: R213 — `demo/embed-check.html` に説明書きを追加し、README の営業デモ記述に英語版を併記。R210 も同時消化。
 
 ### 積み残し(判断待ちが解けてから)
 - R177 と「箱根神社が圏外」— 判断待ち(1)が決まり次第。
 - R138(座標欠落40件・`geo.js` 変更が要る)— みのるんの判断待ち。
 - R64 の残り — CI を `schedule` で1日1回回すかの判断のみ(本体は完了)。
-- R211(dump-rank に日時とコミットID)・R102(`scripts/list-shots.mjs`)— いずれも判断不要で、R213 の次の候補。
-  **R209 は R212 が、R210 は R213 が消化する**。
+- 判断不要で残っているもの: **R214〜R217・R219・R220(今回補充)**・R211(dump-rank に日時とコミットID)・R102(`scripts/list-shots.mjs`)。
+  R218 の次は **R215(白紙画面の防止)→ R216(404)→ R214(アイコン)** の順を推奨。
 
 ## 4. ★次のサイクルで必ず守ること(今日の教訓)
 
 - **固定データ(fixture)では検証できない領域がある**。速度、APIの失敗(429/504/406)、住所の解析、宿名に依存する処理は、固定データでは再現されず、本番の実データでしか確認できない。
-- **本番確認は必ず実ブラウザで行うこと**。curlや自動化ツールの素のfetchはOverpass APIに406(門前払い)で弾かれ、「繋がらない」と誤診断してしまう(今日まさにこれで2回誤報が出た)。
-- **`geo.js`は10分間キャッシュされる**。pushした直後に確認しても古いコードが動いていることがあるので注意。
-- **`read_network_requests`は呼び出した時点から記録を開始する**。ページを開いた後に呼ぶと、それより前の通信は0件に見えてしまう(「呼ばれていない」ではなく「記録していなかった」)。
-- **数字を報告するときは必ず測定条件を添えること**。「どのエリアか」「固定データか本番か」「初見か2回目(キャッシュあり)か」を書かないと、後で食い違いの原因が分からなくなる。
-- **新しいページを作ったら入口も同じサイクルで作ること**(R85→R207 が発生した理由)。本番に出ただけでは誰にも届かない。
+- **本番確認は必ず実ブラウザで行うこと**。curlや自動化ツールの素のfetchはOverpass APIに406(門前払い)で弾かれ、「繋がらない」と誤診断してしまう。
+- **`geo.js`は10分間キャッシュされる**。pushした直後に確認しても古いコードが動いていることがある。
+- **数字を報告するときは必ず測定条件を添えること**(どのエリアか/固定データか本番か/初見かキャッシュありか)。また `read_network_requests` は呼んだ時点から記録を始めるので、ページを開いた後に呼ぶと通信が0件に見える。
+- **新しいページを作ったら入口も同じサイクルで作ること**(R85→R207 が発生した理由)。
+- **本数・一覧を持つ文書は、対象を増減した同じサイクルで必ず直すこと**(R212 の教訓。R218 で CHECKS.md の 32→33 を同時に直すのはこのため)。
