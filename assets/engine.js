@@ -584,8 +584,48 @@
     OFFICIAL_SITE: 12,    // 公式サイトがある(実在・営業の裏付け)
     SOURCE_BOTH: 20,      // OSM と Wikipedia の両方に載っている(独立2ソースの裏付け)
     DISTANCE_PER_KM: 6,   // 距離減衰(1kmあたり)
-    CATEGORY_PENALTY: 18  // 同カテゴリが上位に2件を超えたときの減点
+    CATEGORY_PENALTY: 18, // 同カテゴリが上位に2件を超えたときの減点
+    // R163: 「有名さ」の加点の上限。被リンク数 BACKLINK_FULL 本でこの満点になる。
+    // 既存の重みは1つも変えていない(足しただけ)。
+    BACKLINK_MAX: 48
   };
+  /**
+   * R163: 被リンク加点が満点(WEIGHT.BACKLINK_MAX)に達する本数。
+   *
+   * **対数を採らなかった理由(実測)**: 市場調査が提案した `min(20, 6*log2(1+被リンク))`
+   * では、被リンク10本で20.8点・122本で41.6点と、**全員が上限に張り付いて差が消える**。
+   * 係数と上限を振っても対数は圧縮が強すぎて距離差に勝てない(箱根神社は距離で-48点):
+   *   係数4上限30 → 早雲寺(44)と箱根神社(122)の差 39.9点(逆転せず)
+   *   係数6上限40 → 差 38.7点 / 係数8上限48 → 差 41.7点(いずれも逆転せず)
+   * 被リンク44と122は2.8倍なのに、log2 では 5.5 と 7.0 で1.3倍に潰れるため。
+   *
+   * **平方根を採る理由**: 線形(0.5×本数など)だと小田原城690本が突出して距離を無視し、
+   * 対数だと差が消える。平方根はその中間で、44本→31.9点・122本→53.0点と
+   * **2.8倍の差が1.7倍として残る**。上限 BACKLINK_MAX=48 は
+   * `sqrt(本数/BACKLINK_FULL) * 48` の形で 200本で満点。
+   * 200本にする根拠: 5エリアの実測で200本を超えるのは小田原城(690)・彫刻の森(237)の
+   * 2件だけで、この2件を同点で頭打ちにしても順位の妥当性は損なわれない
+   *(どちらも実際に箱根有数の観光地)。逆に上限が無いと小田原城が +115点になり、
+   * 距離減衰(1kmあたり-6点)に対して支配的になる。
+   *
+   * **48 という上限値の根拠**: 箱根神社は宿から8.0km で距離減衰 -48点を受けている。
+   * 被リンク122本(= +37.5点)では距離減衰を埋め切らないが、写真25点と合わせて
+   * 表示22件の圏内(閾値 約+20点)に入るには十分。逆に上限を60以上にすると
+   * 「距離減衰を丸ごと打ち消す」ことになり、「近い場所が上位に来る」性質が壊れる。
+   * 実測での最遠候補(10km)の距離減衰が -60点なので、48 はそれを超えない値でもある。
+   */
+  var BACKLINK_FULL = 200;
+  /**
+   * R163: 被リンク数を引きに行く候補数の上限(基礎スコアの上位から数えて)。
+   *
+   * 表示されるのは cards 5件 + more 17件 = 22件で、REASON_POOL(30)が理由づけの母数。
+   * 被リンクは最大 +48点なので、現状の基礎スコアで30位に居る候補が1位を脅かすことは
+   * あっても、100位の候補が22位に入るには「自分が +48 かつ上の候補が全員 0」という
+   * 条件が要る。100件に絞っても箱根神社(#84)・大涌谷(#61)は確実に入るため、
+   * 100 を上限とする(2リクエスト。実測では continue 込みで4〜5リクエスト)。
+   * geo.js の BACKLINK_MAX_TITLES と揃えること。
+   */
+  var BACKLINK_FETCH_POOL = 100;
   /** 同カテゴリを無条件で許す件数。これを超えると CATEGORY_PENALTY が累積する。 */
   var CATEGORY_FREE_SLOTS = 2;
   /**
@@ -1072,6 +1112,9 @@
       openingHours: null,
       imageUrl: article.thumbnailUrl || null,
       summary: article.extract || null,
+      // R163: 被リンク数を引くための記事名。wiki 単独候補は name がそのまま記事名だが、
+      // 統合(mergeIntoOsm)で OSM 側の表示名に化けるため、別の口で保持しておく。
+      wikipediaTitle: title || null,
       source: 'wiki'
     };
   }
@@ -1228,8 +1271,73 @@
   function mergeIntoOsm(osmItem, wikiItem) {
     osmItem.imageUrl = osmItem.imageUrl || wikiItem.imageUrl || null;
     osmItem.summary = osmItem.summary || wikiItem.summary || null;
+    // R163: 記事名は「実際に突き合わさった記事」を優先する。OSM の wikipedia タグは
+    // 親記事を指していることがあり(道後温泉本館→道後温泉)、被リンクを引く先としては
+    // 統合で確定した記事名の方が正しい。
+    osmItem.wikipediaTitle = wikiItem.wikipediaTitle || osmItem.wikipediaTitle || null;
     osmItem.source = 'both';
     return osmItem;
+  }
+
+  /**
+   * R163: 候補に被リンク数(item.backlinks)を付ける。渡された配列をその場で書き換える。
+   *
+   * 引く相手は「被リンクを0点としたときの基礎スコア」の上位 BACKLINK_FETCH_POOL 件のうち、
+   * 記事名(wikipediaTitle)を持つものだけ。被リンクが未取得・欠損の候補は
+   * item.backlinks を触らない(= backlinkBonus が 0点を返す = 現状の順位のまま)。
+   *
+   * 失敗しても致命的ではない(全員 0点 = 変更前と同じ並び)ので例外は握りつぶす。
+   */
+  async function attachBacklinks(items, now) {
+    var geo = global.YadoGeo || {};
+    if (typeof geo.fetchBacklinkCounts !== 'function') return;
+    if (!Array.isArray(items) || !items.length) return;
+
+    // 被リンクを付ける前の基礎スコア順(= 現状の並び)。同点は近い順にするのも rank と同じ。
+    var pool = items.slice().sort(function (a, b) {
+      var sa = baseScore(a, now);
+      var sb = baseScore(b, now);
+      if (sb !== sa) return sb - sa;
+      return (a.distanceM || 0) - (b.distanceM || 0);
+    }).slice(0, BACKLINK_FETCH_POOL);
+
+    var byTitle = Object.create(null);
+    var titles = [];
+    pool.forEach(function (item) {
+      // **記事が確定している候補だけを引く**。OSM の表示名から記事名を推測しては
+      // **いけない**(司令塔の指示・市場調査 第6回)。
+      //
+      // 実例: 城崎の外湯「一の湯」と同名の Wikipedia 記事は**箱根の旅館チェーン**で、
+      // 名前で引くと別物の被リンク数(14本)を城崎の外湯に配ってしまう。
+      // 「元湯」「大黒屋」「〇〇神社」のような一般的な名前でも同じ事故が起きる。
+      //
+      // item.wikipediaTitle が埋まる経路は次の3つで、いずれも取り違えが構造上起きない:
+      //   1. OSM の wikipedia タグ(現地のマッパーが明示した記事名)
+      //   2. OSM の wikidata タグ経由(R162。Q番号という一意識別子での照合)
+      //   3. 統合(mergeIntoOsm)で実際に突き合わさった記事(名前の完全一致 or 距離+タグ)
+      // 記事に辿れない候補(湯畑・別府の地獄・城崎の外湯)は 0点のままになるが、
+      // それは**現状の順位が保たれる**という意味であって沈むわけではない。
+      // これらを救うのは次サイクルの課題(親記事の本文照合)。
+      var t = typeof item.wikipediaTitle === 'string' ? item.wikipediaTitle.trim() : '';
+      if (!t) return;
+      if (!byTitle[t]) { byTitle[t] = []; titles.push(t); }
+      byTitle[t].push(item);
+    });
+    if (!titles.length) return;
+
+    var counts;
+    try {
+      counts = await geo.fetchBacklinkCounts(titles);
+    } catch (e) {
+      return; // 全員0点 = 変更前と同じ並びになるだけ
+    }
+    if (!counts) return;
+
+    Object.keys(counts).forEach(function (t) {
+      var n = counts[t];
+      if (!isFinite(n) || !byTitle[t]) return;
+      byTitle[t].forEach(function (item) { item.backlinks = n; });
+    });
   }
 
   /**
@@ -1441,6 +1549,19 @@
       return false;
     });
 
+    // R163: 「有名さ」(被リンク数)を付ける。
+    //
+    // **なぜ rank ではなく collect の最後でやるのか**: rank は同期の純粋関数として
+    // 保たれており(present/reasonFor もそれに依存している)、ここに await を持ち込むと
+    // 段階描画も dump-rank も壊れる。候補に数字を付けるところまでが collect の役目。
+    //
+    // **なぜ全候補を引かないのか**: 箱根では記事名を持つ候補が639件あり、全部引くと
+    // 13リクエスト×continue で負荷が跳ねる。被リンクが効くのは表示22件の前後なので、
+    // 「被リンクを 0点(= 現状)としたときの基礎スコア上位」だけに絞れば十分
+    //(この順で BACKLINK_FETCH_POOL 件までを引く)。上位から漏れた候補は
+    // 被リンク0点のまま = 現状の順位そのままで、沈むことはない。
+    await attachBacklinks(merged, normalizeContext(null).now);
+
     if (typeof onStage === 'function') onStage('wiki', merged.slice(), meta);
     // suggest 側が最終結果にも印を付けられるよう、列挙されない形で持たせる
     // (カードの配列として素直に map/forEach できる性質は壊さない)
@@ -1477,6 +1598,19 @@
    * 加算の順序は baseScore と完全に同じにすること(浮動小数の加算順が変われば
    * 同点判定がぶれて並びが変わりうるため)。重み・閾値は一切変えない。
    */
+  /**
+   * R163: 被リンク数から「有名さ」の加点を出す純粋関数。
+   * 欠損(引けなかった候補)は**減点ではなく0点**。引けた候補が有利になるだけで、
+   * 引けなかった候補の現状の順位は下限として保たれる。
+   * @param {?number} backlinks 被リンク数(null/未取得なら 0 点)
+   */
+  function backlinkBonus(backlinks) {
+    var n = isFinite(backlinks) && backlinks > 0 ? backlinks : 0;
+    if (!n) return 0;
+    var ratio = Math.min(1, n / BACKLINK_FULL);
+    return Math.sqrt(ratio) * WEIGHT.BACKLINK_MAX;
+  }
+
   function scoreBreakdown(item, now) {
     var score = 0;
     var image = item.imageUrl ? WEIGHT.WIKI_IMAGE : 0;
@@ -1491,6 +1625,10 @@
     score -= (item.distanceM || 0) / 1000 * WEIGHT.DISTANCE_PER_KM;
     var season = seasonBonus(item, now);
     score += season;
+    // R163: 有名さ(被リンク数)。加算順は必ずこの位置のまま固定する
+    // (浮動小数の加算順が変われば同点判定がぶれて並びが変わりうる)。
+    var fame = backlinkBonus(item.backlinks);
+    score += fame;
     return {
       image: image,
       summary: summary,
@@ -1498,6 +1636,8 @@
       both: both,
       distance: distance,
       season: season,
+      fame: fame,
+      backlinks: isFinite(item.backlinks) ? item.backlinks : null,
       base: score
     };
   }

@@ -46,6 +46,31 @@
   // ページビューは1スポット1リクエストになるため、近い順に上限を設ける
   var PAGEVIEWS_MAX = 12;
 
+  // R163: 被リンク数(prop=linkshere)の取得設定。
+  // titles は prop モジュールなので1リクエストに50件まで載る。
+  var BACKLINK_BATCH_SIZE = 50;
+  // lhlimit=max(=500) は「そのリクエストで返るリンクの合計」であって記事ごとではない。
+  // 被リンクの多い記事が1本混ざるだけで500枠を食い尽くし、同じバッチの他の記事が
+  // 0件で返る(実測: 小田原城321+大涌谷91+別府地獄めぐり88 で枠が尽き、箱根神社が0件)。
+  // continue を追わずに打ち切ると、直したい逆転がむしろ悪化するので必ず完走させる。
+  //
+  // これは「1バッチあたりに発行してよいリクエスト数」の上限(continue の回数ではない)。
+  // 打ち切り(BACKLINK_SATURATE)と併用して初めて完走できる。実測(道後72件)で
+  // 16リクエストで全件解決するので、余裕を見て 20 とする。
+  var BACKLINK_MAX_CONTINUE = 20;
+  // 打ち切り本数。engine.js の BACKLINK_FULL(加点が満点になる本数)と揃える。
+  //
+  // これを超えた記事はそれ以上数えても加点が変わらない(上限に張り付く)ので、
+  // **数え終わった扱いにして titles から外し、続きを引き直す**。外さないと
+  // 被リンクの極端に多い記事(道後のテレビ局5社で合計6000本超)が continue 枠を
+  // 食い尽くし、同じバッチの松山城・石手寺が 0 のまま返る(実測: dogo 70件中36件が0)。
+  // 実測ではこの打ち切りで dogo が 15リクエスト → 6リクエストに減り、かつ
+  // 松山城328・石手寺272・道後温泉387 と正しい数字が取れる。
+  var BACKLINK_SATURATE = 200;
+  // 1回の suggest で被リンクを引く候補数の上限。全候補(箱根で記事名を持つもの639件)を
+  // 引くと13リクエスト×continue で負荷が跳ねるため、rank 直前の基礎スコア上位だけに絞る。
+  var BACKLINK_MAX_TITLES = 100;
+
   // 地図の表示範囲から宿を引くときの上限。これより広いと Overpass に負荷をかけるので呼ばない。
   var BBOX_MAX_DEG = 0.25;
   // 即時候補(suggestHotels)の設定
@@ -864,6 +889,163 @@
   }
 
   // ---------------------------------------------------------------------------
+  // 被リンク数 (fetchBacklinkCounts) — R163
+  // ---------------------------------------------------------------------------
+
+  /**
+   * R163: 日本語版Wikipedia の「その記事を指しているリンクの本数」を数える。
+   *
+   * **なぜ必要か**: これまでのスコアには「有名かどうか」を測る指標が1つも無く、
+   * 写真・要約・公式サイト・2ソース一致という**素材の有無**と距離だけで順位が決まっていた。
+   * 素材が同条件なら距離だけで決まるため、箱根では宿から1.7km の紹太寺本堂・1.8km の
+   * 早川橋梁が並ぶ一方、8.0km の箱根神社(#84)と7.6km の大涌谷(#61)が表示22件に
+   * 入らなかった。被リンク数は「他の記事が何本その記事を参照しているか」なので、
+   * 日本語圏でどれだけ語られている場所かの代理になる。
+   *
+   * **先行事例**: OSM 公式の検索エンジン Nominatim が、地物の重要度(importance)を
+   * Wikipedia の被リンク数から算出している。自前で考えた指標ではない。
+   *
+   * **欠損は減点ではなく0点**。引けなかった候補が沈むのではなく、引けた候補が
+   * 有利になるだけ(現状の順位が下限として保たれる)。
+   *
+   * **continue を必ず完走すること**(BACKLINK_MAX_CONTINUE の説明を参照)。
+   * 1リクエストで打ち切ると被リンクの多い記事に500枠を食われ、箱根神社が 0 で返る。
+   *
+   * リダイレクト(`redirects=1`)も追う。湯畑・海地獄のように記事が別名に転送される
+   * 候補でも数字が引ける。転送先の数字は転送元の title にも配る。
+   *
+   * @param {string[]} titles 日本語版Wikipedia の記事名(重複可)
+   * @returns {Promise<Object>} 記事名 → 被リンク数。引けなかった記事は含まない
+   */
+  async function fetchBacklinkCounts(titles) {
+    var counts = Object.create(null);
+    if (!Array.isArray(titles) || !titles.length) return counts;
+
+    // 重複を除いて上限まで。順序は呼び出し側が優先度順に並べてくる前提。
+    var uniq = [];
+    var seenTitle = Object.create(null);
+    titles.forEach(function (t) {
+      var s = typeof t === 'string' ? t.trim() : '';
+      if (!s || seenTitle[s]) return;
+      seenTitle[s] = true;
+      if (uniq.length < BACKLINK_MAX_TITLES) uniq.push(s);
+    });
+    if (!uniq.length) return counts;
+
+    // 固定データモードでは外部APIを叩かない。make-fixture.mjs が保存した対応表を使う。
+    if (fixtureData) {
+      var table = fixtureData.backlinks || null;
+      if (!table) return counts;
+      uniq.forEach(function (t) {
+        if (typeof table[t] === 'number') counts[t] = table[t];
+      });
+      return counts;
+    }
+
+    var batches = chunk(uniq, BACKLINK_BATCH_SIZE).map(async function (batch) {
+      // 正規化・リダイレクトの対応(元の title → API が返す実際の記事名)。
+      var alias = Object.create(null);
+      /** title を API が実際に数えている記事名に解決する(正規化→転送で2段のことがある)。 */
+      function resolveTitle(t) {
+        var x = t;
+        for (var i = 0; i < 3 && alias[x]; i++) x = alias[x];
+        return x;
+      }
+
+      var live = batch.slice();  // まだ数え終わっていない記事名
+      var sub = Object.create(null);  // 今の引き直し単位での集計
+      var cont = null;
+      var reqs = 0;
+
+      /** live に残っている記事名を、今の集計値で確定させる。 */
+      function settle(titlesToSettle) {
+        titlesToSettle.forEach(function (t) {
+          if (typeof counts[t] !== 'number') counts[t] = sub[resolveTitle(t)] || 0;
+        });
+      }
+
+      while (live.length && reqs < BACKLINK_MAX_CONTINUE) {
+        var params = new URLSearchParams({
+          action: 'query',
+          format: 'json',
+          prop: 'linkshere',
+          titles: live.join('|'),
+          lhnamespace: '0',      // 標準名前空間のリンクだけ数える(ノート・利用者ページを除く)
+          lhlimit: 'max',
+          lhprop: 'title',
+          redirects: '1',
+          origin: '*'
+        });
+        if (cont) {
+          Object.keys(cont).forEach(function (k) { params.set(k, cont[k]); });
+        }
+
+        var res = await fetchWithTimeout(
+          WIKIPEDIA_API_URL + '?' + params.toString(),
+          { method: 'GET', headers: { Accept: 'application/json' } },
+          TIMEOUT_FAME_MS,
+          '被リンク数の取得がタイムアウトしました。'
+        );
+        reqs++;
+        if (!res.ok) throw new Error('linkshere ' + res.status);
+        var data = await res.json();
+        var query = (data && data.query) || null;
+        if (!query) break;
+
+        var pages = query.pages || {};
+        Object.keys(pages).forEach(function (pid) {
+          var page = pages[pid];
+          if (!page) return;
+          if (page.missing !== undefined) {
+            // 記事が存在しない(湯畑のように転送も無い名前)。0点で確定させる。
+            if (typeof counts[page.title] !== 'number') counts[page.title] = 0;
+            return;
+          }
+          sub[page.title] = (sub[page.title] || 0) + ((page.linkshere || []).length);
+        });
+
+        [].concat(query.normalized || [], query.redirects || []).forEach(function (m) {
+          if (m && m.from && m.to) alias[m.from] = m.to;
+        });
+
+        cont = (data && data.continue) || null;
+        if (!cont) { settle(live); live = []; break; }
+
+        // continue が止まっている記事名。API は**記事名のコードポイント順**に処理するので、
+        // これが「今どこまで数えたか」を指す。
+        var head = String(cont.lhcontinue || '').split('|')[0];
+        if ((sub[head] || 0) >= BACKLINK_SATURATE) {
+          // head は打ち切り本数に達した。これ以上数えても加点は変わらないので、
+          // head と **head より前(コードポイント順)= 既に数え終わった記事名**を確定させ、
+          // 残りだけで引き直す。引き直すので lhcontinue は捨てる。
+          //
+          // ★ 比較は必ず素のコードポイント順(`<`)で行うこと。localeCompare('ja') は
+          //   MediaWiki の照合順と一致せず、確定させる範囲がずれて全件0になる(実測)。
+          var keep = [];
+          live.forEach(function (t) {
+            var x = resolveTitle(t);
+            if (x === head || x < head) {
+              if (typeof counts[t] !== 'number') counts[t] = sub[x] || 0;
+            } else {
+              keep.push(t);
+            }
+          });
+          live = keep;
+          cont = null;
+          sub = Object.create(null);
+        }
+      }
+
+      // 回数上限で抜けた分も、取れているところまでで確定させる(0点にはしない)。
+      settle(live);
+    });
+
+    // 一部のバッチが落ちても他の結果は活かす(取れなかった分は欠損=0点扱い)。
+    await Promise.allSettled(batches);
+    return counts;
+  }
+
+  // ---------------------------------------------------------------------------
   // 地図の表示範囲内の宿 (fetchHotelsInBbox)
   // ---------------------------------------------------------------------------
 
@@ -1359,6 +1541,8 @@
     fetchHotelsInBbox: fetchHotelsInBbox,
     fetchSpots: fetchSpots,
     fetchWikiNearby: fetchWikiNearby,
+    // R163: 「有名さ」を測る唯一の指標。engine.js の collect が rank の直前に呼ぶ。
+    fetchBacklinkCounts: fetchBacklinkCounts,
     enrichFame: enrichFame,
     // 固定データモード(?fixture=kusatsu)の差し込み口
     setFixture: setFixture,

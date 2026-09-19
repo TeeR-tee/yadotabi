@@ -8,7 +8,7 @@
  * Node 18+ の素の fetch のみを使う(npm install 禁止)。
  */
 
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { slimOverpassElements } from './slim-fixtures.mjs';
@@ -239,6 +239,136 @@ async function fetchWikidataTitles(elements) {
   return table;
 }
 
+/**
+ * R163: 被リンク数(prop=linkshere)の対応表を作る。
+ * ★ assets/geo.js の fetchBacklinkCounts と同期させること。
+ *
+ * **引く相手の決め方は geo.js/engine.js 本体に決めさせる**。ここで独自に
+ * 「距離順に上位N件」などと決めると本番とずれる。assets/geo.js と assets/engine.js を
+ * そのまま Node に読み込み、今作った fixture(backlinks 抜き)で collect() を1回走らせて、
+ * engine.js の attachBacklinks が実際に要求した記事名だけを集める。
+ *
+ * continue は必ず完走させる(lhlimit=max の500枠は全タイトル合算なので、
+ * 1リクエストで打ち切ると被リンクの多い記事に枠を食われて他が0件で返る)。
+ */
+async function collectWantedTitles(fixtureWithoutBacklinks) {
+  const assetsDir = join(ROOT, 'assets');
+  // geo.js / engine.js は (function (global) {...})(window||globalThis) 形式なので
+  // そのまま評価すれば globalThis に YadoGeo / YadoEngine が載る。
+  const geoSrc = await readFile(join(assetsDir, 'geo.js'), 'utf8');
+  const engineSrc = await readFile(join(assetsDir, 'engine.js'), 'utf8');
+  (0, eval)(geoSrc);
+  (0, eval)(engineSrc);
+
+  const wanted = [];
+  // fetchBacklinkCounts を「記事名を記録するだけ」に差し替えて collect を走らせる。
+  const realFetch = globalThis.YadoGeo.fetchBacklinkCounts;
+  globalThis.YadoGeo.fetchBacklinkCounts = async function (titles) {
+    (titles || []).forEach((t) => { if (t && wanted.indexOf(t) < 0) wanted.push(t); });
+    return {};
+  };
+  try {
+    globalThis.YadoGeo.setFixture(fixtureWithoutBacklinks);
+    await globalThis.YadoEngine.collect({
+      id: 'fixture/' + AREA, name: AREA_LABEL, lat: LAT, lon: LON
+    });
+  } finally {
+    globalThis.YadoGeo.fetchBacklinkCounts = realFetch;
+  }
+  return wanted;
+}
+
+async function fetchBacklinks(titles) {
+  if (!titles.length) return {};
+  console.log('被リンク数を照会中(' + titles.length + '件 / ' + Math.ceil(titles.length / 50) + 'バッチ)…');
+
+  const table = {};
+  let reqs = 0;
+
+  for (let b = 0; b < titles.length; b += 50) {
+    const alias = Object.create(null);
+    const resolveTitle = (t) => { let x = t; for (let i = 0; i < 3 && alias[x]; i++) x = alias[x]; return x; };
+    let live = titles.slice(b, b + 50);
+    let sub = Object.create(null);
+    let cont = null;
+    let batchReqs = 0;
+
+    const settle = (list) => list.forEach((t) => {
+      if (typeof table[t] !== 'number') table[t] = sub[resolveTitle(t)] || 0;
+    });
+
+    // geo.js の BACKLINK_MAX_CONTINUE と同じ上限。
+    while (live.length && batchReqs < 20) {
+      const params = new URLSearchParams({
+        action: 'query',
+        format: 'json',
+        prop: 'linkshere',
+        titles: live.join('|'),
+        lhnamespace: '0',
+        lhlimit: 'max',
+        lhprop: 'title',
+        redirects: '1',
+        origin: '*'
+      });
+      if (cont) Object.keys(cont).forEach((k) => params.set(k, cont[k]));
+
+      const res = await fetch(WIKIPEDIA_API_URL + '?' + params.toString(), {
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': 'yadotabi-fixture/1.0 (https://github.com/TeeR-tee/yadotabi)'
+        }
+      });
+      reqs++; batchReqs++;
+      // 429/504 は押し込まずその場で止める(無料APIのマナー)
+      if (res.status === 429 || res.status === 504) {
+        throw new Error('wikipedia busy ' + res.status + '(押し込まず中止します)');
+      }
+      if (!res.ok) throw new Error('linkshere ' + res.status);
+      const data = await res.json();
+      const query = (data && data.query) || null;
+      if (!query) break;
+
+      Object.values(query.pages || {}).forEach((page) => {
+        if (!page) return;
+        if (page.missing !== undefined) {
+          if (typeof table[page.title] !== 'number') table[page.title] = 0;
+          return;
+        }
+        sub[page.title] = (sub[page.title] || 0) + ((page.linkshere || []).length);
+      });
+      [...(query.normalized || []), ...(query.redirects || [])].forEach((m) => {
+        if (m && m.from && m.to) alias[m.from] = m.to;
+      });
+
+      cont = (data && data.continue) || null;
+      if (!cont) { settle(live); live = []; break; }
+
+      // ★ assets/geo.js の fetchBacklinkCounts と同じ手順。比較は必ず素のコードポイント順。
+      const head = String(cont.lhcontinue || '').split('|')[0];
+      if ((sub[head] || 0) >= 200) {
+        const keep = [];
+        live.forEach((t) => {
+          const x = resolveTitle(t);
+          if (x === head || x < head) {
+            if (typeof table[t] !== 'number') table[t] = sub[x] || 0;
+          } else keep.push(t);
+        });
+        live = keep;
+        cont = null;
+        sub = Object.create(null);
+      }
+      // 連打しない
+      await delay(200);
+    }
+
+    settle(live);
+    if (b + 50 < titles.length) await delay(1200);
+  }
+
+  console.log('  リクエスト数: ' + reqs + ' / 被リンクを引けた記事: ' + Object.keys(table).length + '件');
+  return table;
+}
+
 async function main() {
   // Wikipedia を先に取る(Overpass は重いので、Wikipedia 側で失敗したときに
   // Overpass を無駄に叩き直さないようにする)
@@ -274,6 +404,10 @@ async function main() {
     // R162: geo.js の resolveWikipediaTitles が fixture モードで読む対応表
     wikidataTitles: wikidataTitles
   };
+
+  // R163: engine.js 自身に「どの記事の被リンクが要るか」を決めさせてから引く。
+  const wanted = await collectWantedTitles(fixture);
+  fixture.backlinks = await fetchBacklinks(wanted);
 
   const outDir = join(ROOT, 'fixtures');
   await mkdir(outDir, { recursive: true });
