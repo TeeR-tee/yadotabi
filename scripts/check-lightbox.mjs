@@ -31,6 +31,13 @@ import { ensureServer, PROJECT_ROOT } from './lib/server.mjs';
 
 let BASE;
 
+// R232: 「母数が0でも緑」を防ぐための下限。?fixture=kusatsu / 375x812 / 展開前の実測は
+// リンクチップ14本・プレースホルダ2枚(2026-09-21)。実測値そのままだと fixture の
+// 微増減で赤くなるため、0との区別が付く範囲まで下げた値を使う。
+// この2つを下回る=表示が壊れているか、検査が何も見ていないかのどちらか。
+const LINK_CHIP_MIN = 5;
+const PLACEHOLDER_MIN = 1;
+
 let pass = 0;
 let fail = 0;
 function ok(cond, label, extra) {
@@ -145,29 +152,37 @@ async function main() {
     await waitFor(1300);
 
     // リンクチップはoverlayを開かない
-    const linkChip = page.locator('.feedcard__link').first();
-    if (await linkChip.count() > 0) {
-      await linkChip.click();
+    // R232: 以前はここが「該当リンクが無ければ ok(true) でスキップ」だった。
+    // リンクが1本も出ない不具合(app.js の linksHtml が空文字を返す等)が起きると
+    // この項目は素通りし、検査は 26 pass / 0 fail の**完全な緑**を返していた
+    // (2026-09-21 に実際に壊して確認済み)。R231 の (b) と同じ「空集合を検査して緑」。
+    // → スキップをやめ、母数そのものを検査項目に格上げする。
+    const linkChips = page.locator('.feedcard__link');
+    const linkChipCount = await linkChips.count();
+    ok(linkChipCount >= LINK_CHIP_MIN,
+      `リンクチップが${LINK_CHIP_MIN}本以上ある(母数が0ではない)`, linkChipCount);
+    if (linkChipCount > 0) {
+      await linkChips.first().click();
       await waitFor(200);
       ok(await page.locator('.lightbox').count() === 0, 'リンクチップのクリックではoverlayが出ない');
-    } else {
-      ok(true, 'リンクチップのクリックではoverlayが出ない(該当リンクなしのためスキップ)');
     }
 
     // 写真が無いカード(プレースホルダ)はoverlayを開かず地図がpanする
-    const ph = page.locator('.feedcard__ph').first();
-    if (await ph.count() > 0) {
+    // R232: ここも「該当カードが無ければ ok(true)」だった。同じ理由で母数を検査項目にする。
+    const phs = page.locator('.feedcard__ph');
+    const phCount = await phs.count();
+    ok(phCount >= PLACEHOLDER_MIN,
+      `プレースホルダが${PLACEHOLDER_MIN}枚以上ある(母数が0ではない)`, phCount);
+    if (phCount > 0) {
       const beforeCenter = await page.evaluate(() => {
         const mapEl = document.getElementById('feed-map');
         const r = mapEl.getBoundingClientRect();
         return { x: r.left, y: r.top };
       });
-      await ph.click();
+      await phs.first().click();
       await waitFor(400);
       ok(await page.locator('.lightbox').count() === 0, 'プレースホルダのクリックではoverlayが出ない');
       void beforeCenter; // panTo自体はcheck-pinflash等で別途検証済み。ここではoverlay非表示のみ確認する。
-    } else {
-      ok(true, 'プレースホルダのクリックではoverlayが出ない(該当カードなしのためスキップ)');
     }
 
     ok(consoleErrors.length === 0, 'コンソールエラー0件(mobile)', consoleErrors);

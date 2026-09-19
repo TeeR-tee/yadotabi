@@ -55,15 +55,18 @@ async function checkLinks(page, label) {
     }))
   );
 
+  // R232: 判定に「母数が0でない」を含める。以前は attrs が空でも
+  // badTarget/badRel が空配列になり「0本中0本OK」と表示して PASS していた
+  // (リンクを全部消す壊し方でこの2項目が緑のままになることを実測で確認済み)。
   const badTarget = attrs.filter((a) => a.target !== '_blank');
-  ok(badTarget.length === 0,
+  ok(attrs.length > 0 && badTarget.length === 0,
     `${label}: 全件が target="_blank"(${attrs.length}本中${attrs.length - badTarget.length}本OK)`,
-    badTarget.length ? { violations: badTarget.length, total: attrs.length, firstHref: badTarget[0].href } : undefined);
+    badTarget.length ? { violations: badTarget.length, total: attrs.length, firstHref: badTarget[0].href } : { total: attrs.length });
 
   const badRel = attrs.filter((a) => !String(a.rel || '').split(/\s+/).includes('noopener'));
-  ok(badRel.length === 0,
+  ok(attrs.length > 0 && badRel.length === 0,
     `${label}: 全件が rel に noopener をトークンとして含む(${attrs.length}本中${attrs.length - badRel.length}本OK)`,
-    badRel.length ? { violations: badRel.length, total: attrs.length, firstHref: badRel[0].href } : undefined);
+    badRel.length ? { violations: badRel.length, total: attrs.length, firstHref: badRel[0].href } : { total: attrs.length });
 
   return count;
 }
@@ -100,14 +103,21 @@ async function main() {
       const page = await context.newPage();
       await page.goto(`${BASE}/?fixture=kusatsu`, { waitUntil: 'load' });
       await waitFor(2500);
+      const beforeExpandCount = await page.locator('.feedcard__link').count();
       const moreBtn = page.locator('#more-btn');
       const hasMore = await moreBtn.count();
+      // R232: 以前は #more-btn が無いと ok(true) で素通りしていた。展開ボタンが
+      // 出なくなる不具合が起きると、展開後のリンク検査ごと黙って消える
+      // (「検査しなかった」が「合格」として記録される)。ボタンの存在自体を検査項目にする。
+      ok(hasMore > 0, '4. #more-btn が存在する(展開後の検査を飛ばしていない)', hasMore);
       if (hasMore > 0) {
         await moreBtn.click();
         await waitFor(1500);
-        await checkLinks(page, '4. 「もっと見る」展開後');
-      } else {
-        ok(true, '4. #more-btn が無い(展開対象なしのためスキップ)', hasMore);
+        const expandedCount = await checkLinks(page, '4. 「もっと見る」展開後');
+        // 展開後は展開前より確実にリンクが増える(2026-09-21 実測: 14本 → 55本)。
+        // 「展開したつもりで何も増えていない」を捕まえる。
+        ok(expandedCount > beforeExpandCount,
+          '4. 展開でリンク本数が増えている', { before: beforeExpandCount, after: expandedCount });
       }
       await context.close();
     }
