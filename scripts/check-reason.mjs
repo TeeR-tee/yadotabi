@@ -13,12 +13,17 @@
 //       cards+more(=理由の母数から選ばれた表示分)内に本当に1件だけ
 //   (c) far に reason が付いていない(R152: more は理由付きのみを選ぶ仕様に変わったので reason を持つ)
 //   (d) ?debug=1 の有無でカード名の並び順が完全一致(rank 無改変の証明)
-//   (e) R227: 💡理由行の**優先順**が「代表的な◯◯ → 珍しい◯◯ → 歩いて行ける」であること
+//   (e) R227: 💡理由行の**優先順**が「代表的な◯◯ → 歩いて行ける → 珍しい◯◯」であること
 //
 // ■ (e) が守っているもの(R227 の設計判断)
 //   温泉街は宿の徒歩圏に見どころが集まるため、旧順(歩いて行ける が先頭)では上位5枚の
 //   25枚中14枚(56%)が「歩いて行ける」という同じ文言になり、どれが何なのか区別できなかった。
-//   距離は「徒歩◯分」がメタ行に既に出ているので、理由行は「その土地で何者か」を先に言う。
+//   距離は「徒歩◯分」がメタ行に既に出ているので、実績(backlinks)の裏づけがある
+//   「代表的な◯◯」は距離より先に言う。
+//   ★一方 rareReason(珍しい◯◯)は walkableReason より**後ろ**に置く。「珍しい」は
+//   同カテゴリが表示中に1件しかないというだけの消去法的な事実で、その場所の性格を語らない。
+//   前に出すと代表格に付いて嘘になる(草津1位の湯畑が「珍しい観光名所」になった実例)。
+//   この2段構えを守るのが (e) と (e2)(e3) の役目。
 //
 //   検査は**枚数を数えない**。枚数だけ見る検査は「文言を別の文字列に変えた」壊し方を
 //   素通りさせるため(R229 の実例)、画面に出ている理由行を1枚ずつ、その材料
@@ -202,7 +207,7 @@ async function reasonWithMaterials(page, base, area) {
 
 /**
  * R227: 材料から「あるべき理由行」を組み立てる。app.js の reasonText() と同じ優先順:
- *   代表的な◯◯ → 珍しい◯◯ → 歩いて行ける
+ *   代表的な◯◯ → 歩いて行ける → 珍しい◯◯
  * app.js を読んで写すのではなく、仕様として独立に書くので、app.js 側を戻すと食い違って落ちる。
  */
 function expectedReason(card, cardsInView, backlinksMin) {
@@ -211,15 +216,18 @@ function expectedReason(card, cardsInView, backlinksMin) {
   const hasCategory = !!card.category && card.category !== 'other';
   const sameCat = cardsInView.filter((c) => c.categoryLabel === label && c.category === card.category);
 
+  // 1. 代表的な◯◯(backlinks という実績の裏づけがあるので距離より先)
   if (hasCategory) {
     const backlinks = isFinite(card.backlinks) ? card.backlinks : 0;
     if (backlinks >= backlinksMin) {
       const isMax = sameCat.every((c) => (isFinite(c.backlinks) ? c.backlinks : 0) <= backlinks);
       if (isMax) return PREFIX_REPRESENTATIVE + label;
     }
-    if (sameCat.length === 1) return PREFIX_RARE + label;
   }
+  // 2. 歩いて行ける(事実。消去法の「珍しい」より先)
   if (isFinite(card.distanceM) && card.distanceM <= WALKABLE_MAX_M) return TEXT_WALKABLE;
+  // 3. 珍しい◯◯(同カテゴリが1件だけ、という消去法的な情報なので最後)
+  if (hasCategory && sameCat.length === 1) return PREFIX_RARE + label;
   return null;
 }
 
@@ -296,7 +304,7 @@ async function main() {
         }
       });
       ok(mismatch.length === 0,
-        `${area}: 理由行が「代表的な→珍しい→歩いて行ける」の優先順どおり`, mismatch);
+        `${area}: 理由行が「代表的な→歩いて行ける→珍しい」の優先順どおり`, mismatch);
 
       // (e2) 代表格として選ばれたカードが「歩いて行ける」で潰されていないこと。
       // 優先順を元に戻すと、徒歩圏の代表格は全部「歩いて行ける」になるのでここが落ちる。
@@ -308,6 +316,19 @@ async function main() {
       ok(swallowed.length === 0,
         `${area}: 代表的な◯◯に当たるカードが「${TEXT_WALKABLE}」に潰されていない`,
         swallowed.map((c) => c.name));
+
+      // (e3) R227: 徒歩圏(800m以下)のカードに「珍しい◯◯」が出ていないこと。
+      // 「珍しい」は同カテゴリが1件だけという消去法的な情報で、その場所の性格を語らない。
+      // rareReason を walkableReason より前に出すと、草津1位の湯畑が
+      // 「このあたりでは珍しい観光名所」になる(草津の代表格に対して明確な嘘)。
+      // 代表格でない徒歩圏のカードは「歩いて行ける」で止まるべき。
+      const rareButWalkable = cards5.filter(
+        (c) => c.shownReason && c.shownReason.indexOf(PREFIX_RARE) === 0 &&
+          isFinite(c.distanceM) && c.distanceM <= WALKABLE_MAX_M
+      );
+      ok(rareButWalkable.length === 0,
+        `${area}: 徒歩${WALKABLE_MAX_M}m以内のカードに「${PREFIX_RARE}◯◯」が出ていない`,
+        rareButWalkable.map((c) => ({ name: c.name, distanceM: c.distanceM, reason: c.shownReason })));
     }
 
     ok(consoleErrors.length === 0, 'コンソールエラー0件', consoleErrors);
