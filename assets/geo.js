@@ -332,8 +332,14 @@
     slowDelays = { osm: osm, wiki: wiki };
   }
 
-  // Overpass が混雑(429/504)していたときに待つ時間(ms)。再試行は1回だけ。
+  // Overpass が 504(サーバのリソース不足)を返したときに待つ時間(ms)。再試行は1回だけ。
+  // **429(レート制限)では使わない**。429 は「こちらの投げすぎ」なので再試行しない(R195)。
   var OVERPASS_RETRY_WAIT_MS = 3000;
+
+  // R195: 429 を受けたあと再送を控える時間(ms)。Overpass の規約が明記する数字
+  // (「429 や 406 を受けたら30秒休止する」)そのまま。ユーザーを30秒待たせるのではなく、
+  // **この30秒のあいだは投げずに即 R181 のキャッシュ代替へ落とす**ための門番である。
+  var OVERPASS_COOLDOWN_MS = 30000;
 
   // ---------------------------------------------------------------------------
   // キャッシュ層 (window.YadoCache)
@@ -1060,11 +1066,45 @@
     return name.trim();
   }
 
-  /** 混雑(429/504)を表す Error を作る。呼び出し側は overpassBusy で判別する。 */
-  function busyError() {
+  /**
+   * 混雑(429/504)を表す Error を作る。呼び出し側は overpassBusy で判別する。
+   *
+   * **R195: 429 と 504 を必ず区別する。** 両者は原因も対処も正反対である。
+   *   - **429 = レート制限違反**。「サーバが混んでいる」のではなく**こちらが投げすぎ**。
+   *     Overpass の規約は「429/406 を受けたら30秒休止せよ」と明記しており、
+   *     3秒で再試行するのは**規約の1/10**で、429 を自分で誘発する。
+   *   - **504 = サーバのリソース不足**。こちらの落ち度ではないので短い再試行に意味がある。
+   * 以前はこの2つを overpassBusy に統合していたため、**実運用でどちらが起きているか
+   * 誰にも分からなかった**。それが R194b の「504が続く」という誤った見立ての原因。
+   * @param {number} status 実際の HTTP ステータス(429 / 504)
+   */
+  function busyError(status) {
     var err = new Error('地図サーバーが混雑しています。1分ほど待ってからもう一度お試しください。');
     err.overpassBusy = true;
+    err.overpassStatus = status;
+    err.rateLimited = status === 429;
     return err;
+  }
+
+  /**
+   * R195: 直近に 429 を受けた時刻(ms)。規約の「429 を受けたら30秒休止」を守るため、
+   * この時刻から OVERPASS_COOLDOWN_MS のあいだは**リクエストそのものを投げない**。
+   * 投げずに即 busyError を返すので、呼び出し側は R181 のキャッシュ代替へ落ちる。
+   */
+  var lastRateLimitedAt = 0;
+
+  /** R195: 429/504 をコンソールに区別して出す。原因が違えば対処も違うため。 */
+  function logOverpassBusy(status) {
+    if (!global.console || !console.warn) return;
+    if (status === 429) {
+      console.warn('[yadotabi] Overpass 429(レート制限) — こちらの投げすぎ。' +
+        (OVERPASS_COOLDOWN_MS / 1000) + '秒は再送しない(規約順守)。再試行せずキャッシュ代替へ');
+    } else if (status === 504) {
+      console.warn('[yadotabi] Overpass 504(サーバ混雑) — 相手側の都合。' +
+        (OVERPASS_RETRY_WAIT_MS / 1000) + '秒後に1回だけ再試行する');
+    } else {
+      console.warn('[yadotabi] Overpass 混雑(status=' + status + ')');
+    }
   }
 
   /**
@@ -1077,7 +1117,19 @@
    */
   async function requestOverpass(query, timeoutMessage) {
     // 混雑シミュレーション。fetch そのものを行わないので外部APIは一切叩かない。
-    if (simulateBusy) throw busyError();
+    // シミュレーションは従来どおり 504(サーバ混雑)として扱う(?simulate=overpass504)。
+    if (simulateBusy) throw busyError(504);
+
+    // R195: 直近30秒以内に 429 を受けていたら**投げない**。規約の30秒休止を守る。
+    // ここで投げ返す Error は 429 由来なので、呼び出し側は再試行せず代替へ落ちる。
+    var sinceRateLimit = Date.now() - lastRateLimitedAt;
+    if (lastRateLimitedAt && sinceRateLimit < OVERPASS_COOLDOWN_MS) {
+      if (global.console && console.warn) {
+        console.warn('[yadotabi] Overpass 429の休止中(残り' +
+          Math.ceil((OVERPASS_COOLDOWN_MS - sinceRateLimit) / 1000) + '秒) — 送信を見送る');
+      }
+      throw busyError(429);
+    }
 
     var res = await fetchWithTimeout(
       OVERPASS_URL,
@@ -1090,7 +1142,15 @@
       timeoutMessage
     );
 
-    if (res.status === 429 || res.status === 504) throw busyError();
+    if (res.status === 429) {
+      lastRateLimitedAt = Date.now();
+      logOverpassBusy(429);
+      throw busyError(429);
+    }
+    if (res.status === 504) {
+      logOverpassBusy(504);
+      throw busyError(504);
+    }
     if (!res.ok) {
       throw new Error('スポットの取得に失敗しました(エラー' + res.status + ')。しばらく待ってからお試しください。');
     }
@@ -1215,17 +1275,21 @@
       try {
         data = await requestOverpass(query, timeoutMsg);
       } catch (e) {
-        // 混雑のときだけ3秒待って1回だけ再試行する。タイムアウトや通信断は
-        // 待っても状況が変わらない(既に60秒待っている)ので再試行しない。
-        if (e && e.overpassBusy) {
+        // R195: **429 と 504 で扱いを変える**。以前は両方まとめて3秒後に再試行していたが、
+        // 429 は「こちらの投げすぎ」なので3秒で投げ直すと**自分で429を誘発する**
+        // (市場調査役の実測: 3秒間隔10連投で成功4・429が5、10回目で接続断)。
+        // Overpass の規約も「429 を受けたら30秒休止」と明記している。
+        //   - 429 → **再試行しない**。即 R181 のキャッシュ代替へ落とす。
+        //   - 504 → 相手側のリソース不足でこちらの落ち度ではないので、3秒後に1回だけ再試行。
+        // タイムアウトや通信断は待っても状況が変わらない(既に60秒待っている)ので再試行しない。
+        data = null;
+        if (e && e.overpassBusy && !e.rateLimited) {
           await delay(OVERPASS_RETRY_WAIT_MS);
           try {
             data = await requestOverpass(query, timeoutMsg);
           } catch (e2) {
             data = null;
           }
-        } else {
-          data = null;
         }
 
         // R181: ここまで来たら Overpass からは取れていない。**通信を諦める前に、
