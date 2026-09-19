@@ -2086,3 +2086,7 @@ R175(親記事の上位概念昇格)・R189(`looksOnsenAreaTitle`が末尾一致
 
 - 実装なしのため `check-all.mjs` は未実行(コード無変更・fixture無変更)
 - ROADMAP・NEXT.md を更新してコミット
+
+### 2026-09-20 R213 embed-check.html に説明書き追加・README営業デモ記述を実態に統一
+`demo/embed-check.html` にタイトルのみで用途説明が無かった問題(R210)と、README本文53行目の営業用デモが日本語版1枚しか案内しておらずR207で足した冒頭英語段落と食い違っていた問題を同時に解消。
+iframe要素・既存スクリプトは無変更(バイト一致確認済み)、`node docs/check.mjs` exit 0・`node scripts/check-all.mjs` 32本全PASS、モバイル/PC幅のスクリーンショットで説明文の可読性を目視確認済み。

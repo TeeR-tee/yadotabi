@@ -50,7 +50,7 @@
 
 `?embed=1` だけで宿の指定が無いときは、通常どおり宿を選ぶ画面が出ます(空白になりません)。ローカルでの見え方は `demo/embed-check.html` で確認できます。
 
-営業用デモ: `demo/hotel-page.html`(本番URL https://teer-tee.github.io/yadotabi/demo/hotel-page.html )。予約サイト風の架空の宿ページに埋め込みモードを iframe で置いた1枚で、予約サイト運営者への説明資料として使えます。
+営業用デモ: `demo/hotel-page.html`(本番URL https://teer-tee.github.io/yadotabi/demo/hotel-page.html )。予約サイト風の架空の宿ページに埋め込みモードを iframe で置いた1枚で、予約サイト運営者への説明資料として使えます。英語版 `demo/hotel-page-en.html`(本番URL https://teer-tee.github.io/yadotabi/demo/hotel-page-en.html )も用意しており、海外の予約サイト運営者への説明にも使えます。
 
 ## 用語ミニ辞典
 
