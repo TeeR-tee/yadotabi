@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>やどたび予約(サンプル) - 架空の宿ページ</title>
+<title>Yadotabi Booking (Sample) - Fictional Hotel Page</title>
 <style>
   * { box-sizing: border-box; }
   body {
@@ -26,11 +26,18 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 4px 0;
     padding: 12px 16px;
   }
   header .logo {
     font-weight: bold;
     font-size: 16px;
+  }
+  header nav {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
   header nav a {
     color: #fff;
@@ -38,6 +45,7 @@
     font-size: 12px;
     margin-left: 14px;
     opacity: 0.9;
+    white-space: nowrap;
   }
   .container {
     max-width: 720px;
@@ -133,6 +141,15 @@
     max-width: 720px;
     margin: 0 auto;
   }
+  .embed-note {
+    font-size: 12px;
+    color: #a05a00;
+    background: #fff3e0;
+    border: 1px solid #f0c98a;
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin: 0 0 10px;
+  }
   iframe.embed {
     display: block;
     width: 100%;
@@ -171,69 +188,70 @@
 </style>
 </head>
 <body>
-  <div class="notice">これは営業説明用のサンプルページです。宿名・写真・料金はすべて架空です。</div>
+  <div class="notice">This is a sample page for sales demonstration purposes. The hotel name, photos, and prices are all fictional.</div>
 
   <header>
-    <div class="logo">やどたび予約(サンプル)</div>
+    <div class="logo">Yadotabi Booking (Sample)</div>
     <nav>
-      <a href="#">検索</a>
-      <a href="#">マイページ</a>
-      <a href="hotel-page-en.html">EN</a>
+      <a href="#">Search</a>
+      <a href="#">My Page</a>
+      <a href="hotel-page.html">&#26085;&#26412;&#35486;</a>
     </nav>
   </header>
 
   <div class="container">
-    <h1 class="hotel-title">草津 湯けむり荘(架空)</h1>
-    <div class="rating"><span class="star">★4.2</span> ・ 口コミ128件(架空のサンプルデータです)</div>
+    <h1 class="hotel-title">Kusatsu Yukemuri Sou (Fictional)</h1>
+    <div class="rating"><span class="star">&#9733;4.2</span> &middot; 128 reviews (fictional sample data)</div>
 
     <div class="photos">
-      <div class="photo">写真(ダミー)</div>
-      <div class="photo">写真(ダミー)</div>
-      <div class="photo">写真(ダミー)</div>
+      <div class="photo">Photo (dummy)</div>
+      <div class="photo">Photo (dummy)</div>
+      <div class="photo">Photo (dummy)</div>
     </div>
 
     <table class="price">
       <thead>
-        <tr><th>プラン</th><th>料金(1名あたり)</th></tr>
+        <tr><th>Plan</th><th>Price (per person)</th></tr>
       </thead>
       <tbody>
-        <tr><td>素泊まり</td><td>12,800円〜</td></tr>
-        <tr><td>1泊2食付き</td><td>18,600円〜</td></tr>
-        <tr><td>特別会席プラン</td><td>24,000円〜</td></tr>
+        <tr><td>Room only</td><td>from &yen;12,800</td></tr>
+        <tr><td>Half board (2 meals)</td><td>from &yen;18,600</td></tr>
+        <tr><td>Special kaiseki plan</td><td>from &yen;24,000</td></tr>
       </tbody>
     </table>
-    <p class="price-note">※ 料金はすべて架空のサンプルです。実在の宿泊施設・料金とは一切関係ありません。</p>
+    <p class="price-note">* All prices are fictional samples and are not related to any real accommodation or actual pricing.</p>
 
-    <a href="#" class="cta">空室を見る(サンプル・押しても何も起きません)</a>
+    <a href="#" class="cta">Check availability (sample - nothing happens when clicked)</a>
 
     <section class="embed-section">
-      <h2>このお宿のまわり(やどたび)</h2>
-      <p class="desc">宿の周辺スポットをやどたびが自動で提案します。宿ページに1行埋め込むだけで表示できます。</p>
+      <h2>Around this hotel (Yadotabi)</h2>
+      <p class="desc">Yadotabi automatically suggests nearby spots around the hotel. Just embed one line on your hotel page to display it.</p>
       <div class="embed-frame-wrap">
-        <!-- sandbox は allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox の4トークン全部が必要(2026-09-16実測)。
-             allow-same-origin を外すと origin が null になり fixture の fetch が CORS で落ちてカード0枚・localStorage が SecurityError になる。
-             allow-popups 系を外すとカードの「行き方/公式」等の外部リンク(target="_blank")が無反応になる。referrerpolicy="no-referrer" は上記と組み合わせても挙動に影響なし。 -->
+        <p class="embed-note">Note: the embedded widget itself is currently Japanese-only.</p>
+        <!-- sandbox requires all 4 tokens: allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox (measured 2026-09-16).
+             Removing allow-same-origin makes origin null, so the fixture fetch fails on CORS and 0 cards render / localStorage throws SecurityError.
+             Removing the allow-popups tokens makes external links on cards (e.g. "Directions"/"Official site", target="_blank") unresponsive. referrerpolicy="no-referrer" has no effect on the above when combined. -->
         <iframe class="embed" src="../index.html?fixture=kusatsu&embed=1&bg=fff7e6"
-          title="やどたび - このお宿のまわり" loading="lazy" style="border:0;"
+          title="Yadotabi - Around this hotel" loading="lazy" style="border:0;"
           sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer"></iframe>
       </div>
     </section>
 
     <div class="sales-notes">
       <ul>
-        <li>1行の iframe タグを貼るだけで設置できます。</li>
-        <li>宿の位置情報から周辺スポットを自動生成、手入力は一切不要です。</li>
-        <li>APIキー不要・利用料無料でご利用いただけます。</li>
-        <li><code>&amp;bg=fff7e6</code> で背景色を宿ページに合わせられます(6桁の16進のみ)。<strong>ただし相対輝度0.5未満の暗い色は文字が読めなくなるため自動的に既定色に戻ります</strong>(黒や濃紺などの暗色は指定できません)。</li>
-        <li>iframe は独立した文書なので、宿ページ側のCSS・JavaScriptからは干渉されません(逆にやどたび側も宿ページを書き換えません)。</li>
-        <li><code>sandbox</code> は貼り先とやどたびが<strong>別オリジン</strong>のときに効く保護です。同じオリジンに置くと <code>allow-same-origin</code> により実質無効になります(無害ですが保護にもなりません)。</li>
+        <li>Just paste a single iframe tag to install it.</li>
+        <li>Nearby spots are generated automatically from the hotel's location - no manual input required.</li>
+        <li>No API key required, and free to use.</li>
+        <li>Use <code>&amp;bg=fff7e6</code> to match the background color to your hotel page (6-digit hex only). <strong>Dark colors with relative luminance below 0.5 will automatically fall back to the default color</strong> since text would become unreadable (colors like black or dark navy cannot be specified).</li>
+        <li>The iframe is an independent document, so it is not affected by your hotel page's CSS/JavaScript (and Yadotabi does not modify your hotel page either).</li>
+        <li><code>sandbox</code> is a protection that applies when the embedding page and Yadotabi are on <strong>different origins</strong>. If placed on the same origin, <code>allow-same-origin</code> effectively disables it (harmless, but no longer a protection).</li>
       </ul>
-      <pre class="tag-example">&lt;iframe src="https://teer-tee.github.io/yadotabi/?hotel=36.6226,138.5960,草津 湯けむり荘&amp;embed=1&amp;bg=fff7e6" width="100%" height="720" style="border:0;border-radius:10px;" sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer"&gt;&lt;/iframe&gt;</pre>
+      <pre class="tag-example">&lt;iframe src="https://teer-tee.github.io/yadotabi/?hotel=36.6226,138.5960,Kusatsu Yukemuri Sou&amp;embed=1&amp;bg=fff7e6" width="100%" height="720" style="border:0;border-radius:10px;" sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer"&gt;&lt;/iframe&gt;</pre>
       <p class="sales-note-extra">
-        ・<code>width</code> / <code>height</code> は初期値(720程度)のままで構いません。下記の受信スクリプトを一緒に設置すると、中身の高さに合わせて自動で伸びます(設置しない場合は固定高のままになり、宿の紹介が長いと中に二重スクロールが出ます)。<br>
-        ・<code>?hotel=</code> の宿名部分は日本語や空白を含むため、URLエンコードが必要です(例: 「草津 湯けむり荘」→ <code>%E8%8D%89%E6%B4%A5%20%E6%B9%AF%E3%81%91%E3%82%80%E3%82%8A%E8%8D%98</code>)。<br>
-        ・受信スクリプトの実物はこのページの <code>&lt;/body&gt;</code> 直前(下記)にあります。このページのソースをそのままコピーしてお使いいただけます。<br>
-        ・受信スクリプトは 60000px を超える高さは無視します(異常値で親ページが壊れるのを防ぐため)。
+        &middot; The <code>width</code> / <code>height</code> can stay at their initial values (around 720). If you also install the receiver script below, the frame will automatically grow to match the content height (without it, the height stays fixed, and a long hotel description will cause a double scrollbar inside).<br>
+        &middot; The hotel name part of <code>?hotel=</code> must be URL-encoded if it contains non-ASCII characters or spaces.<br>
+        &middot; The actual receiver script is included on this page just before <code>&lt;/body&gt;</code> (shown below). You can copy this page's source as-is.<br>
+        &middot; The receiver script ignores any height value above 60000px (to prevent an abnormal value from breaking the parent page).
       </p>
       <pre class="tag-example">&lt;script&gt;
 window.addEventListener('message', function (e) {
@@ -241,7 +259,7 @@ window.addEventListener('message', function (e) {
   var data = e.data;
   if (!data || typeof data !== 'object' || data.type !== 'yadotabi:height') return;
   var height = data.height;
-  // 上限60000px: 実測の最大は kusatsu desktop の60枚展開後で34075px(2026-09-16)。その約1.8倍を保険の上限にする。
+  // Upper limit 60000px: the measured max is 34075px after expanding all 60 cards on kusatsu desktop (2026-09-16). This is roughly 1.8x that, as a safety margin.
   if (typeof height !== 'number' || !isFinite(height) || height &lt; 100 || height &gt; 60000) return;
   var iframe = document.querySelector('iframe.embed');
   if (!iframe) return;
@@ -256,7 +274,7 @@ window.addEventListener('message', function (e) {
       var data = e.data;
       if (!data || typeof data !== 'object' || data.type !== 'yadotabi:height') return;
       var height = data.height;
-      // 上限60000px: 実測の最大は kusatsu desktop の60枚展開後で34075px(2026-09-16)。その約1.8倍を保険の上限にする。
+      // Upper limit 60000px: the measured max is 34075px after expanding all 60 cards on kusatsu desktop (2026-09-16). This is roughly 1.8x that, as a safety margin.
       if (typeof height !== 'number' || !isFinite(height) || height < 100 || height > 60000) return;
       var iframe = document.querySelector('iframe.embed');
       if (!iframe) return;

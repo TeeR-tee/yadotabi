@@ -117,7 +117,7 @@ for (const path of TARGETS) {
 // 相対パス参照(css/js/iframe src/画像)と meta content(og:image等)を抽出し、
 // 本番URLで200が返るかを確認する。外部ドメインは絶対に fetch しない。
 
-const HTML_PAGES = ['index.html', 'demo/embed-check.html', 'demo/hotel-page.html'];
+const HTML_PAGES = ['index.html', 'demo/embed-check.html', 'demo/hotel-page.html', 'demo/hotel-page-en.html'];
 
 async function collectLinks(page) {
   const url = BASE + page;
