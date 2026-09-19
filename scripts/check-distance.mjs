@@ -52,18 +52,26 @@ const TIMES_RE = /^(🚶徒歩\d+分 · )?🚗車\d+分( · (\d+m|\d+(\.\d)?km))
 // メートル数には最大±50m程度の誤差が乗る。境界のごく近傍(2300〜2500m)は
 // 丸め起因の見た目と実距離のズレで誤検知しうるので判定から除外し、
 // それより明確に近い/遠いカードだけを対象にする。
+// R233-2: 戻り値を「不一致の一覧」だけでなく **母数** も返す形に変えた。
+// 以前は mismatched だけを返していたため、距離表記が1件も無い(= 対象カード0件)ときも
+// 空配列が返り、呼び出し側の `length === 0` が **常に緑** になっていた。
+// judged = 実際に境界判定にかけたカード数(緩衝帯と距離無しを除いた数)。
 function checkWalkDistanceConsistency(texts) {
   let mismatched = [];
+  let judged = 0;
+  let withDistance = 0;
   texts.forEach((t) => {
     const hasWalk = /^🚶徒歩\d+分/.test(t);
     const distMatch = t.match(/ · (\d+)m$| · (\d+(?:\.\d)?)km$/);
     if (!distMatch) return; // 距離表記が無いカードは対象外
+    withDistance++;
     const meters = distMatch[1] !== undefined ? Number(distMatch[1]) : Number(distMatch[2]) * 1000;
     if (meters >= 2300 && meters <= 2500) return; // 丸め誤差の緩衝帯
+    judged++;
     const expectWalk = meters < 2300;
     if (hasWalk !== expectWalk) mismatched.push({ text: t, meters, hasWalk, expectWalk });
   });
-  return mismatched;
+  return { mismatched, judged, withDistance };
 }
 
 async function main() {
@@ -93,8 +101,16 @@ async function main() {
     const kusatsuHasMeter = kusatsuTexts.some((t) => / · \d+m$/.test(t));
     ok(kusatsuHasMeter, 'kusatsu: m表記のカードが1件以上ある', kusatsuTexts);
 
-    const kusatsuWalkMismatch = checkWalkDistanceConsistency(kusatsuTexts);
-    ok(kusatsuWalkMismatch.length === 0, 'kusatsu: 徒歩表記の有無と距離(2.4km境界)が対応している', kusatsuWalkMismatch);
+    // R233-2: 母数を判定に組み込んだ。judged が0なら(距離表記が全滅しても)以前は緑だった。
+    const kusatsuWalk = checkWalkDistanceConsistency(kusatsuTexts);
+    ok(kusatsuWalk.mismatched.length === 0 && kusatsuWalk.judged >= 1,
+      'kusatsu: 徒歩表記の有無と距離(2.4km境界)が対応している(判定対象1件以上)',
+      { mismatched: kusatsuWalk.mismatched, judged: kusatsuWalk.judged });
+    // R233-2 別軸: 「判定にかけた枚数」ではなく「距離表記を持つ枚数」を全カード数と突き合わせる。
+    // 上の項目が緩衝帯の都合で母数を失っても、こちらは距離表記そのものの生存を見る。
+    ok(kusatsuWalk.withDistance === kusatsuTexts.length && kusatsuTexts.length >= 1,
+      'kusatsu: 全カードが距離表記を持つ(距離表記の欠落が0件)',
+      { withDistance: kusatsuWalk.withDistance, cards: kusatsuTexts.length });
 
     const firstText = kusatsuTexts[0] || '';
     ok(/ · (\d+m|\d+(\.\d)?km)$/.test(firstText), 'kusatsu: 1位カードに距離が表示されている', firstText);
@@ -118,8 +134,15 @@ async function main() {
     const hakoneHasKm = hakoneTexts.some((t) => / · \d+(\.\d)?km$/.test(t));
     ok(hakoneHasKm, 'hakone: km表記のカードが1件以上ある', hakoneTexts);
 
-    const hakoneWalkMismatch = checkWalkDistanceConsistency(hakoneTexts);
-    ok(hakoneWalkMismatch.length === 0, 'hakone: 徒歩表記の有無と距離(2.4km境界)が対応している', hakoneWalkMismatch);
+    // R233-2: kusatsu と同じく母数を判定に組み込んだ。
+    const hakoneWalk = checkWalkDistanceConsistency(hakoneTexts);
+    ok(hakoneWalk.mismatched.length === 0 && hakoneWalk.judged >= 1,
+      'hakone: 徒歩表記の有無と距離(2.4km境界)が対応している(判定対象1件以上)',
+      { mismatched: hakoneWalk.mismatched, judged: hakoneWalk.judged });
+    // R233-2 別軸: 距離表記の生存を全カード数と突き合わせる。
+    ok(hakoneWalk.withDistance === hakoneTexts.length && hakoneTexts.length >= 1,
+      'hakone: 全カードが距離表記を持つ(距離表記の欠落が0件)',
+      { withDistance: hakoneWalk.withDistance, cards: hakoneTexts.length });
 
     const overflowCountHakone = await page.locator('.feedcard__times').evaluateAll(
       (els) => els.filter((el) => el.scrollWidth > el.clientWidth + 1).length

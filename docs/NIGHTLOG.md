@@ -269,8 +269,9 @@
   - [L2408] 2026-09-20 R229 R224の人気バッジを守る検査を新設して35本にした(表示は無変更)
   - [L2418] 2026-09-20 R230 READMEとFIXTURES.mdを実測値に合わせ、壊れていた因果の説明を書き直した(R219を吸収)
   - [L2458] 2026-09-20 R231 「このあたりでは珍しい◯◯」が同じ画面に2枚出ていた嘘を消した(受け皿は距離の順位)
-  - [L2521] 2026-09-24 R226 「もっと見る」の先に続く写真も解説も無い帯を、読み飛ばせる区切りで分けた(起票の「全件該当」は実測で否定・合計11枚)
-  - [L2502] 2026-09-21 R233 「母数が0でも緑」の残り25件のうち check-attrib 4件・check-bundle 6件を消化した
+  - [L2541] 2026-09-24 R233-2 「母数が0でも緑」の6件(check-fame 4件・check-distance 2件)を消化し、軸を2本にした
+  - [L2522] 2026-09-24 R226 「もっと見る」の先に続く写真も解説も無い帯を、読み飛ばせる区切りで分けた(起票の「全件該当」は実測で否定・合計11枚)
+  - [L2504] 2026-09-21 R233 「母数が0でも緑」の残り25件のうち check-attrib 4件・check-bundle 6件を消化した
   - [L2474] 2026-09-21 R232 検査35本を「空集合を検査して緑」の観点で全数点検し、素通りしていた3件を直した
   - [L2444] 2026-09-20 R227 理由行の優先順を「代表的な○○ → 歩いて行ける → 珍しい○○」に変えて同じ文言の重複を減らした
   - [L2436] 2026-09-20 R228 距離の起点(選んだ宿)が画面のどこにも書かれていなかった問題を凡例1行で解消
@@ -2536,3 +2537,18 @@ R224 で設計思想の3本目「どれだけ人気なのかを示す」を実�
 - 検証: `node scripts/check-all.mjs` **35本中35本PASS(★FLAKY 0本)・合計414.1s・exit 0**(最遅 `check-reason.mjs` 57.9s)。**FLAKY は0本**で、R227 から**8サイクル連続0本**。`check-bundle.mjs` 単体は **118 pass / 0 fail**。外部API消費**0回**(固定データのみ)。
 - 変更ファイル: `assets/app.js`・`assets/ui.css`・`scripts/check-bundle.mjs`・`docs/ROADMAP.md`・`docs/NIGHTLOG.md`・`docs/shots/r226-*.png`。**`assets/geo.js`・`assets/engine.js`・`assets/style.css`・`fixtures/`・`index.html`・`demo/`・`check-bundle.mjs` 以外の検査スクリプト・`docs/check.mjs`・`docs/CHECKS.md`・`.github/workflows/`・`docs/AUTOPILOT.md`・`docs/NEXT.md` は無変更**。
 - 次: 判断不要で残るのは **R233 の残り15件**(`check-fame` 4件・`check-engine` 5件・`check-reason` 3件・`check-distance` 2件・`check-nosummary` 1件)→ **R216**(404・検査追加とセット)。R225 と箱根の件はみのるんの判断待ち。
+
+### 2026-09-24 R233-2 「母数が0でも緑」の6件(check-fame 4件・check-distance 2件)を消化し、軸を2本にした
+
+- **直した6件(行は HEAD 時点)**: `scripts/check-fame.mjs:243`「バッジは1カードに最大1個」(母数 = `cards.length` エリア内のカード枚数)、`:245`「バッジの文言が想定の2種類のいずれか」(母数 = `badged.length`)、`:248`「バッジが .badge クラスを併せ持つ」(母数 = `badged.length`)、`:252`「backlinks が 0/欠落/60未満 のカードにバッジが出ていない」(母数 = `badged.length`)。`scripts/check-distance.mjs:97`(kusatsu)と `:122`(hakone)の「徒歩表記の有無と距離(2.4km境界)が対応している」(母数 = `judged` = 距離表記を持ち、かつ丸め誤差の緩衝帯2300〜2500mに入らないカード枚数)。あわせて `:271`「全カードでバッジの有無と文言が規則どおり」にも `cards.length >= 1` を足した。
+- **★軸は2本にした(R226 の教訓)**: この6件は **「画面の badged を見る軸」** と **「材料(backlinks と理由行)から期待枚数を組み直す軸」** の2本で支えている。後者は新設した `expectedBadge()` が担い、`totals.expectNational` / `totals.expectLocal` として5エリア合計で画面側の `totals.national` / `totals.local` と**種類ごとに**突き合わせる(`合計: 全国級バッジの枚数が材料からの期待枚数と一致する` ほか2項目)。この軸は `badged` を一度も通らないので、バッジが全部消えても期待枚数17/2が残り、差として現れる。`check-distance` 側の別軸は **「距離表記を持つカード枚数 = 全カード枚数」**(`withDistance === texts.length`)で、境界判定とは独立に距離表記そのものの生存を見る。5エリア合計のカード枚数下限(`totals.cards >= 5`)も足した。
+- **★わざと壊して落ちることを3通り実証し、旧版(`git show HEAD:scripts/check-fame.mjs` / `…check-distance.mjs` を一時ファイルに取り出して実行。`git checkout` / `git stash` / `git reset` は不使用)と pass/fail を対比した**:
+  - **壊し方A(母数を消す)**: `assets/app.js` の `var fameMsg = fameText(card, reasonMsg);` を `null` 固定にしてバッジを1枚も描かない。→ スクリプト全体では旧版 **30 pass / 13 fail**・新版 **16 pass / 30 fail** だが、**肝心なのは対象4件の挙動**で、旧版は5エリアすべてで対象4件が **全部 PASS(= 20項目が偽の緑)**。新版は `:245` `:248` `:252` の3件が5エリアすべてで FAIL に変わった。`:243`(母数 `cards`)はカードが消えていないので PASS のままで、これは**空配列への vacuous な緑ではなく母数24枚に対する本物の緑**。
+  - **★壊し方B(数字が1つも変わらない壊し方・check-distance)**: `distanceText()` で 500m以上1000m未満 のカードだけ距離を空文字にする。`TIMES_RE` は距離部分がオプショナルなので**フォーマット検査は緑のまま**、カード枚数も徒歩表記の本数も**1つも変わらない**。→ **旧版 18 pass / 0 fail(完全に素通り・対象2件も両方 PASS)** に対し、新版は **19 pass / 1 fail**(`kusatsu: 全カードが距離表記を持つ` が `{"withDistance":3,"cards":5}` で FAIL)。**数字だけ見る検査が素通りし、中身を照合する別軸だけが捕まえた実例**。
+  - **壊し方C(母数を全部消す・check-distance)**: `distanceText()` を常に空文字にする。→ 旧版は 15 pass / 3 fail だが**対象2件(`:97` `:122`)は両方 PASS のまま**(`judged` が0で空配列が返るため)。新版は対象2件が両方 FAIL(`{"mismatched":[],"judged":0}`)+ 別軸2件も FAIL で **13 pass / 7 fail**。
+  - **★自分が足した検査を実際に試した結果、指示書の想定が1つ外れていた**: 計画役が推した「バッジ2種類の文言を入れ替える」壊し方は、**旧版でも `:271` の `mismatch` 項目が既に捕まえる**(旧版 41 pass / 2 fail。全国級と地方級を丸ごと入れ替えた場合。枚数を保ったまま境界だけずらす変種でも旧版 36 pass / 7 fail)。`check-fame` の `:271` は元から中身照合の軸を持っていたため、**この2本では「数字だけ見る検査が素通りする」例は `check-fame` ではなく `check-distance` 側にあった**。そこで壊し方Bを `check-distance` で作り直し、旧版が18 pass/0 fail で完全に素通りすることを確かめた上で新版が落ちることを実証した。
+  - 3通りとも**手で書き戻し**、`md5sum` が実証の前後で同一(`assets/app.js` = **`fa5caf9f12f1b2fb0e4fd7868c33a4ee`**、`assets/ui.css` = **`c3db293066104848b317b7d04798638d`**)であることを確認。`git diff --numstat assets/` も**空**で、`git status` に `assets/` は1件も出ていない。
+- **撮影は不要**(画面に出るものを1バイトも変えていないため)。`assets/` は最終的に md5 一致で元通り、変更したのは検査スクリプト2本と文書2本のみ。**検査を直した結果として見つかった画面の不具合は0件**(壊し方A〜Cはいずれも実証用の一時変更で、正しいコードでは全項目が緑)。
+- 検証: `node scripts/check-all.mjs` **35本中35本PASS(★FLAKY 0本)・合計418.0s・exit 0**(最遅 `check-reason.mjs` 59.0s)。**FLAKY は0本**で、R227 から**9サイクル連続0本**。単体は `check-fame.mjs` が 43 pass/0 fail → **46 pass / 0 fail**、`check-distance.mjs` が 18 pass/0 fail → **20 pass / 0 fail**。**検査の本数は35本のまま**(既存2本への項目追加のみ)なので `docs/CHECKS.md` は変更不要。外部API消費**0回**(固定データのみ)。
+- 変更ファイル: `scripts/check-fame.mjs`・`scripts/check-distance.mjs`・`docs/ROADMAP.md`・`docs/NIGHTLOG.md`。**`assets/`(app.js・ui.css・geo.js・engine.js・style.css)・`fixtures/`・`index.html`・`demo/`・他の33本の検査スクリプト・`docs/check.mjs`・`docs/CHECKS.md`・`.github/workflows/`・`docs/AUTOPILOT.md`・`docs/NEXT.md` は無変更**。
+- 次: 判断不要で残るのは **R233 の残り9件**(`check-engine` 5件・`check-reason` 3件・`check-nosummary` 1件)→ **R216**(404・検査追加とセット)。R225 と箱根の件はみのるんの判断待ち。
