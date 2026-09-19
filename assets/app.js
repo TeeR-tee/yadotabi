@@ -1000,6 +1000,14 @@
   // 持つ生データ(distanceM/backlinks/category)から独自に文言を組み立てる。
   // 母集団は state.cards(理由が付く候補は present() が上位プールに絞った上でここに入るため、
   // 「もっと見る」側の束(card.reason が null のカード)には触れない=行が増えることはない)。
+  //
+  // ★R227 で見つかった未修正の不具合(別タスクで対応する。ここでは直さない):
+  //   cardHtml() は「もっと見る」で開く state.more のカードにも同じ reasonText() を使うのに、
+  //   母集団は初期5件の state.cards のままなので、5件の中だけで数えた「唯一/最大」を
+  //   20枚以上に対して名乗ってしまう(草津で「このあたりでは珍しい神社・寺院」が
+  //   光泉寺・白根神社・草津聖バルナバ教会の3枚に同時に出る)。
+  //   母集団を state.cards.concat(state.more) に広げると数え方は正しくなるが、
+  //   「唯一」でなくなるカードの理由行が10枚ほど消えるため、R227(表示順のみ)の範囲を越える。
   var REASON_BACKLINKS_MIN = 30; // 10-7: 光泉寺9/白根神社4/城崎美術館14/四所神社15を弾く下限
   function walkableReason(card) {
     var d = card && card._debug;
@@ -1031,12 +1039,24 @@
     });
     return sameCat.length === 1 ? 'このあたりでは珍しい' + label : null;
   }
+  // R227: 優先順を「代表的な◯◯ → 珍しい◯◯ → 歩いて行ける」に入れ替えた(表示のみ・順位は不変)。
+  // 理由: 温泉街は宿の徒歩圏に見どころが集まるため、旧順だと上位5枚の 25枚中14枚(56%)が
+  // 「歩いて行ける」という同じ文言になり、どれが何なのかが区別できなかった
+  // (草津5/5・城崎4/5・箱根2/5・道後2/5・別府1/5 の実測)。距離は「徒歩◯分」がメタ行に既に
+  // 出ているので、理由行は「その土地で何者か」を先に言うほうが情報量が増える。
+  // 入れ替えで文言が変わるのは上位5枚では6枚(5エリア25枚中)。内訳は
+  // 代表的な◯◯になるのが4枚(草津2位 草津熱帯圏/箱根2位 早雲寺/道後5位 子規記念博物館/
+  // 別府3位 別府市美術館)、珍しい◯◯になるのが2枚(草津1位 湯畑/草津3位 光泉寺)。
+  // 湯畑は backlinks が null で representativeReason の下限判定には到達しないが、
+  // 同カテゴリが上位5枚に1枚だけなので rareReason に当たる(rareReason も
+  // walkableReason より前に出るため。「代表的な◯◯だけが前に出る」ではない)。
+  // 各 Reason 関数の中身・しきい値は一切触っていない。順位(rank)も1バイトも変えていない。
   function reasonText(card) {
     if (!card || !card.reason) return null; // engine.js が理由なしと判定したカードは行ごと出さない
     var cardsInView = Array.isArray(state.cards) ? state.cards : [];
-    return walkableReason(card) ||
-      representativeReason(card, cardsInView) ||
+    return representativeReason(card, cardsInView) ||
       rareReason(card, cardsInView) ||
+      walkableReason(card) ||
       null;
   }
 
