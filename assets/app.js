@@ -906,6 +906,10 @@
   var NO_SUMMARY_TEXT = 'Wikipediaに記事がありません。地図の情報だけで表示しています。';
   // R123: 記事の存在(wikipedia/wikidataタグ)は確認できるが本文を取得できていないカード用
   var HAS_ARTICLE_NO_SUMMARY_TEXT = 'Wikipediaに記事はありますが、要約をここに出せていません。';
+  // R226: 「写真も解説も無い」カードを寄せた最後の束の見出し。
+  // 書いてよいのは「いま手元に写真と解説が無い」という事実だけで、
+  // 場所そのものを評価する語(つまらない・情報が薄い等)は入れない(R227・R231 の教訓)。
+  var BARE_BUNDLE_HEAD = '写真と解説がまだ無い場所';
 
   // R136: 曜日の英語略号 → 日本語1文字
   var WEEKDAY_JA = { Mo: '月', Tu: '火', We: '水', Th: '木', Fr: '金', Sa: '土', Su: '日' };
@@ -1148,6 +1152,30 @@
     return 'この地方でよく知られた場所';
   }
 
+  /**
+   * R226: 「写真も解説も無い」カードの判定。R139/R140 が `cardHtml` の中で
+   * 組み立てていた `isBare` を、そのままの条件で関数に切り出しただけのもの
+   * (新しい判定基準は作らない)。`moreBundledHtml` が束を組む前に同じ判定を
+   * 必要とするため、定義が2箇所に分かれないよう1つにまとめる。
+   *
+   * `isPortraitDemo`(?demo=portrait の先頭3枚)は index 依存の演出用分岐で、
+   * 束を組む 6件目以降には最初から当たらない。ここでは index を取らず
+   * 「写真URLが無い」= isPlaceholderMedia として同じ値を得る。
+   */
+  function isBareCard(card) {
+    if (!card) return false;
+    var hasImg = !!(card.imageUrl && safeUrl(card.imageUrl));
+    var wikipediaUrl = card.wikipediaTitle
+      ? safeUrl('https://ja.wikipedia.org/wiki/' + encodeURIComponent(card.wikipediaTitle.replace(/ /g, '_')))
+      : (card.wikidataId && /^Q[1-9][0-9]*$/.test(card.wikidataId))
+      ? safeUrl('https://www.wikidata.org/wiki/Special:GoToLinkedPage/jawiki/' + encodeURIComponent(card.wikidataId))
+      : null;
+    var hasArticle = !card.summary && !!wikipediaUrl;
+    var officialUrl = safeUrl(card.links && card.links.official);
+    return !hasImg && !card.summary && !hasArticle &&
+      !openingHoursText(card.openingHours) && !(officialUrl ? officialDomainText(officialUrl) : null);
+  }
+
   function cardHtml(card, index, withNo) {
     var emoji = emojiFor(card.categoryLabel);
     var isPortraitDemo = demoPortrait && index < 3;
@@ -1203,7 +1231,9 @@
     var domainText = officialUrl ? officialDomainText(officialUrl) : null;
     var official = '';
 
-    var isBare = isPlaceholderMedia && !card.summary && !hasArticle && !hoursText && !domainText;
+    // R226: 判定の本体は isBareCard() に一本化した。?demo=portrait の先頭3枚だけは
+    // isPlaceholderMedia が偽になる(ダミー写真を出しているため)ので、そこだけ従来どおり掛ける。
+    var isBare = isPlaceholderMedia && isBareCard(card);
 
     // R140: isBare のときは .feedcard__media(絵文字の帯)ごと出さない。
     // 番号バッジ(.feedcard__no)は data-no / aria-label / クラス名を変えず、
@@ -1424,12 +1454,58 @@
       return rest.map(function (c, i) { return cardHtml(c, i + offset, false); }).join('');
     }
 
+    // R226: 「写真も解説も無い」カード(isBareCard)を最後の1束に寄せる。
+    // 展開した先の下半分が、写真も理由行も無い同じ形の行の帯になっていて
+    // (実測: 草津は more 19件中7件がこれ)、スクロールしても情報が増えないため、
+    // どこから先がその帯なのかを見出しで区切って読み飛ばせるようにする。
+    // カードは1枚も減らさず、番号・data-index も rank 順のまま(案A)。
+    //
+    // 見出しの文言に評価の語(「つまらない」「情報が薄い」)は使わない。
+    // 判定しているのは「いま手元に写真と解説が無い」という事実だけで、
+    // 場所そのものの価値ではないため(R227・R231 の教訓)。
+    var bareIdx = [];
+    var kept = bundles.map(function (b) {
+      var stay = [];
+      b.indices.forEach(function (i) {
+        if (isBareCard(rest[i])) bareIdx.push(i);
+        else stay.push(i);
+      });
+      return { label: b.label, indices: stay };
+    });
+    // 寄せた結果テーマの束が1件だけになると「見出し1本に中身1件」になり、
+    // R158 で無くしたはずの状態に戻る。そうなった1件は「そのほか」(label:null)へ送る。
+    var strays = [];
+    kept.forEach(function (b) {
+      if (b.label && b.indices.length === 1) {
+        strays.push(b.indices[0]);
+        b.indices = [];
+      }
+    });
+    if (strays.length) {
+      var restBundle = null;
+      kept.forEach(function (b) { if (!b.label) restBundle = b; });
+      if (restBundle) {
+        restBundle.indices = restBundle.indices.concat(strays).sort(function (a, b2) { return a - b2; });
+      } else {
+        kept.push({ label: null, indices: strays.sort(function (a, b2) { return a - b2; }) });
+      }
+    }
+    kept = kept.filter(function (b) { return b.indices.length; });
+    // 該当が1枚も無いエリア(実測: 箱根・別府は0枚)では見出しを足さない。
+    // 中身の無い見出しが浮くのを防ぐため、束そのものを作らない。
+    if (bareIdx.length) {
+      kept.push({ label: null, bare: true, indices: bareIdx.sort(function (a, b2) { return a - b2; }) });
+    }
+
     var out = '';
-    bundles.forEach(function (b) {
+    kept.forEach(function (b) {
       // bundle() は 1件しかないテーマを label:null の端数束にまとめて最後に置く。
       // そのまま見出し無しで続けると直前の束の見出しの下にぶら下がって見えるので、
       // テーマを名乗らない見出しで縁を切る(嘘のテーマ名を付けない)。
-      if (b.label) {
+      if (b.bare) {
+        out += '<h3 class="feedbundle feedbundle--rest feedbundle--bare">' + escapeHtml(BARE_BUNDLE_HEAD) +
+          ' <span class="feedbundle__n">' + escapeHtml(String(b.indices.length)) + '件</span></h3>';
+      } else if (b.label) {
         out += '<h3 class="feedbundle">' + escapeHtml(b.label) +
           ' <span class="feedbundle__n">' + escapeHtml(String(b.indices.length)) + '件</span></h3>';
       } else {

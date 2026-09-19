@@ -22,6 +22,11 @@
 //   8. 見出しに data-index が付いていない(observeCards に拾われない)
 //   9. 見出しが2本連続していない / 同じ束の見出しが2回出ていない
 //  10. コンソールエラー0件
+//  11. R226: 「写真と解説がまだ無い場所」の区切り(.feedbundle--bare)
+//      - 該当カードがあるときだけ1本出る(0枚のエリアで見出しだけ浮かない)
+//      - ★区切りより後ろは .feedcard--bare だけ / 該当カードは1枚残らず後ろ
+//        (見出し本数もカード枚数も変えずに中身を入れ替える壊し方はここでしか落ちない)
+//      - 文言が app.js の BARE_BUNDLE_HEAD と一致し、場所を評価する語を含まない
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -183,6 +188,22 @@ const HEAD_MIN = 2;
 // 値の集合に入っているはずなので、名乗っているテーマ名が表に無ければ落とす。
 // (「そのほか」だけはテーマを名乗らない端数置き場なので別扱い)
 const REST_HEAD = 'そのほか';
+// R226: 「写真も解説も無い」カード(app.js の isBareCard / .feedcard--bare)を
+// 最後の1束に寄せた区切りの見出し。文言は app.js の BARE_BUNDLE_HEAD から読み、
+// 検査側に手書きしない(表示の文言を直したのに検査だけ古い、が起きないようにする)。
+const BARE_HEAD = (() => {
+  const src = stripJsComments(fs.readFileSync(path.join(ROOT, 'assets', 'app.js'), 'utf8'));
+  const m = src.match(/var BARE_BUNDLE_HEAD = '([^']+)'/);
+  if (!m) throw new Error('app.js の BARE_BUNDLE_HEAD を読めない');
+  return m[1];
+})();
+// ★評価の語を見出しに入れない(R227・R231 の教訓)。対象は「いま写真と解説が無い」
+// という状態だけで、場所そのものの価値ではないため、価値を断ずる語が混ざったら落とす。
+const JUDGING_WORDS = ['つまらない', '微妙', '情報が薄い', '薄い', '地味', 'しょぼ', '期待でき', '残念', 'おすすめしない', 'イマイチ', 'いまいち', '価値'];
+// R226: 5エリア合計の下限(R233 の「母数が0でも緑」対策)。
+// 実測は合計11枚・見出し3本。fixture の増減で赤くならないよう下げてある。
+const BARE_CARD_MIN = 4;
+const BARE_HEAD_MIN = 1;
 
 let pass = 0;
 let fail = 0;
@@ -197,6 +218,7 @@ function waitFor(ms) {
 
 async function main() {
   const { labelToTheme, fallback } = buildLabelToTheme();
+  const bareTotals = [];
   const { base, stop } = await ensureServer();
   const browser = await chromium.launch();
   try {
@@ -236,6 +258,8 @@ async function main() {
               tag: el.tagName,
               text: el.textContent.trim(),
               hasIndex: el.hasAttribute('data-index'),
+              // R226: 「写真と解説がまだ無い場所」の区切り見出しかどうか
+              bare: el.classList.contains('feedbundle--bare'),
             };
           }
           const no = el.querySelector('.feedcard__no');
@@ -243,6 +267,8 @@ async function main() {
           return {
             kind: 'card',
             index: el.getAttribute('data-index'),
+            // R226: app.js が isBare と判定したカード(写真も解説も無い)
+            bare: el.classList.contains('feedcard--bare'),
             no: no ? no.textContent.trim() : null,
             // 「⛩ 神社・寺院」から絵文字を落としてラベルだけにする
             cat: cat ? cat.textContent.trim().replace(/^\S+\s*/, '') : '',
@@ -270,20 +296,27 @@ async function main() {
       const knownThemes = new Set(Object.values(labelToTheme).concat([fallback]));
       const unknownHeads = heads
         .map((h) => h.text.replace(/\s*\d+件$/, '').trim())
-        .filter((name) => name !== REST_HEAD && !knownThemes.has(name));
+        // R226: BARE_HEAD もテーマを名乗らない置き場なので REST_HEAD と同じ扱い
+        .filter((name) => name !== REST_HEAD && name !== BARE_HEAD && !knownThemes.has(name));
       ok(unknownHeads.length === 0,
         '束見出しのテーマ名が engine.js の THEME_OF にある名前だけ(名前の書き換えを検知)',
         { unknown: unknownHeads, known: Array.from(knownThemes) });
 
       // 3. テーマを名乗る見出しで中身1件のものが無い
       //    (「そのほか」はテーマを名乗らない端数置き場なので1件でもよい)
-      const thin = heads.filter((h) => !/^そのほか/.test(h.text) && /(^|[^0-9])1件/.test(h.text));
+      // R226: BARE_HEAD もテーマを名乗らないので、1件でも嘘にならない(実測 dogo が1件)
+      const thin = heads.filter((h) => !/^そのほか/.test(h.text) && !h.bare && /(^|[^0-9])1件/.test(h.text));
       ok(thin.length === 0, 'テーマを名乗る「1件」の束見出しが無い', thin.map((h) => h.text));
 
-      // 3b. 「そのほか」は出るなら必ず最後の1本だけ
+      // 3b. 「そのほか」は出るなら必ず末尾側の1本だけ。
+      //     R226 で「写真と解説がまだ無い場所」の束がその後ろに付くようになったため、
+      //     末尾から数えて「そのほか」「BARE_HEAD」以外が挟まっていないことで見る。
       const restAt = heads.findIndex((h) => /^そのほか/.test(h.text));
-      ok(restAt === -1 || restAt === heads.length - 1,
-        '「そのほか」は出るなら最後の1本', { restAt, n: heads.length });
+      const tailOnly = heads.slice(restAt === -1 ? heads.length : restAt)
+        .every((h) => /^そのほか/.test(h.text) || h.bare);
+      ok(restAt === -1 || tailOnly,
+        '「そのほか」は出るなら末尾側(後ろに来てよいのは写真と解説がまだ無い場所の束だけ)',
+        { restAt, n: heads.length, tail: heads.slice(restAt === -1 ? heads.length : restAt).map((h) => h.text) });
 
       // 9a. 同じ束の見出しが2回出ていない
       const names = heads.map((h) => h.text.replace(/\s*\d+件$/, '').trim());
@@ -309,8 +342,9 @@ async function main() {
         }
         if (!cur) continue;   // 見出しより前(初期5件)は対象外
         curN++;
-        // 「そのほか」はテーマを名乗らない端数置き場なので中身の照合はしない
-        if (cur === 'そのほか') continue;
+        // 「そのほか」「写真と解説がまだ無い場所」はテーマを名乗らない置き場なので
+        // テーマの照合はしない(R226 の束は別項目で中身を照合する)
+        if (cur === 'そのほか' || cur === BARE_HEAD) continue;
         const theme = labelToTheme[s.cat] || fallback;
         if (theme !== cur) mismatched.push({ head: cur, name: s.name.trim(), cat: s.cat, theme });
       }
@@ -319,6 +353,49 @@ async function main() {
       ok(mismatched.length === 0, '★見出しの下のカードが全てその束のテーマ(1枚も混ざらない)', mismatched);
       const countBad = headCounts.filter((h) => h.claimed !== h.actual);
       ok(countBad.length === 0, '見出しが名乗る件数と直下のカード枚数が一致', countBad);
+
+      // ---- R226: 「写真と解説がまだ無い場所」の区切り ----
+      // 数字(見出し本数・カード枚数)は1つも変わらない壊し方があるため、
+      // 本数の下限ではなく**どのカードがどの見出しの下にいるか**を照合する。
+      const bareCards = cards.filter((c) => c.bare);
+      const bareHeads = heads.filter((h) => h.bare);
+
+      // R226-1. 区切りの見出しは、該当カードがあるときだけ出て、あるなら1本だけ。
+      //         該当0枚のエリア(実測: hakone・beppu)で見出しだけが浮くのを防ぐ。
+      ok(bareHeads.length === (bareCards.length ? 1 : 0),
+        `★写真と解説がまだ無いカードが${bareCards.length}枚のとき区切り見出しは${bareCards.length ? 1 : 0}本`,
+        { bareCards: bareCards.length, bareHeads: bareHeads.length });
+
+      // R226-2. ★中身の照合(数字が変わらない壊し方を捕まえる)。
+      //         区切りより後ろにいるのは .feedcard--bare のカードだけで、
+      //         .feedcard--bare のカードは1枚残らず区切りより後ろにいること。
+      //         見出しの本数も束の数もカード枚数も変えずに、bare と非bare を
+      //         入れ替える壊し方は、この照合でしか捕まらない。
+      const bareHeadPos = seq.findIndex((s) => s.kind === 'head' && s.bare);
+      const misplaced = [];
+      seq.forEach((s, i) => {
+        if (s.kind !== 'card') return;
+        const after = bareHeadPos !== -1 && i > bareHeadPos;
+        if (s.bare && !after) misplaced.push({ name: s.name.trim(), want: '区切りの後ろ', at: '前' });
+        if (!s.bare && after) misplaced.push({ name: s.name.trim(), want: '区切りの前', at: '後ろ' });
+      });
+      ok(misplaced.length === 0,
+        '★区切りより後ろは写真と解説が無いカードだけ / 該当カードは1枚残らず区切りより後ろ',
+        misplaced.slice(0, 5));
+
+      // R226-3. 区切りの見出しの文言が app.js の BARE_BUNDLE_HEAD と一致する
+      //         (見出し本数も枚数も変わらない「文言の書き換え」を捕まえる)。
+      const bareHeadNames = bareHeads.map((h) => h.text.replace(/\s*\d+件$/, '').trim());
+      ok(bareHeadNames.every((n) => n === BARE_HEAD),
+        `区切り見出しの文言が app.js の BARE_BUNDLE_HEAD(「${BARE_HEAD}」)と一致`,
+        bareHeadNames);
+
+      // R226-4. ★見出しの文言に評価の語が入っていない(R227・R231 の教訓)。
+      //         対象は「いま写真と解説が無い」状態だけで、場所の価値ではない。
+      const judging = JUDGING_WORDS.filter((w) => BARE_HEAD.includes(w));
+      ok(judging.length === 0, '区切り見出しの文言に場所を評価する語が入っていない', judging);
+
+      bareTotals.push({ area, cards: bareCards.length, heads: bareHeads.length });
 
       // 5. R159: 番号バッジは地図にピンがある初期5件(index 0..4)だけが持つ。
       //    6件目以降(index >= 5)は地図にピンが無く押しても何も起きない死んだボタンになるため、
@@ -352,6 +429,23 @@ async function main() {
 
       console.log('  束: ' + heads.map((h) => h.text.replace(/\s+/g, '')).join(' / ') + ' (カード' + cards.length + '枚)');
     }
+
+    // R226-5. ★母数が0でも緑になる穴を塞ぐ(R233 の教訓)。
+    //   R226-1〜3 はどれも「bare のカードと bare の見出しが噛み合っているか」を見るので、
+    //   isBareCard() を常に false にすると **カードの class も見出しも同時に消えて
+    //   5エリアすべてが緑のまま通る**(実証済み: 壊し方Aで 116 pass / 0 fail)。
+    //   hakone・beppu は実測0枚が正しい姿なのでエリアごとの下限は置けない。
+    //   そこで **5エリア合わせて何枚あるか** を別項目にする。
+    //   実測(2026-09-20)は kusatsu 7 / hakone 0 / dogo 1 / beppu 0 / kinosaki 3 = 11枚・見出し3本。
+    //   fixture の微増減で赤くならないよう、実測よりかなり下げた値を下限に置く。
+    const bareCardTotal = bareTotals.reduce((n, t) => n + t.cards, 0);
+    const bareHeadTotal = bareTotals.reduce((n, t) => n + t.heads, 0);
+    ok(bareCardTotal >= BARE_CARD_MIN,
+      `★5エリア合計で写真と解説が無いカードが${BARE_CARD_MIN}枚以上(判定が常に偽になる壊れ方を検知)`,
+      { total: bareCardTotal, byArea: bareTotals });
+    ok(bareHeadTotal >= BARE_HEAD_MIN,
+      `★5エリア合計で区切り見出しが${BARE_HEAD_MIN}本以上ある(区切りが1つも出ない壊れ方を検知)`,
+      { total: bareHeadTotal, byArea: bareTotals });
 
     // 10. コンソールエラー0件
     ok(consoleErrors.length === 0, 'コンソールエラー0件', consoleErrors);

@@ -366,6 +366,14 @@ code {
   font-weight: 400;
   color: var(--c-text-faint);
 }
+/* R226: 「写真と解説がまだ無い場所」を寄せた最後の束。
+   ここから先は読み飛ばしてよい、という区切りを上側の余白で示す。
+   新しい色は使わず、既存の --c-border / --c-text-faint のまま。 */
+.feedbundle--bare {
+  margin-top: var(--sp-6);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--c-border);
+}
 
 /* R167: [行き方]を視覚的に主役にする。市場調査(10_市場調査.md 第9回)で
    「旅行者が最も使うのは行き方(経路検索)なのに他リンクに埋もれている」と
