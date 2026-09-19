@@ -1484,6 +1484,88 @@
   }
 
   /**
+   * R189: 記事名が「◯◯温泉」(温泉地そのもの)かどうか。
+   *
+   * ★ **末尾が「温泉」でなければ弾く**のが肝。geosearch の近傍記事には
+   *   `草津温泉バスターミナル`・`道後温泉駅`・`道後温泉本館`・`草津温泉スキー場`・
+   *   `浜田温泉資料館`・`草津町立温泉図書館` のような **施設の記事**が大量に混ざる
+   *   (実測・全国18宿)。これらは温泉地の解説記事ではないので親記事にしてはいけない。
+   *   「温泉」を含むだけの緩い判定にすると、道後は最寄りが `道後温泉駅`(この宿からは
+   *   本物の `道後温泉` より近い)になって外す。
+   *
+   * 許すのは次の2つだけ:
+   *   - `◯◯温泉` … 有馬温泉・別府温泉・銀山温泉
+   *   - `◯◯温泉郷` … 乳頭温泉郷(鶴の湯温泉の親はこちら)
+   * どちらも曖昧さ回避の括弧が付くことがある(`沢渡温泉 (群馬県)`・
+   * `鶴の湯温泉 (秋田県)`)ので、末尾の括弧だけは許して中身は見ない。
+   *
+   * @param {string} title 記事名
+   * @returns {boolean}
+   */
+  function looksOnsenAreaTitle(title) {
+    if (typeof title !== 'string') return false;
+    return /^[^(（]{2,}?温泉郷?(\s*[(（][^)）]*[)）])?$/.test(title.trim());
+  }
+
+  /** R189: 曖昧さ回避の括弧を落とした記事名(`鶴の湯温泉 (秋田県)` → `鶴の湯温泉`)。 */
+  function stripDisambig(title) {
+    return typeof title === 'string' ? title.replace(/\s*[(（][^)）]*[)）]\s*$/, '').trim() : '';
+  }
+
+  /**
+   * R189: **宿の座標の近くにある「◯◯温泉」記事**を親記事として選ぶ(純粋関数)。
+   *
+   * ### なぜこれが要るのか
+   * R188 は住所(Nominatim の display_name)の1要素目から記事名を組み立てており、
+   * 全国18宿で実在率 6%→33% まで上げたが、そこで頭打ちになっていた。残り12件は
+   * 住所の1要素目が **行政区名や小字** で、どう加工しても温泉地名に化けないため:
+   *   - 玉の湯 → `湯布院町川上` (正解 由布院温泉)
+   *   - 能登屋旅館 → `銀山新畑` (正解 銀山温泉)
+   *   - 道後プリンス → `道後姫塚` (正解 道後温泉)
+   *   - 杉乃井 → `南立石`/`鶴見園町` (正解 別府温泉)
+   *   - 指宿白水館 → `指宿市` (正解 指宿温泉)
+   * **住所の文字列をどう加工しても届かない**。そこで座標から直接探す。
+   *
+   * ### ★リクエストは1本も増えない
+   * `fetchWikiNearby`(geosearch)の結果を **engine.js が既に持っている** ので、
+   * それを受け取って選ぶだけ。fixtures を調べたところ5エリアすべてで正解の
+   * 温泉地記事が既にこの結果の中にあった(草津温泉 idx=1 / 別府温泉 idx=5 /
+   * 道後温泉 idx=51 / 箱根温泉 idx=13 / 城崎温泉 idx=6)。**追加照会は不要**。
+   *
+   * ### 選び方(実測で決めた)
+   * 1. 記事名が `◯◯温泉` / `◯◯温泉郷` のものだけに絞る(looksOnsenAreaTitle)
+   * 2. **宿自身の記事を除く**。宿名がそのまま温泉地名のことがあり(鶴の湯温泉)、
+   *    除かないと自分の記事を親に選んで本文照合が空振りする。除くと正解の
+   *    `乳頭温泉郷`(541m)に届く。
+   * 3. **宿から近い順**で先頭を採る。
+   *
+   * ★ 「記事が長い順」ではなく「近い順」にした理由(実測): geosearch の extract は
+   *   `exsentences=2` の抜粋で、本文の長さを表さない(正解の有馬温泉・道後温泉は
+   *   extract が0字で返ることすらある)。長さで選ぶと **遠い別の温泉地**(杉乃井から
+   *   9.9km の由布院温泉など)を引きかねない。近さは座標由来で常に正確なので近さを採る。
+   *
+   * ★ 外しても実害は無い: 別の温泉地の記事を引いても、本文に手元の候補名が出なければ
+   *   ヒット0件 = 加点なし = 変更前と同じ並びになるだけ。
+   *
+   * @param {Object} hotel 宿(name を自己除外に使う)
+   * @param {Array} nearby fetchWikiNearby が返した記事の配列(title/distanceM を見る)
+   * @returns {string} 親記事名。見つからなければ空文字
+   */
+  function parentTitleFromNearby(hotel, nearby) {
+    if (!Array.isArray(nearby) || !nearby.length) return '';
+    var self = hotel && typeof hotel.name === 'string' ? hotel.name.trim() : '';
+    var best = null;
+    nearby.forEach(function (a) {
+      if (!a || !looksOnsenAreaTitle(a.title)) return;
+      var bare = stripDisambig(a.title);
+      if (!bare || (self && bare === self)) return; // 宿自身は親ではない
+      var d = isFinite(a.distanceM) ? a.distanceM : Infinity;
+      if (!best || d < best.d) best = { title: bare, d: d };
+    });
+    return best ? best.title : '';
+  }
+
+  /**
    * R164/R188: その土地の親記事名の候補を決める。**探索はしない**(市場調査 第6回 2-1)。
    *
    * 固定データモードでは `meta.label` をそのまま使う。実測で5エリア中5エリアが
@@ -1504,13 +1586,26 @@
    *
    * ★ 外れても実害は無い: 存在しない記事なら extract が空で返り、ヒット0件=何も起きない。
    *
+   * R189: 本番では **まず座標から探す**(parentTitleFromNearby)。見つからなければ
+   * 従来どおり住所から組み立てる。この順にした理由は実測(全国18宿):
+   *   - 座標由来が当たった11件は **R188 が当てた6件を全部含み**、内容も完全に一致した。
+   *     つまり座標を優先しても R188 の成果は1件も失われない。
+   *   - 座標由来が空になるのは近傍に温泉地の記事が無いとき(俵屋旅館・水明館)で、
+   *     そこは住所由来に任せれば従来と同じ挙動になる。
+   * ★固定データモードは R188 と同じく **一切変えていない**(`meta.label` をそのまま使う)。
+   *
+   * @param {Object} hotel 宿
+   * @param {Array} [nearby] R189: geosearch が返した近傍記事。engine.js が渡す
    * @returns {string} 親記事名。決められなければ空文字
    */
-  function parentArticleTitle(hotel) {
+  function parentArticleTitle(hotel, nearby) {
     if (fixtureData) {
       var label = fixtureData.meta && fixtureData.meta.label;
       return typeof label === 'string' ? label.trim() : '';
     }
+    // R189: 座標から探すほうが住所の言葉遊びより強い(実測 33% → 67%)。
+    var byCoord = parentTitleFromNearby(hotel, nearby);
+    if (byCoord) return byCoord;
     var display = hotel && typeof hotel.displayName === 'string' ? hotel.displayName : '';
     var cands = parentArticleCandidates(display);
     return cands.length ? cands[cands.length - 1] : '';
@@ -1542,16 +1637,20 @@
    * **同じ1リクエストの `prop` に `pageimages` を足すだけ**で、リクエスト数は増えない。
    * 配るかどうかの判断は engine.js 側(pickParentImageTarget)が持つ。
    *
+   * R189: 第3引数に geosearch の近傍記事を受け取り、親記事名を **座標から** 決める。
+   * engine.js が既に持っている結果を渡すだけなので **リクエストは1本も増えない**。
+   *
    * @param {Object} hotel 宿。fixture モードでは使われない
    * @param {string[]} names 候補の名前(OSM/Wikipedia 由来の表示名)
+   * @param {Array} [nearby] R189: fetchWikiNearby が返した近傍記事(親記事名の決定に使う)
    * @returns {Promise<Object>} 本文に出た名前をキーに出現回数を持つ表。
    *          R173: 親記事に代表画像があれば `_image` に {url, file} を添える。失敗時は空
    */
-  async function fetchParentMentions(hotel, names) {
+  async function fetchParentMentions(hotel, names, nearby) {
     var hits = Object.create(null);
     if (!Array.isArray(names) || !names.length) return hits;
 
-    var title = parentArticleTitle(hotel);
+    var title = parentArticleTitle(hotel, nearby);
     if (!title) return hits;
 
     var text = '';
@@ -2651,6 +2750,10 @@
     parentPromoteTitle: parentPromoteTitle,
     // R188: 住所から親記事名の候補を作る純粋関数。検証スクリプトから呼べるように公開する。
     parentArticleCandidates: parentArticleCandidates,
+    // R189: 座標(geosearch の近傍記事)から親記事名を決める純粋関数。
+    // 住所由来より優先される本筋の経路なので、検証スクリプトから直接叩けるようにする。
+    parentTitleFromNearby: parentTitleFromNearby,
+    looksOnsenAreaTitle: looksOnsenAreaTitle,
     enrichFame: enrichFame,
     // 固定データモード(?fixture=kusatsu)の差し込み口
     setFixture: setFixture,

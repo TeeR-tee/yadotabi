@@ -1572,7 +1572,7 @@
    * 負荷は **1エリアあたり1リクエスト**。失敗しても誰も加点されないだけ
    *(= 変更前と同じ並び)なので、例外は握りつぶす。
    */
-  async function attachParentMentions(items, hotel) {
+  async function attachParentMentions(items, hotel, nearby) {
     var geo = global.YadoGeo || {};
     if (typeof geo.fetchParentMentions !== 'function') return;
     if (!Array.isArray(items) || !items.length) return;
@@ -1613,7 +1613,8 @@
 
     var hits;
     try {
-      hits = await geo.fetchParentMentions(hotel, names);
+      // R189: nearby(geosearch の近傍記事)を渡すと、親記事名を座標から決められる。
+      hits = await geo.fetchParentMentions(hotel, names, nearby);
     } catch (e) {
       return; // 全員0点 = 変更前と同じ並びになるだけ
     }
@@ -1933,7 +1934,9 @@
     // 基礎スコア上位 BACKLINK_FETCH_POOL 件」を引く相手に選ぶので、先に親記事加点を
     // 入れると引く相手の顔ぶれが変わり、R163 で確認した被リンクの結果が動いてしまう。
     // この順なら R163 の挙動は一切変わらず、R164 は「その後で足すだけ」になる。
-    await attachParentMentions(merged, h);
+    // R189: 親記事名を **座標から** 決められるよう、geosearch の生の近傍記事を渡す。
+    // 既に取ってある wikiTask の結果をそのまま回すだけで、外部リクエストは増えない。
+    await attachParentMentions(merged, h, wikiResult.status === 'fulfilled' ? wikiResult.value : null);
 
     if (typeof onStage === 'function') onStage('wiki', merged.slice(), meta);
     // suggest 側が最終結果にも印を付けられるよう、列挙されない形で持たせる
