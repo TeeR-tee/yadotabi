@@ -948,38 +948,44 @@
     var ids = Object.keys(byId);
     if (!ids.length) return;
 
-    var batches = chunk(ids, WIKIDATA_BATCH_SIZE).map(async function (batch) {
-      var params = new URLSearchParams({
-        action: 'wbgetentities',
-        ids: batch.join('|'),
-        props: 'sitelinks',
-        // 日本語版だけに絞ると応答が小さくなる(他言語は使わない)
-        sitefilter: 'jawiki',
-        format: 'json',
-        origin: '*'
-      });
-      var res = await fetchWithTimeout(
-        WIKIDATA_URL + '?' + params.toString(),
-        { method: 'GET', headers: { Accept: 'application/json' } },
-        TIMEOUT_FAME_MS,
-        'Wikidataの取得がタイムアウトしました。'
-      );
-      if (!res.ok) throw new Error('wikidata ' + res.status);
-      var data = await res.json();
-      var entities = (data && data.entities) || {};
-      batch.forEach(function (id) {
-        var entity = entities[id];
-        var link = entity && entity.sitelinks && entity.sitelinks.jawiki;
-        var title = link && typeof link.title === 'string' ? link.title.trim() : '';
-        if (!title) return;
-        byId[id].forEach(function (s) {
-          if (!s.wikipediaTitle) s.wikipediaTitle = title;
+    // R171: Wikimedia のマナー上、同時に複数リクエストを投げない(直列化)。
+    // リクエスト回数は変えず、chunk().map(async)+allSettled だった並列発行を
+    // for...of + await に変えただけ。1バッチ失敗しても残りは続ける。
+    var batchesList = chunk(ids, WIKIDATA_BATCH_SIZE);
+    for (var bi = 0; bi < batchesList.length; bi++) {
+      var batch = batchesList[bi];
+      try {
+        var params = new URLSearchParams({
+          action: 'wbgetentities',
+          ids: batch.join('|'),
+          props: 'sitelinks',
+          // 日本語版だけに絞ると応答が小さくなる(他言語は使わない)
+          sitefilter: 'jawiki',
+          format: 'json',
+          origin: '*'
         });
-      });
-    });
-
-    // 一部のバッチが落ちても他の結果は活かす(取れなかった分は null のまま)。
-    await Promise.allSettled(batches);
+        var res = await fetchWithTimeout(
+          WIKIDATA_URL + '?' + params.toString(),
+          { method: 'GET', headers: { Accept: 'application/json' } },
+          TIMEOUT_FAME_MS,
+          'Wikidataの取得がタイムアウトしました。'
+        );
+        if (!res.ok) throw new Error('wikidata ' + res.status);
+        var data = await res.json();
+        var entities = (data && data.entities) || {};
+        batch.forEach(function (id) {
+          var entity = entities[id];
+          var link = entity && entity.sitelinks && entity.sitelinks.jawiki;
+          var title = link && typeof link.title === 'string' ? link.title.trim() : '';
+          if (!title) return;
+          byId[id].forEach(function (s) {
+            if (!s.wikipediaTitle) s.wikipediaTitle = title;
+          });
+        });
+      } catch (e) {
+        // 一部のバッチが落ちても他の結果は活かす(取れなかった分は null のまま)。
+      }
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -1036,7 +1042,13 @@
       return counts;
     }
 
-    var batches = chunk(uniq, BACKLINK_BATCH_SIZE).map(async function (batch) {
+    // R171: Wikimedia のマナー上、バッチ間も同時に投げない(直列化)。
+    // chunk().map(async)+allSettled だった並列発行を for...of + try/catch に変えた。
+    // バッチ内はもともと while ループで順番に continue を追っており並列ではない。
+    var backlinkBatches = chunk(uniq, BACKLINK_BATCH_SIZE);
+    for (var biBl = 0; biBl < backlinkBatches.length; biBl++) {
+      var batch = backlinkBatches[biBl];
+      try {
       // 正規化・リダイレクトの対応(元の title → API が返す実際の記事名)。
       var alias = Object.create(null);
       /** title を API が実際に数えている記事名に解決する(正規化→転送で2段のことがある)。 */
@@ -1132,10 +1144,10 @@
 
       // 回数上限で抜けた分も、取れているところまでで確定させる(0点にはしない)。
       settle(live);
-    });
-
-    // 一部のバッチが落ちても他の結果は活かす(取れなかった分は欠損=0点扱い)。
-    await Promise.allSettled(batches);
+      } catch (e) {
+        // 一部のバッチが落ちても他の結果は活かす(取れなかった分は欠損=0点扱い)。
+      }
+    }
     return counts;
   }
 
@@ -1631,12 +1643,16 @@
 
     var batches = chunk(uniq, WIKI_TITLES_BATCH_SIZE).slice(0, WIKI_TITLES_MAX_CALLS);
 
-    var jobs = batches.map(async function (batch) {
+    // R171: Wikimedia のマナー上、バッチを同時に投げない(直列化)。
+    // chunk().map(async)+allSettled だった並列発行を for...of + try/catch に変えた。
+    for (var biWt = 0; biWt < batches.length; biWt++) {
+      var batch = batches[biWt];
+      try {
       var cacheKey = 'wikititles:' + batch.join('|');
       var cached = cacheGet(cacheKey);
       if (cached) {
         Object.keys(cached).forEach(function (k) { out[k] = cached[k]; });
-        return;
+        continue;
       }
 
       var params = new URLSearchParams({
@@ -1696,10 +1712,10 @@
 
       cacheSet(cacheKey, got, TTL_WIKI_NEARBY_MS);
       Object.keys(got).forEach(function (k) { out[k] = got[k]; });
-    });
-
-    // 一部のバッチが落ちても他の結果は活かす(取れなかった分は素材が付かないだけ)
-    await Promise.allSettled(jobs);
+      } catch (e) {
+        // 一部のバッチが落ちても他の結果は活かす(取れなかった分は素材が付かないだけ)
+      }
+    }
     return out;
   }
 
@@ -1793,45 +1809,46 @@
     var ids = Object.keys(byId);
 
     var idBatches = chunk(ids, WIKIDATA_BATCH_SIZE);
-    var batches = idBatches.map(async function (batch) {
-      var params = new URLSearchParams({
-        action: 'wbgetentities',
-        ids: batch.join('|'),
-        props: 'sitelinks',
-        format: 'json',
-        origin: '*'
-      });
-      var res = await fetchWithTimeout(
-        WIKIDATA_URL + '?' + params.toString(),
-        { method: 'GET', headers: { Accept: 'application/json' } },
-        TIMEOUT_FAME_MS,
-        'Wikidataの取得がタイムアウトしました。'
-      );
-      if (!res.ok) throw new Error('wikidata ' + res.status);
-      var data = await res.json();
-      var entities = (data && data.entities) || {};
+    // R171: Wikimedia のマナー上、バッチを同時に投げない(直列化)。
+    // chunk().map(async)+allSettled だった並列発行を for...of + try/catch に変えた。
+    // 失敗したバッチのIDにも印を残す挙動は変えていない。
+    for (var biSl = 0; biSl < idBatches.length; biSl++) {
+      var batch = idBatches[biSl];
+      try {
+        var params = new URLSearchParams({
+          action: 'wbgetentities',
+          ids: batch.join('|'),
+          props: 'sitelinks',
+          format: 'json',
+          origin: '*'
+        });
+        var res = await fetchWithTimeout(
+          WIKIDATA_URL + '?' + params.toString(),
+          { method: 'GET', headers: { Accept: 'application/json' } },
+          TIMEOUT_FAME_MS,
+          'Wikidataの取得がタイムアウトしました。'
+        );
+        if (!res.ok) throw new Error('wikidata ' + res.status);
+        var data = await res.json();
+        var entities = (data && data.entities) || {};
 
-      batch.forEach(function (id) {
-        var entity = entities[id];
-        if (!entity || !entity.sitelinks) {
-          // 存在しない/削除済みのQ番号。毎回問い合わせても無駄なので印を残す
-          markFameTried(id, 'sitelinks');
-          return;
-        }
-        var count = Object.keys(entity.sitelinks).length;
-        byId[id].forEach(function (s) { s.fame.sitelinks = count; });
-        saveFameCache(id, { sitelinks: count });
-      });
-    });
-
-    // 一部のバッチが失敗しても他の結果は活かす。
-    // 失敗したバッチのIDにも印を残し、再検索のたびに叩き直さないようにする。
-    var results = await Promise.allSettled(batches);
-    results.forEach(function (r, i) {
-      if (r.status === 'rejected') {
-        idBatches[i].forEach(function (id) { markFameTried(id, 'sitelinks'); });
+        batch.forEach(function (id) {
+          var entity = entities[id];
+          if (!entity || !entity.sitelinks) {
+            // 存在しない/削除済みのQ番号。毎回問い合わせても無駄なので印を残す
+            markFameTried(id, 'sitelinks');
+            return;
+          }
+          var count = Object.keys(entity.sitelinks).length;
+          byId[id].forEach(function (s) { s.fame.sitelinks = count; });
+          saveFameCache(id, { sitelinks: count });
+        });
+      } catch (e) {
+        // 一部のバッチが失敗しても他の結果は活かす。
+        // 失敗したバッチのIDにも印を残し、再検索のたびに叩き直さないようにする。
+        batch.forEach(function (id) { markFameTried(id, 'sitelinks'); });
       }
-    });
+    }
   }
 
   /**
@@ -1857,7 +1874,10 @@
 
     var range = lastMonthRange();
 
-    var tasks = targets.map(async function (spot) {
+    // R171: Wikimedia のマナー上、スポットごとのリクエストを同時に投げない(直列化)。
+    // targets.map(async)+allSettled だった並列発行を for...of + try/catch に変えた。
+    for (var pvI = 0; pvI < targets.length; pvI++) {
+      var spot = targets[pvI];
       // 記事タイトルの空白はアンダースコアに置き換えるのがAPIの仕様
       var title = encodeURIComponent(spot.wikipediaTitle.replace(/ /g, '_'));
       var url = PAGEVIEWS_URL + title + '/monthly/' + range.start + '/' + range.end;
@@ -1874,7 +1894,7 @@
         if (res.status === 404) {
           spot.fame.monthlyViews = 0;
           saveFameCache(spot.wikipediaTitle, { monthlyViews: 0 });
-          return;
+          continue;
         }
         if (!res.ok) throw new Error('pageviews ' + res.status);
 
@@ -1882,7 +1902,7 @@
         var items = (data && data.items) || [];
         if (!items.length || typeof items[0].views !== 'number') {
           markFameTried(spot.wikipediaTitle, 'monthlyViews');
-          return;
+          continue;
         }
 
         spot.fame.monthlyViews = items[0].views;
@@ -1891,9 +1911,7 @@
         // 通信断・タイムアウト・5xxなど。再検索のたびに叩き直さないよう印を残す
         markFameTried(spot.wikipediaTitle, 'monthlyViews');
       }
-    });
-
-    await Promise.allSettled(tasks);
+    }
   }
 
   /**
@@ -1913,7 +1931,14 @@
       if (!s.fame) s.fame = { sitelinks: null, monthlyViews: null };
     });
 
-    await Promise.allSettled([fetchSitelinks(spots), fetchPageviews(spots)]);
+    // R171: Wikidata(sitelinks)と Wikimedia(pageviews)を同時に投げない(直列化)。
+    // どちらか一方が失敗しても他方は独立して実行される(各関数内で例外を握りつぶす設計)。
+    try {
+      await fetchSitelinks(spots);
+    } catch (e) { /* 無視。fame は無くても提案自体は成立する */ }
+    try {
+      await fetchPageviews(spots);
+    } catch (e) { /* 無視 */ }
     return spots;
   }
 
