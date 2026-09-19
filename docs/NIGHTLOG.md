@@ -1,5 +1,19 @@
 # 夜間ログ(みのるんが朝に読む)
 
+## R205(2026-09-19 **検査32本すべてが CI で緑になりました** — CIの第3段階・完了)
+
+- **結論: GitHub Actions の Linux 上で、やどたびの検査32本が全部 PASS しました。** 所要**6分22秒**、**32本中32本 PASS**。→ https://github.com/TeeR-tee/yadotabi/actions/runs/35447889913
+- **★結果は Windows と一致しています。** 32本の並び・PASS/FAIL・最遅スクリプトまで同じです。合計時間は Windows 343.4秒 / CI 342.5秒、最遅はどちらも `check-reason.mjs`(28.8秒 / 28.9秒)。**CI がみのるんのPCと同じものを同じように検査できている**ことが、1本(R204)ではなく全本で確認できました。
+- **やった改修は R204 と同じ2行を27本に広げただけです。** 検査の判定内容は1文字も変えていません。
+- **★1本だけ書き方が違いました(要記録)**: 27本のうち **`scripts/check-nosummary.mjs` だけが改行コードが CRLF** で、他26本は LF でした。import 文の中身自体は一字一句同じでしたが、`sed` 一括置換の対象からは外れます。**気付かずに「27本やった」と思い込むと1本だけ古いまま残り、CI で1本だけ赤くなって原因不明になるところでした。** このファイルだけ CRLF のまま個別に置換しています。同種の一括置換をするときは**置換後に必ず `grep` で残りを数える**こと。
+- **全ファイルで `node --check`(構文チェック)が通っています。** その上で Windows 実機でも `node scripts/check-all.mjs` が **32本中32本 PASS**(343.4秒)でした。**ローカルの挙動は変わっていません**(環境変数が無ければ従来の絶対パスを使う作りのため)。
+- **お金はかかりません。** `runs-on: ubuntu-latest`(標準ランナー)のままで、リポジトリが public なので Actions は無料です。大型ランナーは使っていません。
+- **暴走しない作りのままです。** ワークフローの起動条件は **`workflow_dispatch`(手動実行)のみ**で、`push` も `schedule` も付けていません。**コミットしても勝手には走りません。** `timeout-minutes` は全本の所要(6〜7分)に合わせて 15 → **20** に延ばしました。既存の `check.yml` は一切触っていません。
+- **みのるんが自分で回す手順**(R204 と同じ): https://github.com/TeeR-tee/yadotabi/actions → 左の **check-playwright-trial** → 右上 **Run workflow** → `main` のまま実行。**7分ほど**で結果が出ます。
+- **これで「検査がどの環境でも回せる」状態になりました。** 次の一手は市場調査役の手順④、**トリガに `schedule`(1日1回)を足すかどうか**です。今回は指示どおり `workflow_dispatch` のみに留めています。
+- **注意点(今は無害・R204 から継続)**: `actions/checkout@v4` と `setup-node@v4` の Node 20 非推奨警告、`ubuntu-latest` の 2026-10-19 Ubuntu 26 移行予定。**`schedule` を足すタイミングで `@v5` 系への更新を検討**すると良いです。
+- **変更ファイル**: 検査27本、`.github/workflows/check-playwright-trial.yml`、本ログと ROADMAP。**`assets/`・`fixtures/`・`check.yml`・`check-links-target.mjs`(R204 で対応済)は無編集**です。
+
 ## R204(2026-09-19 **CIで検査が緑になりました** — 関門突破・CIの第2段階)
 
 - **結論: GitHub Actions の Linux 上で、やどたびのブラウザ検査が実際に緑になりました。** 市場調査役が「ここが最重要の関門」と言っていた箇所を通過しました。実行時間は**45秒**、結果は **9 pass / 0 fail**。→ https://github.com/TeeR-tee/yadotabi/actions/runs/35447206192
