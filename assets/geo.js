@@ -314,6 +314,21 @@
   var CACHE_PREFIX = 'yado.cache.';
 
   /**
+   * キャッシュの「値の形式」バージョン(R184)。
+   *
+   * 今日1日で `parent:` キャッシュの中身を何度も変えた
+   * (parentExtract追加→parentImage追加→parentTitle昇格の採用)。
+   * 既にアプリを使ったことがある端末には古い形式のデータが残っており、
+   * TTL(7日)が切れるまで新しいフィールドが無いまま=加点が効かない状態が続く。
+   *
+   * 保存する値を { ver, v } でラップし、読むときに ver が一致しないものは
+   * 「無かった」ことにする(捨てて null を返す)。次回アクセス時に自然に
+   * 新しい形式で上書きされるので、利用者は何もしなくてよい。
+   * 形式を変えるたびにこの数字を上げること。
+   */
+  var CACHE_FORMAT_VERSION = 1;
+
+  /**
    * localStorageを取得する。プライベートブラウジングやストレージ無効環境では
    * アクセス自体が例外を投げるため、その場合は null を返して全体を no-op にする。
    */
@@ -378,6 +393,12 @@
     }
 
     if (!entry || typeof entry !== 'object' || typeof entry.exp !== 'number') return null;
+    // R184: 形式バージョンが一致しない(古いアプリが書いた/未来のverが書いた)ものは
+    // 「無かった」ことにして捨てる。stale扱いの延命もしない(中身の形が保証できないため)。
+    if (entry.ver !== CACHE_FORMAT_VERSION) {
+      try { store.removeItem(full); } catch (e4) { /* 無視 */ }
+      return null;
+    }
     if (entry.exp <= Date.now()) {
       // 期限切れ。通常読み(keepStale=false)では従来どおり捨てて null を返す。
       if (!keepStale) {
@@ -439,7 +460,7 @@
     var full = CACHE_PREFIX + key;
     var payload;
     try {
-      payload = JSON.stringify({ exp: Date.now() + ttlMs, v: value });
+      payload = JSON.stringify({ ver: CACHE_FORMAT_VERSION, exp: Date.now() + ttlMs, v: value });
     } catch (e) {
       return; // 循環参照など、そもそもシリアライズできない値
     }

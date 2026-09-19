@@ -1248,3 +1248,68 @@ Playwright の `addInitScript` で `overpass-api.de` だけ 504 を返す方法�
 `node scripts/dump-rank.mjs` の **5エリア全出力が HEAD(310c63c)と完全一致**(湯畑#1・
 竹瓦温泉#1・松山城#1 を維持)。`WEIGHT` 無変更。実行前に `netstat -ano | findstr :3000` を
 確認(TIME_WAIT のみで LISTENING なし)。
+
+## R184 古い形式のキャッシュが残っている端末で今日の改善が効かない問題(2026-09-19)
+
+R183 の本番検証中、`parentMention` が全滅した回(湯畑 -3.51点)が見つかった。
+原因は `localStorage` の `yado.cache.parent:` に**古い形式・空の親記事**が残っていた
+ことで、44件クリアしたら解消した。今日1日で `parent:` キャッシュの中身を
+R164(parentExtract追加)→R173(parentImage追加)→R175(parentTitle昇格)と3回変えており、
+**既にアプリを使ったことがある端末には古い形式のデータが残っている**。
+
+### 調査
+
+TTL は種別ごとに違い、geocode=30日、**spots/fame/hotels/wikinear=7日**。今日変えた
+`parent:`(親記事)キャッシュは `TTL_FAME_MS`=7日で、何もしなくても最大7日で自然回復する。
+
+ただし `fetchParentArticle` の後方互換コード
+(`typeof cached.text === 'string'` なら受理する分岐)を読むと、**空文字列の `text`
+(＝「記事は無かった」という失敗記録)もこの条件を満たしてそのまま返してしまい、
+7日間ずっと再取得されない**ことが分かった。これはまさに R183 で踏んだ事故の形そのもの
+(空の親記事が丸ごと居座る)で、「自然回復するから対処不要」とは言い切れない。TTL自体は
+正しく切れるので7日で直りはするが、その間**1エリア丸ごと親記事加点がゼロ**になる実害は
+無視できないと判断した。
+
+R181 の `spotsArea:`(粗いキー、キー名が新規のため古い端末では単に無い=フォールバックが
+使えないだけ)と R183 の `_title`(キャッシュに保存しない一時値なので無関係)は、
+古いキャッシュがあっても**エラーにはならず実害も小さい**ことを確認した。
+
+### 対処: 値にバージョンを持たせる(案B)
+
+キー名を変える案A(`yado.cache.parent:` → `v2.parent:` 等)は**新形式が育つだけで
+古いキーがゴミとして残り続ける**ため見送った。代わりに `cacheSet` が保存する値を
+`{ ver: CACHE_FORMAT_VERSION, exp, v }` の形に変え、`readCache` で
+`entry.ver !== CACHE_FORMAT_VERSION` のエントリは**キーごと削除してnullを返す**
+(壊れたJSONと同じ扱い)。既存の古いキャッシュは `ver` フィールドが無いので
+`undefined !== 1` で確実に弾かれ、次にその宿・エリアを開いた瞬間に新形式で
+上書きされる。**利用者は何もしなくてよい**(入力ゼロ原則を維持)。
+
+`parent:` だけでなく `spots:`/`wikinear:`/`wikititles:` など**全キャッシュ種別に
+共通適用**した。今日は変わっていない種別も対象にすることで、次に形式を変えたときの
+再発を防ぐのが狙い。追加コストは保存する値に短いキー1つ(`ver`)が増えるだけで、
+localStorage の容量への影響は無視できる。
+
+変更は `assets/geo.js` の `readCache`/`cacheSet` の2箇所と `CACHE_FORMAT_VERSION`
+定数の追加のみ。`fetchParentArticle` 内にあった「R173より前は文字列」という
+後方互換の分岐は、バージョンチェックによって古いキャッシュがそもそも `cacheGet` の
+時点で弾かれるため到達しなくなるが、無害なので削除せずそのまま残した(タスクの
+スコープ外の変更を避けるため)。
+
+### 検証: 古いキャッシュを再現して確認
+
+`assets/geo.js` を vm サンドボックスに読み込み、localStorage をモック実装で用意して
+以下を注入した(いずれも `ver` フィールド無し=今日以前の形式):
+1. R173より前の「文字列そのまま」の親記事キャッシュ
+2. R183で報告されたのと同じ形の「空の親記事」(`{ title, text: '', image: null }`)
+
+`YadoCache.get()` で読むと、どちらも **null が返り、古いキーが自動で削除される**
+(=再取得される状態になる)ことを確認した。今日保存した新形式(`ver: 1`)は従来どおり
+正しく読めることも確認した(3ケース5アサート全PASS)。
+
+### 検査
+`node --check` 全ファイルOK。`node scripts/dump-rank.mjs` の5エリア出力は変更なし
+(キャッシュ層のみの変更で rank ロジックは無変更のため)。`node scripts/check-all.mjs`
+**32本中32本PASS**。実行前後とも `netstat -ano | findstr :3000` で LISTENING 残存なしを
+確認(TIME_WAIT のみ)。`WEIGHT`・`PARENT_MENTION`系・`PENALTY_CAP`・`BACKLINK_MAX`/
+`BACKLINK_FULL`・`MAX_CARDS`/`MAX_MORE`/`REASON_POOL`・順位ロジック・`fixtures/*.json`・
+R181の`spotsArea:`フォールバック・R183の親記事除外は無変更。
