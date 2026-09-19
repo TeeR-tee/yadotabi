@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>ページが見つかりません - やどたび</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%227%22%20fill%3D%22%234f46e5%22%2F%3E%3Crect%20x%3D%229%22%20y%3D%2213%22%20width%3D%2214%22%20height%3D%2211%22%20rx%3D%222%22%20fill%3D%22%23fff%22%2F%3E%3Crect%20x%3D%2213%22%20y%3D%229%22%20width%3D%226%22%20height%3D%224%22%20rx%3D%221%22%20fill%3D%22none%22%20stroke%3D%22%23fff%22%20stroke-width%3D%222%22%2F%3E%3Crect%20x%3D%2215%22%20y%3D%2217%22%20width%3D%222%22%20height%3D%223%22%20rx%3D%221%22%20fill%3D%22%234f46e5%22%2F%3E%3C%2Fsvg%3E">
+  <meta name="description" content="このURLにページはありません。やどたびのトップと営業用デモへの行き先を掲載しています。">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="やどたび">
+  <meta property="og:title" content="ページが見つかりません - やどたび">
+  <meta property="og:description" content="このURLにページはありません。やどたびのトップと営業用デモへの行き先を掲載しています。">
+  <meta property="og:url" content="https://teer-tee.github.io/yadotabi/404.html">
+  <meta property="og:image" content="https://teer-tee.github.io/yadotabi/docs/og.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="やどたびの画面。宿のまわりの見どころが地図とカードで並ぶ">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="ページが見つかりません - やどたび">
+  <meta name="twitter:description" content="このURLにページはありません。やどたびのトップと営業用デモへの行き先を掲載しています。">
+  <meta name="twitter:image" content="https://teer-tee.github.io/yadotabi/docs/og.jpg">
+  <meta name="robots" content="noindex">
+  <!-- R216: 色・余白・字の大きさは tokens.css のトークンだけを使う(新しい色は1つも足さない)。
+       assets/ は参照のみで、このタスクでは1バイトも変更しない。 -->
+  <link rel="stylesheet" href="assets/tokens.css">
+  <link rel="stylesheet" href="assets/ui.css">
+  <style>
+    /* R216: このページ固有のレイアウトのみ。色は必ず var(--c-*) を参照する。 */
+    .nf {
+      max-width: 34rem;
+      margin-inline: auto;
+      padding: var(--sp-6) var(--sp-4) var(--sp-7, var(--sp-6));
+    }
+    .nf__code {
+      font-size: var(--fs-sm);
+      color: var(--c-text-faint);
+      letter-spacing: .08em;
+      margin: 0 0 var(--sp-2);
+    }
+    .nf__title {
+      font-size: var(--fs-2xl);
+      margin: 0 0 var(--sp-4);
+    }
+    .nf__lead {
+      color: var(--c-text-sub);
+      margin: 0 0 var(--sp-5);
+    }
+    .nf__links {
+      list-style: none;
+      margin: 0 0 var(--sp-5);
+      padding: 0;
+      display: grid;
+      gap: var(--sp-3);
+    }
+    .nf__link {
+      display: block;
+      background: var(--c-surface);
+      border: 1px solid var(--c-border);
+      border-radius: var(--r-md, 8px);
+      padding: var(--sp-3) var(--sp-4);
+      color: var(--c-text);
+      text-decoration: none;
+    }
+    .nf__link:hover { border-color: var(--c-primary); text-decoration: none; }
+    .nf__link b { display: block; color: var(--c-primary); font-size: var(--fs-md); }
+    .nf__link span { display: block; color: var(--c-text-sub); font-size: var(--fs-sm); }
+    .nf__note {
+      color: var(--c-text-faint);
+      font-size: var(--fs-sm);
+      margin: 0;
+    }
+  </style>
+</head>
+<body>
+  <main class="nf">
+    <p class="nf__code">404</p>
+    <h1 class="nf__title">お探しのページはありません</h1>
+    <p class="nf__lead">このURLにページはありません。URLの入力途中で文字が抜けたか、以前のリンクの可能性があります。下の行き先からお進みください。</p>
+
+    <ul class="nf__links">
+      <li>
+        <a class="nf__link" href="https://teer-tee.github.io/yadotabi/">
+          <b>やどたび トップ</b>
+          <span>宿を選ぶと、まわりの見どころが並びます。入力は不要です。</span>
+        </a>
+      </li>
+      <li>
+        <a class="nf__link" href="demo/hotel-page.html">
+          <b>営業用デモ(日本語)</b>
+          <span>宿の予約ページにやどたびを埋め込んだ見本です。</span>
+        </a>
+      </li>
+      <li>
+        <a class="nf__link" href="demo/hotel-page-en.html">
+          <b>営業用デモ(英語)</b>
+          <span>同じ見本の英語版です。</span>
+        </a>
+      </li>
+    </ul>
+
+    <p class="nf__note">やどたびは、宿を選ぶだけでまわりの見どころが並ぶ旅行サイトです。</p>
+  </main>
+</body>
+</html>

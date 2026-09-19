@@ -117,7 +117,9 @@ for (const path of TARGETS) {
 // 相対パス参照(css/js/iframe src/画像)と meta content(og:image等)を抽出し、
 // 本番URLで200が返るかを確認する。外部ドメインは絶対に fetch しない。
 
-const HTML_PAGES = ['index.html', 'demo/embed-check.html', 'demo/hotel-page.html', 'demo/hotel-page-en.html'];
+// R216: 404.html を追加(4→5ページ)。GitHub Pages はリポジトリ直下の 404.html を
+// 存在しないパスへの応答として自動で使う。ここに足さないとリンク切れ検査の対象外のままになる。
+const HTML_PAGES = ['index.html', 'demo/embed-check.html', 'demo/hotel-page.html', 'demo/hotel-page-en.html', '404.html'];
 
 // --- R214: 4ページの favicon href が全て同一であることを確認するための収集先 ---
 const faviconHrefs = new Map();
@@ -228,13 +230,80 @@ for (const page of HTML_PAGES) {
 }
 // --- ここまで R22 ---
 
-// --- R214: 4ページの favicon href が全て同一であることの検査(1枚だけ更新し忘れる事故を防ぐ) ---
+// --- R214: 全ページの favicon href が全て同一であることの検査(1枚だけ更新し忘れる事故を防ぐ) ---
+// R216: 対象が4ページ→5ページになったので、ラベルの数字を HTML_PAGES.length から作る。
 {
   const hrefs = [...faviconHrefs.values()];
   const allSame = hrefs.length === HTML_PAGES.length && hrefs.every((h) => h === hrefs[0]);
-  report('4ページの favicon href がすべて同一', allSame, `${faviconHrefs.size}/${HTML_PAGES.length}件取得`);
+  report(`${HTML_PAGES.length}ページの favicon href がすべて同一`, allSame, `${faviconHrefs.size}/${HTML_PAGES.length}件取得`);
 }
 // --- ここまで R214 ---
+
+// --- R216: 404ページの「中身軸」 ---
+// リンク軸(HTML_PAGES に入れたことで得られる到達性検査)だけでは、
+//   ・案内文が英語に戻る(GitHub 既定の 404 に逆戻りする)
+//   ・3本のリンクの行き先が互いに入れ替わる
+// といった「リンクの本数もページ数も1本も変わらない壊れ方」を1つも捕まえられない。
+// そこで本数の下限だけに頼らず、行き先と文言を1本ずつ名指しで照合する(R226 の教訓)。
+{
+  const page = '404.html';
+  const url = BASE + page;
+  let body = null;
+  try {
+    const { res } = await timedFetch(`${page} の中身検査用取得`, url);
+    if (res.status !== 200) {
+      report(`${page} の中身検査用取得`, false, `HTTP ${res.status}`);
+    } else {
+      body = await res.text();
+    }
+  } catch (err) {
+    report(`${page} の中身検査用取得`, false, `fetch失敗: ${err.message}`);
+  }
+
+  if (body !== null) {
+    // (1) 日本語の案内文であること。既定の英語404や英語への差し替えを捕まえる。
+    //     「ページが無いこと」と「行き先があること」の両方が日本語で読める状態を条件にする。
+    report(`${page} の見出しが日本語の「お探しのページはありません」`, body.includes('お探しのページはありません'));
+    report(`${page} の本文に日本語の案内がある`, body.includes('このURLにページはありません'));
+
+    // (2) 本文の日本語密度。単語1つを足しただけで緑に戻らないよう、全体が日本語であることを見る。
+    const text = body
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[\s\S]*?<\/style>/gi, '')
+      .replace(/<[^>]+>/g, ' ');
+    const jaChars = (text.match(/[ぁ-んァ-ヶ一-龥]/g) || []).length;
+    report(`${page} の本文に日本語が100文字以上ある`, jaChars >= 100, `${jaChars}文字`);
+
+    // (3) 3本のリンクが「どこを指しているか」まで照合する。
+    //     本数だけを数えると、行き先を互いに入れ替える壊し方が素通りする。
+    const EXPECTED_LINKS = [
+      { href: 'https://teer-tee.github.io/yadotabi/', label: 'やどたび トップ' },
+      { href: 'demo/hotel-page.html', label: '営業用デモ(日本語)' },
+      { href: 'demo/hotel-page-en.html', label: '営業用デモ(英語)' },
+    ];
+    // <a href="..."> ... </a> を出現順に取り出し、href と中の文字列の対応を作る
+    const anchors = [];
+    const anchorRe = /<a\b[^>]*href\s*=\s*"([^"]*)"[^>]*>([\s\S]*?)<\/a>/g;
+    let am;
+    while ((am = anchorRe.exec(body))) {
+      anchors.push({ href: am[1], text: am[2].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() });
+    }
+    report(`${page} のリンクが3本ある`, anchors.length === 3, `${anchors.length}本`);
+    for (const exp of EXPECTED_LINKS) {
+      const hit = anchors.find((a) => a.href === exp.href);
+      report(
+        `${page} の「${exp.label}」の行き先が ${exp.href}`,
+        Boolean(hit) && hit.text.includes(exp.label),
+        hit ? `見出し「${hit.text.slice(0, 24)}」` : '該当する href が無い'
+      );
+    }
+
+    // (4) 入力ゼロ原則: 入力欄・選択UIを置かない(R216)。
+    const hasInputUi = /<(input|select|textarea|form)\b/i.test(body);
+    report(`${page} に入力欄・選択UIが無い`, !hasInputUi);
+  }
+}
+// --- ここまで R216 ---
 
 // --- R34: README.md の画像もリンク検査に含める ---
 // GitHub Pages は README.md をそのまま配信し、本番で HTTP 200 を返すことを確認済み。
