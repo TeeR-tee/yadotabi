@@ -407,15 +407,16 @@ async function main() {
         };
       })
     );
-    // R154: 参照先を kusatsu の「湯畑」に差し替える(要約×画像×営業時間×公式×で
-    // bare 条件は同じ。検査の意図=bareカードの帯が畳まれていること、は不変)。
-    const shotengai = bareRows.find((r) => r.name === '湯畑');
+    // R174: R173 で湯畑に親記事の画像が付き isBare===false になったため、この検査の
+    // 見本(裸カードであること前提)が成立しなくなった。実データ確認済みの別の裸カード
+    // (kusatsu「万代鉱源泉」写真×要約×営業時間×公式×)に差し替える。判定内容(条件式)は不変。
+    const shotengai = bareRows.find((r) => r.name === '万代鉱源泉');
     // R140 で帯(.feedcard__media)そのものを畳んだため mediaHeight は null になる(要素が存在しない)。
     // これは R139 の「情報ゼロのカードの帯を圧縮する」という目的をさらに徹底した結果であり、
     // 検査の意図(bare カードに肥大した帯が残っていないこと)はこの条件で引き続き満たされる。
     ok(
       !!shotengai && shotengai.bare === true && shotengai.mediaHeight === null,
-      '(r139) a. 情報ゼロのカード(kusatsu 湯畑)が feedcard--bare になり .feedcard__media の帯が無い(R140で畳んだ・R154でdogoから移動)',
+      '(r139) a. 情報ゼロのカード(kusatsu 万代鉱源泉)が feedcard--bare になり .feedcard__media の帯が無い(R140で畳んだ・R174で湯畑から差し替え)',
       shotengai
     );
     const isaniwaBare = bareRows.find((r) => r.name === '大滝乃湯');
@@ -441,11 +442,11 @@ async function main() {
         };
       })
     );
-    // R154: こちらも kusatsu の「湯畑」に参照先を差し替える。
-    const shotengaiR140 = bareDetailRows.find((r) => r.name === '湯畑');
+    // R174: こちらも湯畑が isBare===false になったため、kusatsu の「万代鉱源泉」に参照先を差し替える。
+    const shotengaiR140 = bareDetailRows.find((r) => r.name === '万代鉱源泉');
     ok(
       !!shotengaiR140 && shotengaiR140.bare === true && shotengaiR140.hasMedia === false && shotengaiR140.hasPh === false,
-      '(r140) a. bare カード(kusatsu 湯畑)に .feedcard__media / .feedcard__ph が存在しない(帯を畳んだ)',
+      '(r140) a. bare カード(kusatsu 万代鉱源泉)に .feedcard__media / .feedcard__ph が存在しない(帯を畳んだ)',
       shotengaiR140
     );
     // 「写真は無いが情報はある(isBare=false)」カードで .feedcard__ph が維持されることを確認する。

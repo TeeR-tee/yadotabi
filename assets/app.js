@@ -1067,6 +1067,13 @@
       ? safeUrl('https://www.wikidata.org/wiki/Special:GoToLinkedPage/jawiki/' + encodeURIComponent(card.wikidataId))
       : null;
     var hasArticle = !card.summary && !!wikipediaUrl;
+    // R139: 写真も要約(記事ありリンクも含む)も営業時間も公式サイトも1つも無いカードだけ、
+    // .feedcard__media の空箱(196px)を低い帯に詰める。85枚(写真あり/情報あり)は一切変えない。
+    var isPlaceholderMedia = !isPortraitDemo && !(imgSrc && safeUrl(imgSrc));
+    // R174: 「Wikipediaに記事がありません。地図の情報だけで表示しています。」は、
+    // 写真が出ているカードでは矛盾して見える(市場調査10-3(d)【B案】: 1位の本文の40%が
+    // 言い訳になるとの指摘)。写真が無いカードには情報の少なさを伝える意味があるため残すが、
+    // 写真があるカードでは行ごと出さない。hasArticle側(記事はある)の案内は矛盾しないため据え置き。
     var summary = card.summary
       ? '<p class="feedcard__summary">' + escapeHtml(card.summary) + '</p>'
       : hasArticle
@@ -1075,7 +1082,9 @@
             ? ' <a href="' + escapeHtml(wikipediaUrl) + '" target="_blank" rel="noopener">Wikipediaで見る</a>'
             : '') +
         '</p>'
-      : '<p class="feedcard__summary feedcard__summary--none">' + escapeHtml(NO_SUMMARY_TEXT) + '</p>';
+      : isPlaceholderMedia
+      ? '<p class="feedcard__summary feedcard__summary--none">' + escapeHtml(NO_SUMMARY_TEXT) + '</p>'
+      : '';
     // R136: 営業中/閉店の判定はしない。取得した表記を読める形にするだけ。無ければ何も出さない。
     var hoursText = openingHoursText(card.openingHours);
     var hours = hoursText ? '<p class="feedcard__hours">⏰ ' + escapeHtml(hoursText) + '</p>' : '';
@@ -1086,9 +1095,6 @@
     var domainText = officialUrl ? officialDomainText(officialUrl) : null;
     var official = '';
 
-    // R139: 写真も要約(記事ありリンクも含む)も営業時間も公式サイトも1つも無いカードだけ、
-    // .feedcard__media の空箱(196px)を低い帯に詰める。85枚(写真あり/情報あり)は一切変えない。
-    var isPlaceholderMedia = !isPortraitDemo && !(imgSrc && safeUrl(imgSrc));
     var isBare = isPlaceholderMedia && !card.summary && !hasArticle && !hoursText && !domainText;
 
     // R140: isBare のときは .feedcard__media(絵文字の帯)ごと出さない。
