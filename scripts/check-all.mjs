@@ -1,6 +1,6 @@
 // scripts/check-all.mjs
 // check-*.mjs 33本 + docs/check.mjs の計34本を直列実行し、pass/fail と所要時間を表で出す。
-// 1本でも失敗なら exit 1。
+// 1本でも FAIL(2回走らせて2回とも落ちた)なら exit 1。
 // R130: 共有サーバ方式。ここで ensureServer() を1回だけ呼び、空きポートのサーバを立てて
 // 各子プロセスに環境変数 YADOTABI_BASE で渡す。子は自分でサーバを起動しないので、
 // 以前のようにポート3000を奪い合って毎回違う1本が ERR_CONNECTION_REFUSED で落ちることがなくなる。
@@ -13,6 +13,16 @@ import { ensureServer } from './lib/server.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
+
+// R223: それでもなお ERR_NO_BUFFER_SPACE 系のフレークが 09-16〜09-20 の4日間で5回・9種類の
+// 検査にまたがって起きていた(Windows の一時ポート枯渇が疑われる。ブラウザを立てる検査が29本、
+// 一時ポートは49152から16384個)。原因のさらなる追及ではなく「落ちたら1回だけやり直す」で受け止める。
+// ただし自動再実行は本物の不具合を隠す道具になりうるため、次の歯止めを必ず守る:
+//   1. 再実行は1本につき最大1回(合計2回)まで。2回目も落ちたら必ず FAIL・exit 1。
+//   2. 結果は PASS / FLAKY / FAIL の3値。FLAKY(1回目FAIL・2回目PASS)は exit 0 扱いだが、
+//      表と最終行の両方に必ず数字で出す(「なかったこと」にしない)。
+//   3. 1回目の失敗ログは2回目が通っても必ず残す(後から原因を追えるように)。
+const RETRY_WAIT_MS = 5000;
 
 // R172: 「毎回違う検査が落ちる」現象を調べたところ、主因は検査コード自体ではなく
 // 過去に手動起動して放置された python -m http.server が port 3000 に居座り続け、
@@ -75,15 +85,17 @@ function tail(text, n) {
   return lines.slice(Math.max(0, lines.length - n)).join('\n');
 }
 
-function saveFailLog(script, res, ms) {
+function saveFailLog(script, res, ms, attempt) {
   try {
     const base = path.basename(script, '.mjs');
     const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     const dir = path.join(ROOT, 'screenshots');
     fs.mkdirSync(dir, { recursive: true });
-    const outPath = path.join(dir, `fail-${base}-${stamp}.txt`);
+    // R223: 1回目・2回目でファイル名が衝突しないよう試行回数を入れる(1回目の記録を残すため)
+    const outPath = path.join(dir, `fail-${base}-${stamp}-try${attempt}.txt`);
     const body = [
       `node ${script}`,
+      `${attempt}回目の実行`,
       `exit code: ${res.status}, ${ms}ms`,
       '',
       `--- stdout (末尾${TAIL_LINES}行) ---`,
@@ -115,8 +127,7 @@ if (await warnIfPortBusy(3000)) {
 const { base, stop } = await ensureServer();
 console.log(`共有サーバ: ${base}`);
 try {
-  for (const script of SCRIPTS) {
-    const scriptPath = path.join(ROOT, script);
+  const runOnce = (scriptPath) => {
     const start = Date.now();
     const res = spawnSync(process.execPath, [scriptPath], {
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -127,40 +138,81 @@ try {
     const ms = Date.now() - start;
     if (res.stdout) process.stdout.write(res.stdout);
     if (res.stderr) process.stderr.write(res.stderr);
-    const pass = res.status === 0;
-    let failLog = null;
-    if (!pass) failLog = saveFailLog(script, res, ms);
-    results.push({ script, pass, ms, failLog });
+    return { res, ms };
+  };
+
+  for (const script of SCRIPTS) {
+    const scriptPath = path.join(ROOT, script);
+    const failLogs = [];
+
+    const first = runOnce(scriptPath);
+    if (first.res.status === 0) {
+      results.push({ script, state: 'PASS', ms: first.ms, failLogs });
+      continue;
+    }
+
+    // R223: 1回目が落ちた。1回だけやり直す(2回目も落ちたら FAIL 確定)。
+    const firstLog = saveFailLog(script, first.res, first.ms, 1);
+    if (firstLog) failLogs.push(firstLog);
+    console.warn(
+      `再実行: ${script} が1回目で失敗しました(exit ${first.res.status})。${RETRY_WAIT_MS}ms 待って1回だけやり直します(R223)。`
+    );
+    await new Promise((resolve) => setTimeout(resolve, RETRY_WAIT_MS));
+
+    const second = runOnce(scriptPath);
+    if (second.res.status === 0) {
+      // FLAKY: 緑扱い(exit 0)だが、表と最終行に必ず出す。1回目のログは消さない。
+      console.warn(`FLAKY: ${script} は2回目で通りました。1回目の失敗ログを残しています(R223)。`);
+      results.push({ script, state: 'FLAKY', ms: first.ms + second.ms, failLogs });
+      continue;
+    }
+    const secondLog = saveFailLog(script, second.res, second.ms, 2);
+    if (secondLog) failLogs.push(secondLog);
+    results.push({ script, state: 'FAIL', ms: first.ms + second.ms, failLogs });
   }
 } finally {
   await stop();
 }
 
-const anyFail = results.some((r) => !r.pass);
+// R223: 結果は PASS / FLAKY / FAIL の3値。緑(exit 0)は PASS と FLAKY、赤は FAIL のみ。
+const anyFail = results.some((r) => r.state === 'FAIL');
+const flaky = results.filter((r) => r.state === 'FLAKY');
 
 console.log('');
 console.log('# / script / result / ms');
 results.forEach((r, i) => {
-  console.log(
-    `${String(i + 1).padStart(2)} | ${r.script.padEnd(28)} | ${r.pass ? 'PASS' : 'FAIL'} | ${r.ms}ms`
-  );
+  // FLAKY は目立つように印を付ける(PASS と同じ見た目にすると数えられなくなる)
+  const label = r.state === 'FLAKY' ? '★FLAKY(2回目で通った)' : r.state;
+  console.log(`${String(i + 1).padStart(2)} | ${r.script.padEnd(28)} | ${label} | ${r.ms}ms`);
 });
 
-const passCount = results.filter((r) => r.pass).length;
+const greenCount = results.filter((r) => r.state !== 'FAIL').length;
 const totalMs = results.reduce((sum, r) => sum + r.ms, 0);
 const slowest = results.reduce((a, b) => (b.ms > a.ms ? b : a), results[0]);
 
 console.log('');
 console.log(
-  `${results.length}本中 ${passCount}本 PASS / 合計 ${(totalMs / 1000).toFixed(1)}s / 最遅: ${slowest.script} (${(slowest.ms / 1000).toFixed(1)}s)`
+  `${results.length}本中 ${greenCount}本 PASS(うちFLAKY ${flaky.length}本) / 合計 ${(totalMs / 1000).toFixed(1)}s / 最遅: ${slowest.script} (${(slowest.ms / 1000).toFixed(1)}s)`
 );
 
-if (anyFail) {
+if (flaky.length > 0) {
+  console.log('');
+  console.log(
+    `★FLAKY ${flaky.length}本(1回目は落ちたが2回目で通った。緑扱いだが本物の不具合の芽かもしれないので1回目のログを見ること):`
+  );
+  flaky.forEach((r) => {
+    console.log(`  ${r.script}`);
+  });
+}
+
+if (anyFail || flaky.length > 0) {
   console.log('');
   results
-    .filter((r) => !r.pass && r.failLog)
+    .filter((r) => r.failLogs.length > 0)
     .forEach((r) => {
-      console.log(`失敗ログ: ${path.relative(ROOT, r.failLog)}`);
+      r.failLogs.forEach((log) => {
+        console.log(`失敗ログ: ${path.relative(ROOT, log)}`);
+      });
     });
 }
 
