@@ -42,6 +42,26 @@ function findFreePort() {
   });
 }
 
+// コマンドが実際に存在して実行できるか確認する(`--version` を叩いて確認する)。
+// Windows は `python` はあるが `python3` が無いことが多く、Linux/Mac はその逆が多いため、
+// spawn してから失敗を待つのではなく事前にどちらが使えるか調べてから起動する。
+function commandExists(cmd) {
+  return new Promise((resolve) => {
+    const proc = spawn(cmd, ['--version'], { stdio: 'ignore' });
+    let done = false;
+    proc.once('error', () => { if (!done) { done = true; resolve(false); } });
+    proc.once('exit', (code) => { if (!done) { done = true; resolve(code === 0); } });
+  });
+}
+
+// Windows は python、Linux/Mac は python3 が一般的なので、環境に存在する方を選ぶ。
+// python が優先(現状維持)で、無ければ python3 にフォールバックする。
+async function resolvePythonCommand() {
+  if (await commandExists('python')) return 'python';
+  if (await commandExists('python3')) return 'python3';
+  throw new Error('python も python3 も見つかりませんでした。PATH を確認してください。');
+}
+
 /**
  * 検査用のローカルサーバを用意する。
  * @returns {Promise<{ base: string, stop: () => Promise<void> }>}
@@ -55,7 +75,8 @@ export async function ensureServer() {
   }
 
   const port = await findFreePort();
-  const proc = spawn('python', ['-m', 'http.server', String(port), '--bind', '127.0.0.1'], {
+  const pythonCmd = await resolvePythonCommand();
+  const proc = spawn(pythonCmd, ['-m', 'http.server', String(port), '--bind', '127.0.0.1'], {
     cwd: PROJECT_ROOT,
     stdio: 'ignore',
   });
@@ -68,7 +89,7 @@ export async function ensureServer() {
   }
   if (!up) {
     proc.kill();
-    throw new Error(`ローカルサーバが起動しませんでした (port ${port})。python が PATH にあるか確認してください。`);
+    throw new Error(`ローカルサーバが起動しませんでした (port ${port})。${pythonCmd} が正しく動くか確認してください。`);
   }
 
   let stopped = false;
