@@ -9,7 +9,12 @@
 // 375px 幅(モバイル)で ?fixture=kusatsu(状態B)と ?demo=zoomout(状態A・チップ)を開き、
 // 対象セレクタの当たり判定の高さを測る。44px 未満が1件でもあれば NG。
 
-import { chromium } from 'file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs';
+// R205: CI(ubuntu-latest)でも動かせるよう、Playwright の読み込み先を環境変数で差し替え可能にした。
+// 環境変数 PLAYWRIGHT_IMPORT が無ければ従来どおり Windows の絶対パスを使うので、
+// ローカル(みのるんのWindows機)の挙動は一切変わらない。
+const PLAYWRIGHT_IMPORT =
+  process.env.PLAYWRIGHT_IMPORT || 'file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs';
+const { chromium } = await import(PLAYWRIGHT_IMPORT);
 import { ensureServer } from './lib/server.mjs';
 
 let BASE;

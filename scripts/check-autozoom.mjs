@@ -15,7 +15,12 @@
 //   8. R113: 別のエリアチップに切り替えると Overpass 相当のリクエストが増える(ガードが効きすぎていない裏取り)
 //      ※ 7・8 は ?demo=autozoom を使わず、page.route() で overpass-api.de を fulfill しつつ回数を数える(通常モード)。
 
-import { chromium } from 'file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs';
+// R205: CI(ubuntu-latest)でも動かせるよう、Playwright の読み込み先を環境変数で差し替え可能にした。
+// 環境変数 PLAYWRIGHT_IMPORT が無ければ従来どおり Windows の絶対パスを使うので、
+// ローカル(みのるんのWindows機)の挙動は一切変わらない。
+const PLAYWRIGHT_IMPORT =
+  process.env.PLAYWRIGHT_IMPORT || 'file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs';
+const { chromium } = await import(PLAYWRIGHT_IMPORT);
 import { ensureServer } from './lib/server.mjs';
 
 let BASE;

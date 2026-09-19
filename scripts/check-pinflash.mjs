@@ -17,7 +17,12 @@
 //   5. コンソールエラー0件
 // 撮影: click後200ms時点のスクリーンショットを screenshots/ に保存(r10-flash を含む)
 
-import { chromium } from 'file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs';
+// R205: CI(ubuntu-latest)でも動かせるよう、Playwright の読み込み先を環境変数で差し替え可能にした。
+// 環境変数 PLAYWRIGHT_IMPORT が無ければ従来どおり Windows の絶対パスを使うので、
+// ローカル(みのるんのWindows機)の挙動は一切変わらない。
+const PLAYWRIGHT_IMPORT =
+  process.env.PLAYWRIGHT_IMPORT || 'file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs';
+const { chromium } = await import(PLAYWRIGHT_IMPORT);
 import path from 'node:path';
 import { ensureServer, PROJECT_ROOT } from './lib/server.mjs';
 

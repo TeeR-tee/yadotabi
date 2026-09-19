@@ -1,12 +1,7 @@
-# R204: Playwright を使うロジック検査を GitHub Actions で回せるかの試験台。
+# R205: Playwright を使うロジック検査を GitHub Actions で全本(32本)回す。
 #
-# まだ「検査1本だけ」しか回さない。28本を一度に動かして3つの原因が絡んだまま落ちるのを
-# 避けるため、市場調査第18回の推奨どおり1本で緑を見てから広げる(第18回・着手順序2)。
-#
-# 選んだ1本: scripts/check-links-target.mjs
-#   - 外部API(Overpass/Wikipedia)を1回も叩かない(全て ?fixture=kusatsu 経由)
-#   - 判定が DOM 属性(target / rel)の有無だけで、時間しきい値を持たない
-#     → ランナーの速度差で揺れない
+# R204 で検査1本(check-links-target)が CI で緑になり、結果が Windows と完全一致した。
+# R205 で残り27本も PLAYWRIGHT_IMPORT 方式に揃えたので、ここを check-all.mjs に広げる。
 #
 # 課金されない条件(第18回・出典 GitHub Docs):
 #   - リポジトリが public であること(TeeR-tee/yadotabi は public)
@@ -25,7 +20,7 @@ permissions:
 jobs:
   trial:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -49,7 +44,9 @@ jobs:
 
       # 検査は Playwright を PLAYWRIGHT_IMPORT から読む(無ければ Windows の絶対パス)。
       # ここで CI 上の node_modules を指す file:// URL を渡す。
-      - name: 検査1本を実行 (check-links-target)
+      # check-all.mjs は共有サーバを1回だけ立てて32本を直列実行する(R130)。
+      # Windows では約6分かかるので timeout-minutes は 20 に取ってある。
+      - name: 検査32本を実行 (check-all)
         env:
           PLAYWRIGHT_IMPORT: file://${{ github.workspace }}/node_modules/playwright/index.mjs
-        run: node scripts/check-links-target.mjs
+        run: node scripts/check-all.mjs

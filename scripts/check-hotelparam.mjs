@@ -33,7 +33,12 @@
 //   j. ?hotel=36.6226,999,テスト(経度999) -> 同上
 //   k. ?hotel=abc,def,テスト(非数値) -> 同上(従来のisFinite経路の回帰確認)
 
-import { chromium } from 'file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs';
+// R205: CI(ubuntu-latest)でも動かせるよう、Playwright の読み込み先を環境変数で差し替え可能にした。
+// 環境変数 PLAYWRIGHT_IMPORT が無ければ従来どおり Windows の絶対パスを使うので、
+// ローカル(みのるんのWindows機)の挙動は一切変わらない。
+const PLAYWRIGHT_IMPORT =
+  process.env.PLAYWRIGHT_IMPORT || 'file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs';
+const { chromium } = await import(PLAYWRIGHT_IMPORT);
 import { ensureServer, PROJECT_ROOT } from './lib/server.mjs';
 
 let BASE;
