@@ -204,7 +204,21 @@
     '銀行', '信用金庫', '信用組合', '営業所', '支店', '支社', '本社',
     '刑務所', '拘置所', '駐屯地', '基地', '自動車学校', '墓地', '霊園',
     // R79 追加。'店' 単体は入れない(「〇〇本店」の飲食・土産の観光店まで落ちるため)。
-    '百貨店', '支所', '分署', '車庫'
+    '百貨店', '支所', '分署', '車庫',
+    // R161: 高速道路の休憩施設(SA/PA)は「宿の周辺の見どころ」ではないので落とす。
+    // 対象記事はいずれも extract を持たず(冒頭文が無い)、definitionPredicate() 側の
+    // 判定が使えないため名前の末尾一致で落とす。保護リスト(NAME_PROTECT_SUFFIX)は
+    // 'サービスエリア'/'パーキングエリア' で終わる語を含まないため衝突なし。
+    // 実測(hakone/beppu/dogo): 小田原PA・真鶴PA・別府湾SA・由布岳PA・伊予灘SAの5件が
+    // 全て extract 無しでこの末尾一致だけが唯一の手がかり。
+    'サービスエリア', 'パーキングエリア',
+    // R161: 鉄道事故の記事(根府川駅列車転落事故)。extract を持たないため
+    // definitionPredicate() では判定できず、名前の末尾一致で落とす。
+    '事故',
+    // R161: 事故等で亡くなった人を弔う碑(松本駅長殉難碑)。NAME_PROTECT_SUFFIX の
+    // '記念碑' とは別語なので衝突しない('碑' 単体は短い固有名と衝突しうるため
+    // 入れず、'殉難碑' という複合語に限定する)。
+    '殉難碑'
   ];
 
   /**
@@ -1336,8 +1350,47 @@
     // --- 統合(dedupe) ---------------------------------------------------
     // Wikipedia 側を OSM 側に寄せる。一致しなかった記事だけ単独候補として残す。
     var merged = osmItems.slice();
+
+    // R162: 先に「名前が完全一致する記事」だけを突き合わせる。
+    //
+    // isSamePlace は wikipedia タグでの名指しを最優先で見るため、タグが**親記事を
+    // 指している**と、子スポット自身の記事があっても親の方が先に結び付いてしまう。
+    // 実データでの実害:
+    //   道後温泉本館(OSM) は wikipedia=ja:道後温泉(親記事)を持つ。geosearch には
+    //   「道後温泉」と「道後温泉本館」の両方の記事が同距離(36m)で入っており、
+    //   先に走査された親が勝って、要約が「道後温泉は…湧出する温泉」という
+    //   **本館の説明になっていない文**になっていた。
+    //
+    // そこで「OSM の名前と記事タイトルが正規化して完全一致」という、**取り違えの
+    // 起きようがない最も硬い一致**だけを先に確定させる。タグ経由の別名一致
+    // (小田原城天守閣→小田原城 / 箱根関所→箱根関 など)は従来どおり後段が拾うので、
+    // 拾える件数は減らない。**この先行パスは完全一致以外を一切見ないこと**
+    // (包含や距離を混ぜると別施設どうしが繋がり、写真と説明文が化ける)。
+    //
+    // 5エリア実測での該当は「道後温泉本館」1件のみ。親記事指しのうち残りは
+    // すべて正当な別名(自名の記事が存在しない)で、この先行パスには掛からない。
+    var claimedByName = [];
+    var remainingWikiItems = [];
     wikiItems.forEach(function (wikiItem) {
+      var wn = normalizeName(wikiItem.name);
+      if (wn) {
+        for (var i = 0; i < merged.length; i++) {
+          // 既に完全一致で確定した OSM 候補には二重に寄せない
+          if (claimedByName.indexOf(merged[i]) !== -1) continue;
+          if (normalizeName(merged[i].name) !== wn) continue;
+          mergeIntoOsm(merged[i], wikiItem);
+          claimedByName.push(merged[i]);
+          return;
+        }
+      }
+      remainingWikiItems.push(wikiItem);
+    });
+
+    remainingWikiItems.forEach(function (wikiItem) {
       for (var i = 0; i < merged.length; i++) {
+        // 完全一致で写真・要約が確定済みの候補に、別名一致の記事を重ねない。
+        // (道後温泉本館に親記事「道後温泉」が後から乗るのを防ぐ)
+        if (claimedByName.indexOf(merged[i]) !== -1) continue;
         if (isSamePlace(merged[i], wikiItem)) {
           mergeIntoOsm(merged[i], wikiItem);
           return;
