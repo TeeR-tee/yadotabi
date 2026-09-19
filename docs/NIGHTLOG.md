@@ -2095,3 +2095,7 @@ iframe要素・既存スクリプトは無変更(バイト一致確認済み)、
 NEXT.mdの「検査32本がdemo/3枚を一切見ていない」は不正確で、実測では`docs/check.mjs`が3枚をリンク切れ観点で見ており`check-embedheight.mjs`が`demo/hotel-page.html`1枚を開いていた。真の穴は**`demo/hotel-page-en.html`と`demo/embed-check.html`の2枚にブラウザで中身を見る検査が0本**だったこと(直近のR85/R207/R208/R213で作り込んだばかりの2枚)。
 `scripts/check-demo.mjs`を`check-embedheight.mjs`の書式(`ensureServer()`・`PLAYWRIGHT_IMPORT`方式)に完全に揃えて新設し、26項目を検査(HTTP200/`<title>`/`lang`/JSエラー0件/iframeが`embed=1`+`fixture=kusatsu`で実描画されカードが出ること/en側は主要見出し・日本語版への導線・OGタグ4種・高さ通知で640px超/embed-checkは説明文3本以上)。固定データのみで外部API消費0回。セレクタを存在しない値に一時改変して3項目FAILすることを確認後に復元し、「落ちる検査」であることを検証済み。
 単体 26 pass / 0 fail、`node scripts/check-all.mjs` **33本中33本PASS(348.3s)**、`check-demo`単体は5.8s。`docs/CHECKS.md`の本数(32→33)・表・所要目安を同じサイクルで更新(R212の再発防止)。`demo/`3枚・`assets/`・`index.html`・既存検査32本は1バイトも変更なし。
+
+### 2026-09-20 R215 JS無効時に真っ白になる問題を noscript で解消
+`index.html` の `<body>` 冒頭に `<noscript>` ブロックを1つ追加。Playwrightを`javaScriptEnabled: false`で起動して実測した`document.body.innerText`が2文字→**230文字**になり、「JavaScript」「再読み込み」「やどたび」の3語を含むことを確認。JS有効時(通常時)は`innerText`に「再読み込みしてください」を含まないことも確認し、既存表示に影響なし。
+`node scripts/check-all.mjs` **33本中33本PASS(341.1s)**。`assets/` `fixtures/` `demo/` `scripts/` は無変更、`index.html`のdiffは追加のみ(既存行の削除・書き換え0行)。外部API消費0回(ローカルサーバのみ)。
