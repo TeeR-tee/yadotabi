@@ -14,6 +14,7 @@
 | 検査の自動化 | ローカルのみ(Windows手動) | **GitHub Actions で全PASS**(R64) |
 | 営業用デモ | 日本語1枚のみ | **英語版 `demo/hotel-page-en.html` 追加**(R85)+ README冒頭に入口(R207)+ OGカード(R208) |
 | 営業デモの検査 | 2枚がノーガード | **`scripts/check-demo.mjs` 新設で検査 33本に**(R218) |
+| JS無効時の案内を守る検査 | 1本も無かった(33本すべてJS有効前提) | **`scripts/check-noscript.mjs` 新設で検査 34本に**(R221・8項目すべてPASS) |
 | JSが止まったときの画面 | 文字が「🧳」の2文字だけ = 実質まっ白 | **230文字の日本語の案内**(R215・本番反映確認済み) |
 
 ## 2. ★みのるんの判断を待っている2件
@@ -62,52 +63,60 @@
 
 判断ポイント: **このリクエスト数のまま様子見でよいか、それとも上限を設けて減らす対処を次サイクルで検討すべきか**。実害が出ていないため急ぎではありません。
 
+
 ## 3. ★次のサイクルでやる1件(計画役が選定・判断待ちに依存しません)
 
-### 今回の1件: **R221**(新規起票)— R215で入れた「JSが止まったときの案内」を検査で守る
+### 今回の1件: **R214** — サイトアイコン(favicon)が4ページすべてに1枚も無い
 
-**なぜ R216(404)や R214(favicon)より先に R221 なのか(実測して決めました)。**
+**なぜ R214 なのか(すべて実測して決めました)。**
 
 | 候補 | 実測したこと | 結果 |
 |---|---|---|
-| **R221** | `grep -rlni "noscript" scripts/ docs/*.mjs .github/` と、JSを切る側から `grep -rlniE "javaScriptEnabled\|jsEnabled\|disableJavaScript" scripts/ docs/*.mjs` の**2方向** | **どちらも0件**。noscript の語が出るのは `docs/` の .md 3本(NEXT・NIGHTLOG・ROADMAP)だけで、**33本の検査は1本もJSを切って開いていない** |
-| R216 | `ls 404.html` | **存在しない**。ただし打ち間違えた人だけが遭遇する。しかも**新しい未検査ページが1枚増える**(R218で塞いだのと同じ穴が再発する) |
-| R214 | `grep -niE "icon\|manifest\|shortcut\|\.ico" index.html` と `ls *.ico *.png *.svg *.webmanifest` の2方向 | **どちらも0件**で確定。ただし影響は「タブのアイコンが白紙」まで。内容は読める |
+| **R214** | ①`grep -ciE 'rel="?icon' index.html demo/*.html` ②リポジトリ直下の `ls *.ico *.png *.svg *.webmanifest` ③検査側 `grep -rlniE "favicon\|rel=.?icon" scripts/ docs/check.mjs` の**3方向** | **すべて0件**。本番配信4ページ(`index.html`・`demo/` 3枚)の全部がタブに白紙アイコン。守る検査も0本 |
+| R217 | `grep -c 'og:'` を4ページで比較 | `hotel-page`=10・`hotel-page-en`=10・`index`=9 に対し **`embed-check`=0**(`description` も `twitter:` も0)。ただし影響は社内確認用1枚のリンクプレビューのみ |
+| R216 | `ls 404.html`(無し)+ `docs/check.mjs:120` の `HTML_PAGES` は4ページ固定 | **新しい未検査ページを1枚増やす副作用**が残る。R218 で塞いだ穴の再発になるので今回も見送り |
+| R220 | `wc -l docs/NIGHTLOG.md` = **2106行**、`grep -c "^### "` = **210見出し** | 目次は作れるが、210行の表を足すと NIGHTLOG がさらに長くなる。読めなさの本質的解消にならず後回し |
 
-**R221 が最大なのは、昨夜作ったばかりの安全網が今まさに無防備だからです。** R215 が入れたのは `index.html:30-38` の11行で、**中身はすべて `style="..."` のインライン属性**です。この場所は `<body>` のいちばん先頭、つまり今後 `index.html` を触るどのタスクも必ず通過する位置にあります。消しても・壊しても、33本は全部緑のまま通ります。R218 で営業デモに検査を足したのとまったく同じ発想です。**新しいページを増やす前に、昨夜作ったものを守るほうが先**と判断しました。
+**R214 が最大なのは、影響範囲が本番配信4ページ全部に及ぶ唯一の項目だからです。** R217 は1枚、R216 は未作成ページ1枚ですが、R214 は**いま人に見せている全ページ**が白紙アイコンです。README が想定する「同僚に共有する」使い方では、タブを何枚も開いた相手がやどたびを見分けられません。しかも対処は `<link rel="icon" href="data:image/svg+xml,...">` の**1行をインラインで入れるだけ**で、バイナリファイルもHTTPリクエストも1つも増えません(0円・入力ゼロの原則を完全に満たします)。
 
-- **タスクID**: R221
-- **目的**: JSが無効・読み込み失敗のときの案内(R215)が将来壊れたら、検査が赤くなって気づけるようにする。
-- **変更するファイル(絶対パス・この4件のみ)**:
-  - `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-noscript.mjs`(**新規作成**)
-  - `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-all.mjs`(`SCRIPTS` 配列に1行追加・アルファベット順で `check-nohotels` と `check-nosummary` の間)
-  - `C:\workspace\claude\旅行先用サイト\yadotabi\docs\CHECKS.md`(**33本→34本**。1行目見出し・「対象範囲」節の本数・表に `check-noscript` の行・所要目安)
-  - `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md` と `docs\NIGHTLOG.md`(R221を追記・末尾「## サイクル記録」に `### 2026-09-20 R221 …` 見出し+3行)
-- **検査の中身(`check-demo.mjs` の書式に完全に揃える。`PLAYWRIGHT_IMPORT` 方式 + `ensureServer()`)**:
-  1. `javaScriptEnabled: false` で `index.html` を開き、`document.body.innerText` が **200文字以上**。
-  2. その文字列に「JavaScript」「再読み込み」「やどたび」の3語がすべて含まれる。
-  3. 本番URL `https://teer-tee.github.io/yadotabi/` へのリンクが `<noscript>` 内に1本以上ある。
-  4. `javaScriptEnabled: true`(通常時)の `innerText` に「再読み込みしてください」が**含まれない**(= 普段は見えない)。
-  5. 通常時に `.feedcard` が1件以上描画される(noscript を足したせいで本体が壊れていないことの確認)。
+**そして今回は「作ったものを守る仕組み」を同じサイクルで足します。** 検査側の grep も0件だったので、favicon は入れた瞬間から無防備です。新しい検査ファイルは作らず、**既存の `docs/check.mjs` に判定を1つ足す**方式にします(ページを増やさないので、R216 の見送り理由と矛盾しません。本数は **34本のまま**変わりません)。
+
+- **タスクID**: R214
+- **目的**: 本番配信4ページのタブ/ホーム画面アイコンを白紙でなくし、それが将来消えたら検査が赤くなるようにする。
+- **変更するファイル(絶対パス・この6件のみ)**:
+  - `C:\workspace\claude\旅行先用サイト\yadotabi\index.html`(`<head>` 内に `<link rel="icon">` を**1行追加するだけ**。既存行の削除・書き換えは0行)
+  - `C:\workspace\claude\旅行先用サイト\yadotabi\demo\hotel-page.html`(同じ1行)
+  - `C:\workspace\claude\旅行先用サイト\yadotabi\demo\hotel-page-en.html`(同じ1行)
+  - `C:\workspace\claude\旅行先用サイト\yadotabi\demo\embed-check.html`(同じ1行)
+  - `C:\workspace\claude\旅行先用サイト\yadotabi\docs\check.mjs`(favicon 判定を追加。`HTML_PAGES` の**4ページをそのまま使い回す**。ページは1枚も増やさない)
+  - `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md` と `docs\NIGHTLOG.md`(R214 を `[x] 2026-09-20` に。末尾「## サイクル記録」に `### 2026-09-20 R214 …` 見出し+3行)
+- **入れるアイコンの中身(新しい画像ファイルは作らない)**:
+  - `index.html` の既存の意匠に合わせ、`data:image/svg+xml,` + URLエンコードしたインラインSVG(🧳 と同系の1文字、背景は `tokens.css` にある色を流用)。**外部ファイルを参照しない**ため、リクエスト数は増えず、`.gitignore` も `fixtures/` も無関係です。
+  - 4ページとも**同一の1行**を入れる(ページごとに変えない。差分の確認が楽になるため)。
+- **検査の中身(`docs/check.mjs` に足す。新規ファイルは作らない)**:
+  1. `HTML_PAGES` の4ページそれぞれについて、取得したHTMLに `rel="icon"`(または `rel=icon`)の `<link>` が**1つ以上**あること。
+  2. その `href` が `data:image/svg+xml` で始まること(= 外部ファイルに依存していない、の確認)。
+  3. 4ページの `href` の値が**すべて同一**であること(1枚だけ更新し忘れる事故を防ぐ)。
 - **完了条件(検証可能な形)**:
-  1. `node scripts/check-noscript.mjs` 単体が全項目PASS・exit 0。
-  2. **落ちる検査であることの検証**: `index.html` の `<noscript>` を一時的に丸ごとコメントアウトして単体実行し、**1〜3番の項目がFAILすること**を確認したうえで**必ず元に戻す**(`git diff index.html` が空になることを確認。R218 と同じ手順)。
-  3. `node scripts/check-all.mjs` が **34本中34本PASS**(exit 0)。合計時間を NIGHTLOG に記録。
-  4. `docs/CHECKS.md` の表の行数が `check-all.mjs` の `SCRIPTS` 配列と**一対一で一致**(34)。**同じコミットで直す**(R212 の教訓)。
-  5. `git diff --stat` に `assets/` `fixtures/` `demo/` `index.html` が **1ファイルも含まれない**(2番の一時改変は戻すので最終diffはゼロ)。
-  6. 外部API消費 **0回**(`?fixture=kusatsu` かローカル配信のみ)。
+  1. `grep -ciE 'rel="?icon' index.html demo/hotel-page.html demo/hotel-page-en.html demo/embed-check.html` が **4ページとも1以上**。
+  2. **落ちる検査であることの検証**: 4ページのうち1枚の `rel="icon"` を一時的にコメントアウトして `node docs/check.mjs` を実行し、**該当項目がFAILし exit 1 になること**を確認したうえで**必ず元に戻す**(`git diff` でその1枚が追加1行のみに戻ったことを確認。R218・R221 と同じ手順)。
+  3. `node docs/check.mjs` が exit 0。
+  4. `node scripts/check-all.mjs` が **34本中34本PASS**(exit 0)。合計時間を NIGHTLOG に記録。
+  5. `git diff --numstat` で、HTML4枚の**削除行が0**(追加のみ)であること。
+  6. `docs/CHECKS.md` の**現在値を述べている箇所がすべて34本のまま**であること(今回は検査ファイルを増やさないので本数は変わりません。**過去の経緯として32本・33本と書いてある歴史的な記述は正しいので消さないこと**)。`docs/check.mjs` の行の説明にだけ favicon 判定を追記する。
+  7. 外部API消費 **0回**(`?fixture=kusatsu` かローカル配信のみ)。
 - **検証手順(撮影・2枚とも Read で目視)**:
   - `node C:\workspace\tools\shot\shot.mjs http://127.0.0.1:3000/?fixture=kusatsu --mobile`(**375px**)
-  - `node C:\workspace\tools\shot\shot.mjs http://127.0.0.1:3000/?fixture=kusatsu`(**PC幅 1280px**)
-  - どちらも「noscript の文言が見えていないこと」「既存レイアウトが崩れていないこと」を目視。今回はコードを足さないので変化は無いはずですが、**無いことを目で確かめる**のが目的です。
-- **変更禁止範囲(絶対に触らない)**: `assets/geo.js` / `assets/engine.js` / `WEIGHT` 定数 / `assets/app.js` / `assets/*.css` / `fixtures/*.json` / `demo/` 配下の3枚 / `index.html`(2番の一時改変を除き**最終的に1バイトも変えない**) / 既存の検査33本の中身 / `docs/check.mjs` / `.github/workflows/*` / `README.md`。
-- **所要目安**: 30〜45分(検査の作成15分・わざと落とす検証と復元8分・撮影2枚5分・`check-all.mjs` 7分・CHECKS.md と記録とコミット10分)。
+  - `node C:\workspace\tools\shot\shot.mjs http://127.0.0.1:3000/demo/hotel-page.html`(**PC幅 1280px**)
+  - favicon はタブの話なので**ページ内容は1ピクセルも変わらないはず**です。撮影の目的は「変わっていないことを目で確かめる」こと(`<head>` を触るので、うっかり `<title>` や `<meta>` を壊していないかの確認も兼ねます)。
+- **変更禁止範囲(絶対に触らない)**: `assets/geo.js` / `assets/engine.js` / `WEIGHT` 定数 / `assets/app.js` / `assets/*.css` / `fixtures/*.json` / `scripts/check-*.mjs` 既存34本の中身 / `scripts/check-all.mjs`(本数は増やさない) / `.github/workflows/*` / `README.md` / 4枚のHTMLの `<body>` 以下(`<head>` の1行追加のみ)。
+- **所要目安**: 30〜40分(SVGの1行作成とHTML4枚への追加10分・`docs/check.mjs` への判定追加8分・わざと落とす検証と復元5分・撮影2枚5分・`check-all.mjs` 7分・記録とコミット8分)。
 
 ### 積み残し(判断待ちが解けてから)
 - R177 と「箱根神社が圏外」/ R138(座標欠落40件)— 判断待ち(1)(2)が決まり次第。
 - R64 の残り — CI を `schedule` で1日1回回すかの判断のみ(本体は完了)。
-- 判断不要で残っているもの: **R216(404)・R214(favicon)・R217(embed-checkのOGカード)・R219(README照合)・R220(NIGHTLOG目次)**・R211(dump-rank に日時とコミットID)・R102(`scripts/list-shots.mjs`)。
-  R221 の次は **R216(404ページ。ただし新設ページを同じサイクルで `docs/check.mjs` の `HTML_PAGES` に足すこと)→ R214(favicon)→ R217(OGカード)** の順を推奨。
+- 判断不要で残っているもの: **R217(embed-check のOGカード・実測で `og:` 0行)・R216(404)・R219(README照合)・R220(NIGHTLOG目次)**・R211(dump-rank に日時とコミットID)・R102(`scripts/list-shots.mjs`)。
+  R214 の次は **R217(1枚の取り残しを揃えるだけ・検査は `docs/check.mjs` に相乗り可)→ R219(README照合・文書のみ)→ R216(404。ただし新設ページを同じサイクルで `HTML_PAGES` に足すこと)** の順を推奨。
 
 ## 4. ★次のサイクルで必ず守ること(今日までの教訓)
 
