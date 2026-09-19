@@ -994,6 +994,52 @@
       ' <span class="dbg__b">' + escapeHtml(parts.join(' ')) + '</span></p>';
   }
 
+  // R169: 💡理由行の文言を「選抜ロジックの説明」から「旅行者にとってどういう場所か」へ差し替える。
+  // 市場調査 第10回(10-7 仕様S-1)より。判定は上から順に評価し、最初に当たったものを採用する。
+  // engine.js の reasonFor() は変更しない(別作業役が編集中のため)。ここでは card._debug が
+  // 持つ生データ(distanceM/backlinks/category)から独自に文言を組み立てる。
+  // 母集団は state.cards(理由が付く候補は present() が上位プールに絞った上でここに入るため、
+  // 「もっと見る」側の束(card.reason が null のカード)には触れない=行が増えることはない)。
+  var REASON_BACKLINKS_MIN = 30; // 10-7: 光泉寺9/白根神社4/城崎美術館14/四所神社15を弾く下限
+  function walkableReason(card) {
+    var d = card && card._debug;
+    if (!d) return null;
+    var m = isFinite(d.distanceM) ? d.distanceM : card.distanceM;
+    return isFinite(m) && m <= 800 ? '歩いて行ける' : null;
+  }
+  function representativeReason(card, cardsInView) {
+    var d = card && card._debug;
+    if (!d || d.category === 'other' || !d.category) return null;
+    var label = card.categoryLabel || 'スポット';
+    var backlinks = isFinite(d.backlinks) ? d.backlinks : 0;
+    if (backlinks < REASON_BACKLINKS_MIN) return null;
+    var sameCat = (Array.isArray(cardsInView) ? cardsInView : []).filter(function (c) {
+      return c && c.categoryLabel === label && c._debug && c._debug.category === d.category;
+    });
+    var isMax = sameCat.every(function (c) {
+      var b = c._debug && isFinite(c._debug.backlinks) ? c._debug.backlinks : 0;
+      return b <= backlinks;
+    });
+    return isMax ? 'このあたりの代表的な' + label : null;
+  }
+  function rareReason(card, cardsInView) {
+    var d = card && card._debug;
+    if (!d || d.category === 'other' || !d.category) return null;
+    var label = card.categoryLabel || 'スポット';
+    var sameCat = (Array.isArray(cardsInView) ? cardsInView : []).filter(function (c) {
+      return c && c.categoryLabel === label && c._debug && c._debug.category === d.category;
+    });
+    return sameCat.length === 1 ? 'このあたりでは珍しい' + label : null;
+  }
+  function reasonText(card) {
+    if (!card || !card.reason) return null; // engine.js が理由なしと判定したカードは行ごと出さない
+    var cardsInView = Array.isArray(state.cards) ? state.cards : [];
+    return walkableReason(card) ||
+      representativeReason(card, cardsInView) ||
+      rareReason(card, cardsInView) ||
+      null;
+  }
+
   function cardHtml(card, index, withNo) {
     var emoji = emojiFor(card.categoryLabel);
     var isPortraitDemo = demoPortrait && index < 3;
@@ -1057,7 +1103,8 @@
     var mediaBlock = isBare ? '' : '<div class="feedcard__media">' + media + noBtn + '</div>';
 
     // R151: 「なぜこれを出したか」の1行。理由が無いカードでは何も出さない(空欄も出さない)。
-    var reason = card.reason ? '<p class="feedcard__reason">💡 ' + escapeHtml(card.reason) + '</p>' : '';
+    var reasonMsg = reasonText(card);
+    var reason = reasonMsg ? '<p class="feedcard__reason">💡 ' + escapeHtml(reasonMsg) + '</p>' : '';
 
     return '<article class="card feedcard' + (isBare ? ' feedcard--bare' : '') + '" data-index="' + index + '">' +
       mediaBlock +
