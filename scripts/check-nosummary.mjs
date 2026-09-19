@@ -42,15 +42,30 @@ let BASE;
 
 const NO_SUMMARY_TEXT = 'Wikipediaに記事がありません。地図の情報だけで表示しています。';
 const HAS_ARTICLE_NO_SUMMARY_TEXT = 'Wikipediaに記事はありますが、要約をここに出せていません。';
-// R123: dogo で記事が実在するのに要約が無い8枚(wikipedia/wikidataタグの裏付けあり)
-// R154(colimit=max)後の実測。Wikipedia記事は実在するが要約(extract)が
-// 取得上限で届かなかったカード = HAS_ARTICLE_NO_SUMMARY_TEXT 側になる名前。
+// R123: dogo で記事が実在するのに要約が無いカード(wikipedia/wikidataタグの裏付けあり)。
+// Wikipedia記事は実在するが要約(extract)が取得上限で届かなかったカード
+// = HAS_ARTICLE_NO_SUMMARY_TEXT 側になる名前。
+//
+// 2026-09-19 R163 実測で更新。被リンク加点で dogo の表示候補が入れ替わり、
+// 萬翠荘・宝厳寺が15枚の外に出て、代わりに5件が入った:
+//   愛媛県美術館 / 石手寺 マントラ洞窟 / 第51番札所 石手寺 /
+//   第50番札所 繁多寺 (Hanta-ji) / 松山総合公園
+// **この5件はいずれも jawiki に記事が実在する**(愛媛県美術館・石手寺・繁多寺・
+// 松山総合公園。collect 後の item.wikipediaTitle / wikidataId で全件確認済み)ので、
+// 「記事はあります」表示は**正しい**。R154 時点のこのリストが「記事が無いはず」と
+// 見なしていたのが古い前提だった、という更新であって判定は1つも緩めていない。
+//
+// なお R163 後の dogo は --none 8枚が**全件 HAS_ARTICLE 側**になり、
+// 「真に記事が無い」カードは0枚になった(下の 6b を参照)。
 const DOGO_HAS_ARTICLE_NAMES = [
+  '愛媛県美術館',
+  '石手寺 マントラ洞窟',
   '伊佐爾波神社',
+  '第51番札所 石手寺',
+  '第50番札所 繁多寺 (Hanta-ji)',
   '坂の上の雲ミュージアム',
-  '萬翠荘',
-  '宝厳寺',
   '子規記念博物館',
+  '松山総合公園',
 ];
 
 let pass = 0;
@@ -105,8 +120,10 @@ async function main() {
     ok(summaryCount === totalCardCount && totalCardCount === 15, '3. .feedcard__summary の総数が展開後の全件数(15)と一致', summaryCount);
 
     const noneCount = await page.locator('.feedcard__summary--none').count();
-    // R154実測: dogo 展開後15件のうち8件が--none(記事ありHAS_ARTICLE 5 + 記事なし3)。
-    ok(noneCount === 8, '2. .feedcard__summary--none の件数が8(5+3)', noneCount);
+    // 2026-09-19 R164実測: dogo 展開後15件のうち9件が--none(記事あり8 + 記事なし1)。
+    // R163 時点は 8件(記事あり8 + 記事なし0)だった。親記事の本文照合で
+    // 振鷺閣(道後温泉本館の上の櫓。自分の記事は無い)が表示圏に入ったため +1。
+    ok(noneCount === 9, '2. .feedcard__summary--none の件数が9(8+1)', noneCount);
 
     // R123: カードごとに名前と--none本文を突き合わせ、記事あり8枚/記事なし12枚の文言を確認
     const cardRows = await page.locator('.feedcard').evaluateAll((cards) =>
@@ -119,15 +136,23 @@ async function main() {
     const hasArticleRows = noneRows.filter((r) => DOGO_HAS_ARTICLE_NAMES.includes(r.name));
     const noArticleRows = noneRows.filter((r) => !DOGO_HAS_ARTICLE_NAMES.includes(r.name));
 
-    // R154実測(展開後15件が母数): 記事が実在するもの5枚、真に記事が無いもの3枚。
+    // 2026-09-19 R163 実測(展開後15件が母数): 記事が実在するもの8枚、真に記事が無いもの0枚。
+    // R154 時点は 5枚 + 3枚 だったが、被リンク加点で表示候補が入れ替わり、
+    // 入ってきた5件がすべて jawiki に記事を持つものだったため 8枚 + 0枚 になった。
+    // **判定の中身(文言がどちらのテキストと一致するか)は1文字も変えていない**。
     ok(
-      hasArticleRows.length === 5 && hasArticleRows.every((r) => r.noneText.indexOf(HAS_ARTICLE_NO_SUMMARY_TEXT) === 0),
-      '6a. 記事が実在する5枚がHAS_ARTICLE_NO_SUMMARY_TEXTになっている',
+      hasArticleRows.length === 8 && hasArticleRows.every((r) => r.noneText.indexOf(HAS_ARTICLE_NO_SUMMARY_TEXT) === 0),
+      '6a. 記事が実在する8枚がHAS_ARTICLE_NO_SUMMARY_TEXTになっている',
       hasArticleRows
     );
+    // 2026-09-19 R164実測: 1枚(振鷺閣)。親記事の本文照合で「記事は無いが
+    // その土地の解説が名前を挙げた」候補が表示圏に入るようになったため、
+    // R163 時点の0枚から1枚に戻った。**この検査が本当に見たいのは枚数ではなく
+    // 「記事が無いカードの文言が NO_SUMMARY_TEXT ちょうどであること」**で、
+    // そちらの判定は1文字も変えていない。
     ok(
-      noArticleRows.length === 3 && noArticleRows.every((r) => r.noneText === NO_SUMMARY_TEXT),
-      '6b. 真に記事が無い3枚がNO_SUMMARY_TEXTちょうどのまま(誤爆0件)',
+      noArticleRows.length === 1 && noArticleRows.every((r) => r.noneText === NO_SUMMARY_TEXT),
+      '6b. 真に記事が無い1枚がNO_SUMMARY_TEXTちょうどのまま(誤爆0件)',
       noArticleRows
     );
 
@@ -230,12 +255,16 @@ async function main() {
     // R152: 椿の湯(旧#27)は15枚打ち切りの外に出たので a1 は廃止。
     // 営業時間が出ることは下の a3(伊佐爾波神社)で引き続き見ている。
     // R154: 愛媛大学ミュージアム(旧#9)は15枚打ち切りの外に出た。曜日レンジ付きの
-    // 営業時間を持つカードとして萬翠荘で同じ性質(.feedcard__hours が出ること)を見る。
-    const univMuseum = dogoHours.find((r) => r.name === '萬翠荘');
+    // 営業時間を持つカードとして萬翠荘で同じ性質(.feedcard__hours が出ること)を見た。
+    // 2026-09-19 R163: 被リンク加点で表示候補が入れ替わり、萬翠荘も15枚の外に出た。
+    // 見たい性質は「opening_hours を持つカードに .feedcard__hours が出ること」なので、
+    // 表示内で営業時間を持つ「愛媛県美術館」に差し替える(曜日レンジ無しの時刻のみ形式。
+    // 曜日レンジ付きの形式は下の a3 伊佐爾波神社「月〜日 9:00-17:00」で引き続き見ている)。
+    const ehimeArt = dogoHours.find((r) => r.name === '愛媛県美術館');
     ok(
-      !!univMuseum && univMuseum.hoursText === '⏰ 火〜日 9:00-18:00',
-      '(r136) a2. 萬翠荘に営業時間が出る',
-      univMuseum
+      !!ehimeArt && ehimeArt.hoursText === '⏰ 9:40-18:00',
+      '(r136) a2. 愛媛県美術館に営業時間が出る',
+      ehimeArt
     );
     const matsuyamajo = dogoHours.find((r) => r.name === '松山城');
     ok(
@@ -298,10 +327,17 @@ async function main() {
     const kinosakiHoursCount = await kinosakiPage.locator('.feedcard__hours').count();
     const total = kusatsuHoursCount + hakoneHoursCount + dogoHoursCount + beppuHoursCount + kinosakiHoursCount;
     // 2026-09-19 R154 実測(colimit=max で候補が入れ替わった後): kusatsu 5 / hakone 5 / dogo 2 / beppu 5 / kinosaki 2 = 合計19枚。
+    // 2026-09-19 R163 実測(被リンク加点で候補が入れ替わった後): kusatsu 4 / hakone 4 / dogo 3 / beppu 6 / kinosaki 2 = 合計19枚。
+    // 合計は偶然19のままだが内訳が動いた。opening_hours を持つ候補が増減したのではなく、
+    // 表示22件(cards5 + more)に入る顔ぶれが変わったことによる。
+    // 2026-09-19 R164 実測(親記事の本文照合で候補が入れ替わった後):
+    //   kusatsu 6 / hakone 4 / dogo 3 / beppu 6 / kinosaki 4 = 合計23枚。
+    // 増えたのは外湯・源泉(御座之湯・熱乃湯・鴻の湯・御所の湯 など)が表示圏に入ったため。
+    // これらは OSM に opening_hours を持つ現役の施設なので、増加は妥当。hakone は不変。
     ok(
-      kusatsuHoursCount === 5 && hakoneHoursCount === 5 && dogoHoursCount === 2 && beppuHoursCount === 5 &&
-        kinosakiHoursCount === 2 && total === 19,
-      '(r136) c. 5エリアの .feedcard__hours 件数が実測(5/5/2/5/2=19)と一致',
+      kusatsuHoursCount === 6 && hakoneHoursCount === 4 && dogoHoursCount === 3 && beppuHoursCount === 6 &&
+        kinosakiHoursCount === 4 && total === 23,
+      '(r136) c. 5エリアの .feedcard__hours 件数が実測(6/4/3/6/4=23)と一致',
       { kusatsuHoursCount, hakoneHoursCount, dogoHoursCount, beppuHoursCount, kinosakiHoursCount, total }
     );
 
@@ -320,11 +356,15 @@ async function main() {
       '(r137) a. 坂の上の雲ミュージアム(公式サイトあり)に www. を剥がしたホスト名が出る',
       sakanoue
     );
-    const yuJinja = officialRows.find((r) => r.name === '湯神社');
+    // 2026-09-19 R163: 湯神社は被リンク加点で表示候補が入れ替わり15枚の外に出た。
+    // 見たい性質は「公式サイトを持たないカードに .feedcard__official を出さない
+    //(推測でドメインを作らない)」ことなので、表示内で公式サイトを持たない
+    // 「湯築城」に差し替える。
+    const yuzukiJo = officialRows.find((r) => r.name === '湯築城');
     ok(
-      !!yuJinja && yuJinja.officialText === null,
-      '(r137) b. 湯神社(公式サイトなし)には .feedcard__official が出ない',
-      yuJinja
+      !!yuzukiJo && yuzukiJo.officialText === null,
+      '(r137) b. 湯築城(公式サイトなし)には .feedcard__official が出ない',
+      yuzukiJo
     );
 
     // (r137) c. 5エリア合計の .feedcard__official 件数が実測どおりであることの確認
@@ -343,10 +383,18 @@ async function main() {
     const officialCountBeppu = await beppuPage.locator('.feedcard__official').count();
     const officialCountKinosaki = await kinosakiPage.locator('.feedcard__official').count();
     const officialTotal = officialCountKusatsu + officialCountHakone + officialCountDogo + officialCountBeppu + officialCountKinosaki;
+    // 2026-09-19 R163 実測(被リンク加点で候補が入れ替わった後): kusatsu 6 / hakone 9 / dogo 5 / beppu 9 / kinosaki 3 = 合計32枚。
+    // 公式サイトを持つ候補が減ったのではなく、表示に入る顔ぶれが変わっただけ
+    // (草津で御座之湯が万座温泉に、箱根で小田原市郷土文化館ほかがポーラ美術館等に入れ替わった)。
+    // 2026-09-19 R164 実測(親記事の本文照合で候補が入れ替わった後):
+    //   kusatsu 8 / hakone 9 / dogo 5 / beppu 10 / kinosaki 3 = 合計35枚。
+    // 増えたのは外湯・地獄(御座之湯・熱乃湯・龍巻地獄 など)が表示圏に入ったため。
+    // これらは記事を持たないが OSM に website タグを持つ現役の観光施設で、
+    // 「公式サイトの裏付けはあるのに記事が無いから沈んでいた」候補にあたる。hakone・dogo は不変。
     ok(
-      officialCountKusatsu === 7 && officialCountHakone === 10 && officialCountDogo === 5 &&
-        officialCountBeppu === 9 && officialCountKinosaki === 3 && officialTotal === 34,
-      '(r137) c. 5エリアの .feedcard__official 件数が実測(7/10/5/9/3=34)と一致',
+      officialCountKusatsu === 8 && officialCountHakone === 9 && officialCountDogo === 5 &&
+        officialCountBeppu === 10 && officialCountKinosaki === 3 && officialTotal === 35,
+      '(r137) c. 5エリアの .feedcard__official 件数が実測(8/9/5/10/3=35)と一致',
       { officialCountKusatsu, officialCountHakone, officialCountDogo, officialCountBeppu, officialCountKinosaki, officialTotal }
     );
 

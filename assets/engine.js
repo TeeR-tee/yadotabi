@@ -587,7 +587,26 @@
     CATEGORY_PENALTY: 18, // 同カテゴリが上位に2件を超えたときの減点
     // R163: 「有名さ」の加点の上限。被リンク数 BACKLINK_FULL 本でこの満点になる。
     // 既存の重みは1つも変えていない(足しただけ)。
-    BACKLINK_MAX: 48
+    BACKLINK_MAX: 48,
+    /**
+     * R164: その土地の親記事(城崎温泉・別府温泉…)の本文が名前を挙げた候補への一律加点。
+     *
+     * **二値なので一律にしてある**。本文照合が返すのは「出た/出ない」だけで、
+     * 湯畑と長栄の湯を区別できない。被リンク(BACKLINK_MAX)を連続値で配ったのとは違い、
+     * ここに順位を決める解像度は無いので、段階を作らず同じ点を配る。
+     *
+     * **40 にした理由(実測で決めた)**: 救いたい別府の地獄8つは総スコア -33〜-60点、
+     * 城崎の外湯は -0.5〜-40点で沈んでいる。表示22件の圏内に入るには +30〜40点が要る。
+     *   10点(市場調査の推奨値) … 地獄は #79→#74 程度。**1件も表示に入らない**
+     *   40点 … 地獄8つが表示圏内に入り、かつ満額60点のタグ完備POIは逆転しない
+     * 市場調査が示した上下限は「満額60点を配ってはいけない/0点のままにしてもいけない」で、
+     * 40 はその内側。推奨値の10点から上げたのは、実測で効果が出なかったため。
+     *
+     * **写真25点・要約15点を配っているのではない**。配ってよいのは「親記事が言及した」
+     * という事実だけで、記事由来の素材(写真・要約・被リンク)は1つも与えていない
+     *(与えると一の湯が箱根の旅館の写真を掴み、地獄8つが親の要約で同点になる)。
+     */
+    PARENT_MENTION: 40
   };
   /**
    * R163: 被リンク加点が満点(WEIGHT.BACKLINK_MAX)に達する本数。
@@ -1294,12 +1313,18 @@
     if (!Array.isArray(items) || !items.length) return;
 
     // 被リンクを付ける前の基礎スコア順(= 現状の並び)。同点は近い順にするのも rank と同じ。
-    var pool = items.slice().sort(function (a, b) {
-      var sa = baseScore(a, now);
-      var sb = baseScore(b, now);
-      if (sb !== sa) return sb - sa;
-      return (a.distanceM || 0) - (b.distanceM || 0);
-    }).slice(0, BACKLINK_FETCH_POOL);
+    //
+    // ★ スコアは比較関数の中で計算しないこと。比較は O(n log n) 回呼ばれるため、
+    //   箱根(候補2855件)では baseScore が3万回以上走って collect が 3.7秒かかる
+    //   (実測。検査が描画待ちを追い越して落ちるほど遅い)。1件1回だけ計算して持つ。
+    var scoredPool = items.map(function (item) {
+      return { item: item, score: baseScore(item, now) };
+    });
+    scoredPool.sort(function (a, b) {
+      if (b.score !== a.score) return b.score - a.score;
+      return (a.item.distanceM || 0) - (b.item.distanceM || 0);
+    });
+    var pool = scoredPool.slice(0, BACKLINK_FETCH_POOL).map(function (e) { return e.item; });
 
     var byTitle = Object.create(null);
     var titles = [];
@@ -1337,6 +1362,74 @@
       var n = counts[t];
       if (!isFinite(n) || !byTitle[t]) return;
       byTitle[t].forEach(function (item) { item.backlinks = n; });
+    });
+  }
+
+  /**
+   * R164: その土地の親記事が名前を挙げた候補に `item.parentMention = true` を付ける。
+   * 渡された配列をその場で書き換える。
+   *
+   * **これが解こうとしている問題**: 別府の地獄8つ・城崎の外湯7つ・草津の湯畑は
+   * **自分の Wikipedia 記事を持たない**。記事が無い以上、R162(記事名の復元)でも
+   * R163(被リンク)でも1点も入らず、別府の地獄は #79〜#229 に沈んで
+   * 「別府に泊まっても地獄めぐりが1件も提案されない」状態だった。
+   * 一方でその土地の親記事(別府温泉)の本文には、地獄8つが全部書かれている。
+   *
+   * **★写真・要約・被リンクは絶対に配らないこと**(市場調査 第6回 4-1)。ここで
+   * 拾っているのは「名前が本文に出た」という事実だけで、その名前の記事を引いては
+   * いけない。引くと次の3つの事故が起きる:
+   *   1. 城崎の外湯「一の湯」に **箱根の老舗旅館**(同名の別記事)の写真と要約が付く
+   *   2. 別府の地獄7つは親記事へのリダイレクトなので、8件全部に **同じ要約** が付く
+   *   3. 同じ理由で被リンクも親の値になり、**別府8件が同点**になって順位の用をなさない
+   * だから与えるのは一律加点(WEIGHT.PARENT_MENTION)だけにしてある。
+   *
+   * 負荷は **1エリアあたり1リクエスト**。失敗しても誰も加点されないだけ
+   *(= 変更前と同じ並び)なので、例外は握りつぶす。
+   */
+  async function attachParentMentions(items, hotel) {
+    var geo = global.YadoGeo || {};
+    if (typeof geo.fetchParentMentions !== 'function') return;
+    if (!Array.isArray(items) || !items.length) return;
+
+    // 照合対象は **OSM の地図データに実在する名前だけ**。本文から名前を抽出するのでは
+    // ないので、人名・駅名・近隣地名が本文に出ていても候補には化けない。
+    //
+    // **★さらに「自分の記事に辿れない候補」だけに絞る**(市場調査 第6回 3-1 の照合条件)。
+    // 記事を持つ候補(松山城・ラクテンチ・箱根温泉)は写真25・要約15・2ソース20・被リンク
+    // 最大48 を既に受け取っており、そこに40点を重ねると **裏付けの二重取り** になる。
+    // 実測(この絞りを入れる前)では松山城が 108→148点、箱根温泉が #14→#1 に跳ね、
+    // 彫刻の森美術館が #1→#3 に押し下げられた。R164 が救うべきなのは
+    // 「記事が無いせいで0点のまま沈んでいる候補」だけなので、そこだけに配る。
+    var byName = Object.create(null);
+    var names = [];
+    items.forEach(function (item) {
+      if (!item) return;
+      // 記事に辿れている候補は R162/R163 が既に面倒を見ている。対象外。
+      //
+      // **判定に wikidataId を使わないこと**: 別府の地獄8つは Wikidata 項目(Q135237471 ほか)
+      // を持っているが **日本語版の記事は無い**(R162 の sitelinks 復元で jawiki が返らない)。
+      // wikidataId で弾くと、救うべき当の地獄が対象から外れる。
+      // 「記事に辿れたか」は wikipediaTitle で、「記事由来の素材を受け取ったか」は
+      // summary / imageUrl で見る。この3つが全部無い候補だけが R164 の対象。
+      if (item.wikipediaTitle || item.summary || item.imageUrl) return;
+      var n = typeof item.name === 'string' ? item.name.trim() : '';
+      if (!n) return;
+      if (!byName[n]) { byName[n] = []; names.push(n); }
+      byName[n].push(item);
+    });
+    if (!names.length) return;
+
+    var hits;
+    try {
+      hits = await geo.fetchParentMentions(hotel, names);
+    } catch (e) {
+      return; // 全員0点 = 変更前と同じ並びになるだけ
+    }
+    if (!hits) return;
+
+    Object.keys(hits).forEach(function (n) {
+      if (!hits[n] || !byName[n]) return;
+      byName[n].forEach(function (item) { item.parentMention = true; });
     });
   }
 
@@ -1562,6 +1655,14 @@
     // 被リンク0点のまま = 現状の順位そのままで、沈むことはない。
     await attachBacklinks(merged, normalizeContext(null).now);
 
+    // R164: 親記事の本文が名前を挙げた候補に印を付ける。
+    //
+    // **必ず attachBacklinks の後に置くこと**: attachBacklinks は「被リンク0点のときの
+    // 基礎スコア上位 BACKLINK_FETCH_POOL 件」を引く相手に選ぶので、先に親記事加点を
+    // 入れると引く相手の顔ぶれが変わり、R163 で確認した被リンクの結果が動いてしまう。
+    // この順なら R163 の挙動は一切変わらず、R164 は「その後で足すだけ」になる。
+    await attachParentMentions(merged, h);
+
     if (typeof onStage === 'function') onStage('wiki', merged.slice(), meta);
     // suggest 側が最終結果にも印を付けられるよう、列挙されない形で持たせる
     // (カードの配列として素直に map/forEach できる性質は壊さない)
@@ -1629,6 +1730,10 @@
     // (浮動小数の加算順が変われば同点判定がぶれて並びが変わりうる)。
     var fame = backlinkBonus(item.backlinks);
     score += fame;
+    // R164: その土地の親記事が名前を挙げた候補への一律加点。fame と同じく、
+    // 加算順はこの位置のまま固定する(加算順が変われば同点判定がぶれる)。
+    var parentMention = item.parentMention ? WEIGHT.PARENT_MENTION : 0;
+    score += parentMention;
     return {
       image: image,
       summary: summary,
@@ -1638,6 +1743,7 @@
       season: season,
       fame: fame,
       backlinks: isFinite(item.backlinks) ? item.backlinks : null,
+      parentMention: parentMention,
       base: score
     };
   }

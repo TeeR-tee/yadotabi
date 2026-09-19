@@ -278,6 +278,47 @@ async function collectWantedTitles(fixtureWithoutBacklinks) {
   return wanted;
 }
 
+/**
+ * R164: 親記事(AREA_LABEL = fixture の meta.label)の本文を取る。
+ * ★ assets/geo.js の fetchParentMentions と同条件にすること
+ *   (prop=extracts&explaintext=1&redirects=1、1リクエスト1記事)。
+ *
+ * `explaintext=1` は titles を並べても1リクエスト1記事しか返らないが、
+ * 親記事は1エリア1本なので追加は **+1リクエスト** で済む。
+ * 照合条件(2文字以上・汎用語ブロック)は geo.js の matchParentMentions が持っており、
+ * こちらでは本文をそのまま保存するだけ(条件を二重実装しない)。
+ */
+async function fetchParentExtract() {
+  console.log('親記事の本文を取得中(' + AREA_LABEL + ')…');
+  const params = new URLSearchParams({
+    action: 'query',
+    format: 'json',
+    formatversion: '2',
+    prop: 'extracts',
+    explaintext: '1',
+    redirects: '1',
+    titles: AREA_LABEL,
+    origin: '*'
+  });
+  const res = await fetch(WIKIPEDIA_API_URL + '?' + params.toString(), {
+    headers: {
+      Accept: 'application/json',
+      'User-Agent': 'yadotabi-fixture/1.0 (https://github.com/TeeR-tee/yadotabi)'
+    }
+  });
+  // 429/504 は押し込まずその場で止める(無料APIのマナー)
+  if (res.status === 429 || res.status === 504) {
+    throw new Error('wikipedia busy ' + res.status + '(押し込まず中止します)');
+  }
+  if (!res.ok) throw new Error('extracts ' + res.status);
+  const data = await res.json();
+  const pages = (data && data.query && data.query.pages) || [];
+  const page = pages.find((p) => p && typeof p.extract === 'string');
+  const text = page ? page.extract : '';
+  console.log('  本文: ' + text.length + '字' + (text ? '' : '(記事が見つかりませんでした)'));
+  return text;
+}
+
 async function fetchBacklinks(titles) {
   if (!titles.length) return {};
   console.log('被リンク数を照会中(' + titles.length + '件 / ' + Math.ceil(titles.length / 50) + 'バッチ)…');
@@ -389,6 +430,9 @@ async function main() {
   // R162: slim 後の要素から wikidata→記事名 の対応表を作る(geo.js と同じ条件)。
   const wikidataTitles = await fetchWikidataTitles(elements);
 
+  // R164: 親記事の本文(geo.js の fetchParentMentions が fixture モードで読む)。
+  const parentExtract = await fetchParentExtract();
+
   const fixture = {
     meta: {
       area: AREA,
@@ -402,7 +446,9 @@ async function main() {
     overpass: { elements: elements },
     wiki: wiki,
     // R162: geo.js の resolveWikipediaTitles が fixture モードで読む対応表
-    wikidataTitles: wikidataTitles
+    wikidataTitles: wikidataTitles,
+    // R164: geo.js の fetchParentMentions が fixture モードで読む親記事の本文
+    parentExtract: parentExtract
   };
 
   // R163: engine.js 自身に「どの記事の被リンクが要るか」を決めさせてから引く。

@@ -38,12 +38,23 @@ function buildLabelToTheme() {
   const geoSrc = fs.readFileSync(path.join(ROOT, 'assets', 'geo.js'), 'utf8');
   const engSrc = fs.readFileSync(path.join(ROOT, 'assets', 'engine.js'), 'utf8');
 
-  const catToLabel = {};
+  // R164: 1つの category が複数の label で画面に出ることがあるので **配列で持つ**。
+  // 以前は engine 側の label で上書きしていたため、geo 側の label が表から消えていた。
+  // 実例: hot_spring は geo.js では「温泉源」(OSM タグ由来)、engine.js の
+  // WIKI_CATEGORY_HINTS では「温泉」(Wikipedia 単独候補用)の2つの label を持つ。
+  // 上書きすると「温泉源」が表から落ち、白旗源泉・地蔵源泉・煮川源泉のような
+  // カードが fallback テーマ扱いになって、正しく束ねられているのに FAIL になる
+  // (R164 で湯畑・源泉が表示圏に入って初めて表面化した、検査側の取りこぼし)。
+  const catToLabels = {};
+  const addLabel = (cat, label) => {
+    if (!catToLabels[cat]) catToLabels[cat] = [];
+    if (!catToLabels[cat].includes(label)) catToLabels[cat].push(label);
+  };
   const geoBlock = geoSrc.match(/var CATEGORY_LABELS = \{([\s\S]*?)\};/);
   if (!geoBlock) throw new Error('geo.js の CATEGORY_LABELS を読めない');
-  for (const m of geoBlock[1].matchAll(/(\w+):\s*'([^']+)'/g)) catToLabel[m[1]] = m[2];
+  for (const m of geoBlock[1].matchAll(/(\w+):\s*'([^']+)'/g)) addLabel(m[1], m[2]);
   for (const m of engSrc.matchAll(/\{\s*category:\s*'(\w+)',\s*label:\s*'([^']+)'/g)) {
-    catToLabel[m[1]] = m[2];
+    addLabel(m[1], m[2]);
   }
 
   const fallback = (engSrc.match(/var FALLBACK_THEME = '([^']+)'/) || [])[1];
@@ -57,12 +68,14 @@ function buildLabelToTheme() {
 
   // label -> theme。同じ label に別テーマが当たったら検査が成り立たないので落とす。
   const labelToTheme = {};
-  for (const [cat, label] of Object.entries(catToLabel)) {
+  for (const [cat, labels] of Object.entries(catToLabels)) {
     const theme = catToTheme[cat] || fallback;
-    if (labelToTheme[label] && labelToTheme[label] !== theme) {
-      throw new Error(`label「${label}」が複数テーマに割れている: ${labelToTheme[label]} / ${theme}`);
+    for (const label of labels) {
+      if (labelToTheme[label] && labelToTheme[label] !== theme) {
+        throw new Error(`label「${label}」が複数テーマに割れている: ${labelToTheme[label]} / ${theme}`);
+      }
+      labelToTheme[label] = theme;
     }
-    labelToTheme[label] = theme;
   }
   return { labelToTheme, fallback };
 }

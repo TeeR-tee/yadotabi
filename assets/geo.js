@@ -47,6 +47,15 @@
   var PAGEVIEWS_MAX = 12;
 
   // R163: 被リンク数(prop=linkshere)の取得設定。
+  //
+  // ★ 自主上限: **1エリアあたり 20リクエストを超えないこと**。
+  //   実測(2026-09-19)は hakone 10 / dogo 16 / beppu 8 / kusatsu 3 / kinosaki 3 で、
+  //   dogo が最も重いのは `愛媛県`(被リンク数万本)のような巨大記事が候補に入るため。
+  //   下の BACKLINK_MAX_TITLES(100件)と BACKLINK_MAX_CONTINUE(20)の積み上げで
+  //   構造的にこの範囲に収まるようにしてある。**候補数や continue 上限を増やすときは、
+  //   必ず5エリアで実リクエスト数を測り直し、20を超えないことを確認すること**
+  //   (無料APIのマナー。青天井にしない)。
+  //
   // titles は prop モジュールなので1リクエストに50件まで載る。
   var BACKLINK_BATCH_SIZE = 50;
   // lhlimit=max(=500) は「そのリクエストで返るリンクの合計」であって記事ごとではない。
@@ -64,12 +73,55 @@
   // **数え終わった扱いにして titles から外し、続きを引き直す**。外さないと
   // 被リンクの極端に多い記事(道後のテレビ局5社で合計6000本超)が continue 枠を
   // 食い尽くし、同じバッチの松山城・石手寺が 0 のまま返る(実測: dogo 70件中36件が0)。
-  // 実測ではこの打ち切りで dogo が 15リクエスト → 6リクエストに減り、かつ
-  // 松山城328・石手寺272・道後温泉387 と正しい数字が取れる。
+  //
+  // **打ち切りが無いと continue は終わらない**: `愛媛県`(被リンク数万本)のような記事が
+  // 1本混ざるだけで、continue を30回追っても・42リクエストかけても松山城は0のままになる
+  // (API は記事名のコードポイント順に処理するため、`愛媛県` の後ろにある `松山城` に
+  // 到達できない)。打ち切りは負荷対策であると同時に**正しさの前提**でもある。
+  // 実測では打ち切り込みで dogo 16リクエスト・5エリアとも未解決0件、
+  // 松山城328・石手寺136・道後温泉351 と正しい数字が取れる。
   var BACKLINK_SATURATE = 200;
   // 1回の suggest で被リンクを引く候補数の上限。全候補(箱根で記事名を持つもの639件)を
   // 引くと13リクエスト×continue で負荷が跳ねるため、rank 直前の基礎スコア上位だけに絞る。
   var BACKLINK_MAX_TITLES = 100;
+
+  // R164: 親記事の本文照合(fetchParentMentions)の設定。
+  //
+  // **何をする仕組みか**: 「城崎温泉」「別府温泉」のようなその土地の親記事の本文を
+  // 1本だけ取ってきて、**手元の候補の名前がその本文に出てくるか**を見る。
+  // 出てきた候補に「親記事が言及した」という印(parentMention)を付けるだけの処理。
+  //
+  // **なぜ必要か**: 別府の地獄8つ・城崎の外湯7つ・湯畑は **自分のWikipedia記事を持たない**。
+  // 記事が無いので R162(Wikidata経由の記事名復元)でも R163(被リンク)でも1点も入らず、
+  // 別府の地獄は #79〜#229 に沈んだまま「別府に泊まっても地獄が1つも出ない」状態だった。
+  // 一方で親記事(別府温泉)の本文には地獄8つが全部書かれている。
+  //
+  // **絞り込みが効く理由(市場調査 第6回の実測)**: 5エリアの名前付きPOI 4,244件のうち、
+  // 親記事の本文に名前が出るのは **55件(1.3%)** だけ。「駅名・旅館名が大量に混じる」
+  // という懸念は起きない。本文に語が出ても **同じ名前のPOIが OSM 側に無ければヒットしない**
+  // ため、OSM との突き合わせが事実上のフィルタとして働く。
+  var PARENT_MENTION_MIN_CHARS = 2;
+  // ★2文字未満にしないこと。逆に3文字以上に上げると **柳湯(城崎)と湯畑(草津)が落ちる**
+  // (市場調査 第4回で柳湯が漏れた原因がこれ)。2 は実測で決まった値。
+  var PARENT_MENTION_MAX_CHARS = 20;
+  // 長すぎる名前は本文に丸ごと出ることがまず無く、照合コストだけが増えるので上限を置く。
+
+  /**
+   * R164: 親記事の本文に出てきても加点してはいけない汎用普通名詞。
+   *
+   * 市場調査 第6回の実測で出た誤爆は 56件中4件(7.1%)で、**4件すべてが
+   * 「施設の種類を表す普通名詞がそのまま OSM の name になっている」** ケースだった
+   * (足湯・資料館・商店街・地獄めぐり)。固有名詞の取り違えは1件も起きていない。
+   * この16語を弾くと **55件中0件** まで落ちる。
+   *
+   * 追加するときの基準: 「その土地固有の場所を指さない語」だけを入れること。
+   * 固有名詞(海地獄・湯畑・柳湯)を入れると救いたいものを自分で消すことになる。
+   */
+  var PARENT_MENTION_BLOCK = [
+    '足湯', '手湯', '資料館', '商店街', '地蔵', '墓地', '記念碑', '地獄めぐり',
+    '史跡公園', '公衆トイレ', '駐車場', '観光案内所', '図書館', '公民館',
+    '河原公園', '地蔵堂'
+  ];
 
   // 地図の表示範囲から宿を引くときの上限。これより広いと Overpass に負荷をかけるので呼ばない。
   var BBOX_MAX_DEG = 0.25;
@@ -1046,6 +1098,154 @@
   }
 
   // ---------------------------------------------------------------------------
+  // 親記事の本文照合 (fetchParentMentions) — R164
+  // ---------------------------------------------------------------------------
+
+  /**
+   * R164: その土地の親記事名を決める。**探索はしない**(市場調査 第6回 2-1)。
+   *
+   * 固定データモードでは `meta.label` をそのまま使う。実測で5エリア中5エリアが
+   * `redirects=1` 込みでそのまま実在記事に解決した(箱根湯本→湯本 (箱根町))ので、
+   * 「宿の座標から最寄りの温泉地記事を探す」ような仕組みは要らない。
+   *
+   * 本番(ネットワーク)では `meta.label` に当たるものが無いので、Nominatim が返した
+   * 住所(displayName)の構成要素から地名を拾う。住所は
+   * 「◯◯ホテル, 湯本, 箱根町, 足柄下郡, 神奈川県, 日本」のようにコンマ区切りで
+   * **細かい順**に並ぶため、宿名(先頭)を除いた最初の要素が最も狭い地名になる。
+   * そこに「温泉」を足したもの(湯本温泉)と素のもの(湯本)を候補にする。
+   *
+   * ★ 外れても実害は無い: 存在しない記事なら extract が空で返り、ヒット0件=何も起きない。
+   * ただし **リクエストを増やさないため、引くのは先頭1件だけ**にする。
+   *
+   * @returns {string} 親記事名。決められなければ空文字
+   */
+  function parentArticleTitle(hotel) {
+    if (fixtureData) {
+      var label = fixtureData.meta && fixtureData.meta.label;
+      return typeof label === 'string' ? label.trim() : '';
+    }
+
+    var display = hotel && typeof hotel.displayName === 'string' ? hotel.displayName : '';
+    if (!display) return '';
+    var parts = display.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+    // 先頭は宿そのものの名前なので飛ばす。番地・郵便番号・国名は地名にならないので除く。
+    for (var i = 1; i < parts.length; i++) {
+      var p = parts[i];
+      if (!p || p === '日本' || /^[0-9\-−ー\s]+$/.test(p)) continue;
+      // 都道府県・郡まで上がると「その土地の解説」ではなくなるので、そこまで来たら諦める。
+      if (/(都|道|府|県|郡)$/.test(p)) return '';
+      // 既に「◯◯温泉」ならそのまま。そうでなければ温泉地名として引き直す。
+      return /温泉$/.test(p) ? p : p + '温泉';
+    }
+    return '';
+  }
+
+  /**
+   * R164: 親記事の本文に名前が出てくる候補を洗い出す。
+   *
+   * **やっていること**: 親記事の本文を1本だけ取り、**手元の候補の名前が本文に出るか**を見る。
+   * 本文から名前を抽出するのではない(抽出すると人名や地名が大量に出てきて使えない)。
+   * OSM 側に実在する名前だけが照合対象なので、突き合わせが事実上のフィルタになり、
+   * 実測では名前付きPOI 4,244件に対してヒットは55件(1.3%)に絞られる。
+   *
+   * **★拾った名前から記事を引いてはいけない**(市場調査 第6回 3-4・3-5):
+   *   - 「一の湯」の Wikipedia 記事は **箱根の老舗旅館** で、城崎の外湯ではない。
+   *     記事を引くと城崎の外湯に箱根の旅館の写真と要約が付く。
+   *   - 別府の地獄7つは「別府地獄めぐり」への **リダイレクト** なので、記事を引くと
+   *     8件全部に同じ親記事の要約が付き、被リンクも親の値で同点になる
+   *     (R162 実装前に道後温泉本館で起きた事故の再発)。
+   * この関数が返すのは **「本文に出た」という名前の集合だけ**。写真・要約・被リンクは
+   * 一切配らない。engine.js 側も一律加点にしてあること。
+   *
+   * 負荷: **1エリアあたり1リクエスト**。`prop=extracts&explaintext=1` は titles を
+   * 並べても1リクエスト1記事しか返らない(第6回 1-2)が、親記事は1本なので実害が無い。
+   *
+   * 失敗しても致命的ではない(誰も加点されない = 変更前と同じ並び)ので例外は握りつぶす。
+   *
+   * @param {Object} hotel 宿。fixture モードでは使われない
+   * @param {string[]} names 候補の名前(OSM/Wikipedia 由来の表示名)
+   * @returns {Promise<Object>} 本文に出た名前をキーに true を持つ表。失敗時は空
+   */
+  async function fetchParentMentions(hotel, names) {
+    var hits = Object.create(null);
+    if (!Array.isArray(names) || !names.length) return hits;
+
+    var title = parentArticleTitle(hotel);
+    if (!title) return hits;
+
+    var text = '';
+    if (fixtureData) {
+      // 固定データモードでは外部APIを叩かない。make-fixture.mjs が保存した本文を使う。
+      text = typeof fixtureData.parentExtract === 'string' ? fixtureData.parentExtract : '';
+    } else {
+      var cacheKey = 'parent:' + title;
+      var cached = cacheGet(cacheKey);
+      if (typeof cached === 'string') {
+        text = cached;
+      } else {
+        try {
+          var params = new URLSearchParams({
+            action: 'query',
+            format: 'json',
+            formatversion: '2',
+            prop: 'extracts',
+            explaintext: '1',   // HTML ではなく素のテキストで受け取る(後処理が要らない)
+            redirects: '1',     // 箱根湯本→湯本 (箱根町) のような転送を吸収する
+            titles: title,
+            origin: '*'
+          });
+          var res = await fetchWithTimeout(
+            WIKIPEDIA_API_URL + '?' + params.toString(),
+            { method: 'GET', headers: { Accept: 'application/json' } },
+            TIMEOUT_FAME_MS,
+            '親記事の取得がタイムアウトしました。'
+          );
+          if (!res.ok) throw new Error('extracts ' + res.status);
+          var data = await res.json();
+          var pages = (data && data.query && data.query.pages) || [];
+          // formatversion=2 なので pages は配列。記事が無ければ missing で返る。
+          for (var i = 0; i < pages.length; i++) {
+            if (pages[i] && typeof pages[i].extract === 'string') {
+              text = pages[i].extract;
+              break;
+            }
+          }
+          // 記事が無かった場合も空文字で覚える(同じ宿で毎回引き直さない)。
+          cacheSet(cacheKey, text, TTL_FAME_MS);
+        } catch (e) {
+          return hits; // 誰も加点されない = 変更前と同じ並び
+        }
+      }
+    }
+
+    if (!text) return hits;
+    return matchParentMentions(text, names);
+  }
+
+  /**
+   * R164: 本文と候補名の突き合わせ(純粋関数)。fetchParentMentions と
+   * scripts/make-fixture.mjs の両方から同じ条件で使えるよう切り出してある。
+   *
+   * 条件は市場調査 第6回の実測どおり:
+   *   - 2文字以上(★3文字以上にすると柳湯・湯畑が落ちる)
+   *   - 汎用語ブロックリストに載っている名前は弾く(これが無いと誤爆7.1%)
+   *   - 単純な部分文字列一致(本文は explaintext の素テキスト)
+   */
+  function matchParentMentions(text, names) {
+    var hits = Object.create(null);
+    if (typeof text !== 'string' || !text) return hits;
+    (names || []).forEach(function (raw) {
+      var name = typeof raw === 'string' ? raw.trim() : '';
+      if (name.length < PARENT_MENTION_MIN_CHARS) return;
+      if (name.length > PARENT_MENTION_MAX_CHARS) return;
+      if (PARENT_MENTION_BLOCK.indexOf(name) > -1) return;
+      if (hits[name]) return;
+      if (text.indexOf(name) > -1) hits[name] = true;
+    });
+    return hits;
+  }
+
+  // ---------------------------------------------------------------------------
   // 地図の表示範囲内の宿 (fetchHotelsInBbox)
   // ---------------------------------------------------------------------------
 
@@ -1543,6 +1743,10 @@
     fetchWikiNearby: fetchWikiNearby,
     // R163: 「有名さ」を測る唯一の指標。engine.js の collect が rank の直前に呼ぶ。
     fetchBacklinkCounts: fetchBacklinkCounts,
+    // R164: 記事を持たないスポット(別府の地獄・城崎の外湯・湯畑)を救う親記事の本文照合。
+    fetchParentMentions: fetchParentMentions,
+    // R164: 照合条件を make-fixture.mjs と共有するために公開する(本体はこちらが正)。
+    matchParentMentions: matchParentMentions,
     enrichFame: enrichFame,
     // 固定データモード(?fixture=kusatsu)の差し込み口
     setFixture: setFixture,
