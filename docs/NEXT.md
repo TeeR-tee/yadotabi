@@ -80,11 +80,49 @@
 
 ## 3. ★次のサイクルでやる1件(計画役が選定・判断待ちに依存しません)
 
-### まず: バックログを7件補充しました(R214〜R220)
+### 前サイクル完了: R218(検査が **33本** になりました)
+
+`scripts/check-demo.mjs` を新設し、営業デモ2枚(`demo/hotel-page-en.html` / `demo/embed-check.html`)をブラウザで開く検査が入りました。デモが白紙になっても緑のまま通る穴が塞がりました。
+
+### 今回の1件: **R215**(タスクID = R215)— JSが止まると本番が実質「真っ白」になる
+
+**なぜ R215 か(実測して決めました)。** 未着手の R214(favicon)・R215(noscript)・R216(404)を、実際に測って比べました。
+
+| 候補 | 実測したこと | 結果 |
+|---|---|---|
+| **R215** | Playwright を `javaScriptEnabled: false` で起動し、`index.html` を375px幅で実描画 | **画面に出る文字は「🧳」の2文字だけ**(`innerText` の長さ = **2**)。撮った画像も、検索窓のプレースホルダ以外は**一面の灰色**。何のサイトかも、どこへ行けばいいかも分からない |
+| R214 | `grep -ciE "favicon\|manifest\|apple-touch\|rel=\"icon\"" index.html` | **0件**。ただし影響は「タブのアイコンが白紙」まで。内容は読める |
+| R216 | `ls 404.html` | **存在しない**。ただし打ち間違えた人だけが遭遇する |
+
+**R215 が最大なのは、被害が「読めない」ではなく「何も無い」だからです。** しかも原因の一端はコード側にあります: 静的HTMLに書かれている唯一の案内文 `<p class="pickbar__lead" id="pickbar-lead" hidden>宿を選ぶと、まわりの見どころが並びます。</p>`(`index.html:44`)が **`hidden` 付き**で、JSが外すまで出てきません。つまり「JSが死んだときだけ案内が消える」構造です。営業先の社内ネットワークがJSやCDNを弾いた瞬間に、みのるんは真っ白な画面を見せることになります。
+
+**検査の穴も確認済み**: `grep -rln "noscript\|javaScriptEnabled" scripts/ docs/check.mjs` が **0件**。33本の検査はすべてJSが動く前提で、この状態を1本も見ていません(前サイクルの教訓に従い、`scripts/` 全体と `docs/check.mjs` の両方を、語の省略形も含めて検索しました)。
+
+- **目的**: JSが無効・失敗しても、やどたびが何のサイトで何をすればいいかが日本語で読める状態にする。
+- **変更するファイル(絶対パス・この3件のみ)**:
+  - `C:\workspace\claude\旅行先用サイト\yadotabi\index.html`(`<body>` 冒頭に `<noscript>` ブロックを1つ足すだけ)
+  - `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md`(R215 を `[x] 2026-09-20` に)
+  - `C:\workspace\claude\旅行先用サイト\yadotabi\docs\NIGHTLOG.md`(末尾「## サイクル記録」に `### 2026-09-20 R215 …` 見出し+3行)
+- **入れる中身(入力ゼロ原則を守る・ボタンやフォームは作らない)**: 見出し「やどたび」/ 一文「このページは JavaScript で動きます。ブラウザの JavaScript を有効にして、再読み込みしてください。」/ 一文「宿を選ぶだけで、まわりの見どころが並びます。」/ 本番URL `https://teer-tee.github.io/yadotabi/` へのリンク1本。スタイルは `<noscript>` 内の `<style>` ではなく既存クラスか最小限のインラインで済ませ、**`assets/*.css` は触らない**。
+- **完了条件(検証可能な形)**:
+  1. `javaScriptEnabled: false` で `index.html` を開いたとき、`document.body.innerText` の長さが **200文字以上**(現状は **2**)。
+  2. その文字列に「JavaScript」「再読み込み」「やどたび」の3語がすべて含まれる。
+  3. **JSが動く通常時は `<noscript>` の中身が一切見えない**こと(`javaScriptEnabled: true` で開いたときの `innerText` に「再読み込みしてください」が含まれない)。
+  4. `node scripts/check-all.mjs` が **33本中33本PASS**(exit 0)。合計時間を NIGHTLOG に記録。
+  5. `git diff --stat` に `assets/` `fixtures/` `demo/` `scripts/` が **1ファイルも含まれない**。`index.html` の diff は `<noscript>` ブロックの**追加のみ**(既存行の削除・書き換えが0行であることを `git diff index.html` で目視確認)。
+  6. 外部API消費 **0回**(ローカルサーバ配信 or file:// で検証)。
+- **検証手順(撮影・2枚とも Read で目視)**:
+  - `node C:\workspace\tools\shot\shot.mjs http://127.0.0.1:3000/?fixture=kusatsu --mobile`(**375px**)— 通常時に `<noscript>` が見えていないこと、既存レイアウトが崩れていないことを確認。
+  - `node C:\workspace\tools\shot\shot.mjs http://127.0.0.1:3000/?fixture=kusatsu`(**PC幅 1280px**)— 同上。
+  - JS無効時の見た目は撮影ツールでは撮れないため、Playwright を `javaScriptEnabled: false` で起動する使い捨てスクリプトを**スクラッチパッドに置いて**(リポジトリには**コミットしない**)PNGを撮り、Read で目視する。
+- **変更禁止範囲(絶対に触らない)**: `assets/geo.js` / `assets/engine.js` / `WEIGHT` 定数 / `assets/app.js` / `assets/style.css` / `assets/tokens.css` / `assets/ui.css` / `fixtures/*.json` / `demo/` 配下の3枚 / `scripts/` 配下すべて(**33本の検査は今回1バイトも変えない**) / `docs/check.mjs` / `docs/CHECKS.md`(本数は33本のまま変わらない) / `.github/workflows/*` / `README.md` / `index.html` の `<head>`。
+- **所要目安**: 25〜40分(noscript の作成10分・JS無効検証スクリプトと目視10分・撮影2枚5分・`check-all.mjs` 7分・記録とコミット8分)。
+
+### 参考: バックログ補充の経緯(R214〜R220)
 
 **理由**: 着手前の時点で ROADMAP の未消化は6件だけで、うち4件(R177・R138・R64の残り・箱根神社)は**すべて上の「判断待ち2件」に紐づいていて動かせません**。判断不要なのは R211・R102 の2件だけで、次の数サイクルで尽きる状態でした。
 
-そこで計画役が本番配信ファイルの実物と検査32本の守備範囲を実際に調べ、**判断不要・0円・入力ゼロ・順位ロジック不変**を満たす7件を `docs/ROADMAP.md` 末尾に追記しました(調べて分かった事実つき)。
+そこで計画役が本番配信ファイルの実物と検査32本(当時)の守備範囲を実際に調べ、**判断不要・0円・入力ゼロ・順位ロジック不変**を満たす7件を `docs/ROADMAP.md` 末尾に追記しました(調べて分かった事実つき)。
 
 | ID | 見つけた穴(実測) |
 |---|---|
@@ -92,54 +130,16 @@
 | R215 | `<noscript>` が**0件**。JSが失敗すると**真っ白な画面**になる |
 | R216 | `404.html` が**無い**。URL打ち間違いで GitHub の英語404が出る |
 | R217 | `embed-check.html` だけ `og:` が**0行**(他の2デモは各10行)・description も無し |
-| **R218** | **`demo/hotel-page-en.html` と `demo/embed-check.html` の2枚をブラウザで開く検査が無い**(リンク切れ検査は3枚を見ており、`check-embedheight` が `hotel-page.html` 1枚を開いている)。この2枚は壊れても緑のまま → **R218 で解消済み** |
+| **R218** | 営業デモ2枚にブラウザ検査が無かった → **R218 で解消済み**(33本化) |
 | R219 | README「ファイル構成」と実際の `ls` の照合が未実施(R212・R213 と同種のズレ) |
 | R220 | NIGHTLOG が2092行で朝に読めない(目次が無い) |
-
-### そのうち最優先の1件: **R218**(タスクID = R218)
-
-**なぜ R218 か**: 他の6件は「気づいた人が損をする」程度ですが、R218 だけは**壊れても誰も気づかない**種類の穴です。営業用デモ3枚はみのるんが人に見せる本番の素材なのに、`check-all.mjs` 32本が全部 `index.html` しか見ておらず、デモが白紙になっても緑のまま通ります。R213 でまさに `embed-check.html` を編集しましたが、守ってくれたのは `docs/check.mjs`(本番URLへのGETのみ)だけでした。**今後の全サイクルの安全網になる**ので先に入れます。
-
-- **目的**: `demo/` 3枚を検査する `scripts/check-demo.mjs` を新設し、`check-all.mjs` を33本にする。
-- **新規作成**: `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-demo.mjs`
-- **変更するファイル(絶対パス・この4件のみ)**:
-  - `C:\workspace\claude\旅行先用サイト\yadotabi\scripts\check-all.mjs`(`SCRIPTS` 配列に `check-demo.mjs` を**1行足すだけ**。並び順は既存のアルファベット順に合わせる)
-  - `C:\workspace\claude\旅行先用サイト\yadotabi\docs\CHECKS.md`(**本数 32→33** を全箇所+表に1行追加。R212 の再発防止のため必ず同じサイクルで直す)
-  - `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md`(R218 を `[x] 2026-09-20` に)
-  - `C:\workspace\claude\旅行先用サイト\yadotabi\docs\NIGHTLOG.md`(末尾「## サイクル記録」に `### 2026-09-20 R218 …` 見出し+3行)
-- **作り方**: 既存の `scripts/check-links-target.mjs` を**書き方のお手本にする**(Playwright の import は環境変数 `PLAYWRIGHT_IMPORT` 方式・ローカルサーバは `scripts/lib/server.mjs` を使う。R204/R205 でCI対応済みの型に必ず合わせること)。検査する項目は次の5つだけ:
-  1. 3枚とも HTTP 200 で開ける
-  2. 3枚とも `<title>` が空文字でない
-  3. `lang` 属性が `hotel-page.html`=`ja` / `hotel-page-en.html`=`en` / `embed-check.html`=`ja`
-  4. 3枚ともJSコンソールに `error` レベルのログが出ない
-  5. `embed-check.html` の iframe の `src` に `embed=1` が含まれる
-- **完了条件(検証可能な形)**:
-  1. `node scripts/check-demo.mjs` が単体で exit 0、5項目以上 pass / 0 fail。
-  2. `node scripts/check-all.mjs` が **33本中33本PASS**(exit 0)。合計時間を NIGHTLOG に記録する。
-  3. `grep -c "check-" docs/CHECKS.md` の表の行が **33**、CHECKS.md 内に **「32本」という文字列が1つも残っていない**(`grep -n "32本" docs/CHECKS.md` が0件)。
-  4. `git diff --stat` に `assets/` `fixtures/` `index.html` `demo/` が **1ファイルも含まれない**(検査を足すだけで、見られる側は一切変えない)。
-  5. 既存の `scripts/check-*.mjs` 32本の `git diff` が **空**(`check-all.mjs` の1行追加を除く)。
-  6. 外部API消費 **0回**(すべてローカルサーバ配信)。
-- **検証手順(撮影)**:
-  - 検査の追加なのでアプリの見た目は変わらないが、AUTOPILOT 規約5に従い**撮影は行う**。
-    `node C:\workspace\tools\shot\shot.mjs http://127.0.0.1:3000/demo/hotel-page.html --mobile`(375px)と
-    `node C:\workspace\tools\shot\shot.mjs http://127.0.0.1:3000/demo/hotel-page.html`(PC幅)の2枚。
-  - **画像を Read で開いて目視**し、「営業デモの文字崩れ・重なり・はみ出しが無い」ことを確認する
-    (= 今回の変更で壊していないことの確認)。
-- **変更禁止範囲(絶対に触らない)**: `assets/geo.js` / `assets/engine.js` / `WEIGHT` 定数 / `assets/app.js` /
-  `assets/style.css` / `assets/tokens.css` / `assets/ui.css` / `index.html` / `fixtures/*.json` /
-  `demo/` 配下の3枚すべて(**見られる側なので1バイトも変えない**) / 既存の `scripts/check-*.mjs` 32本の中身 /
-  `scripts/lib/server.mjs` / `docs/check.mjs` / `.github/workflows/*` / `.gitignore` / README.md。
-- **所要目安**: 35〜50分(新規検査の作成15分・CHECKS.md 8分・撮影と目視5分・`check-all.mjs` 7分・記録とコミット10分)。
-
-### (参考)前サイクル完了: R213 — `demo/embed-check.html` に説明書きを追加し、README の営業デモ記述に英語版を併記。R210 も同時消化。
 
 ### 積み残し(判断待ちが解けてから)
 - R177 と「箱根神社が圏外」— 判断待ち(1)が決まり次第。
 - R138(座標欠落40件・`geo.js` 変更が要る)— みのるんの判断待ち。
 - R64 の残り — CI を `schedule` で1日1回回すかの判断のみ(本体は完了)。
 - 判断不要で残っているもの: **R214〜R217・R219・R220(今回補充)**・R211(dump-rank に日時とコミットID)・R102(`scripts/list-shots.mjs`)。
-  R218 の次は **R215(白紙画面の防止)→ R216(404)→ R214(アイコン)** の順を推奨。
+  R215 の次は **R216(404ページ)→ R214(favicon)→ R217(OGカード)** の順を推奨。
 
 ## 4. ★次のサイクルで必ず守ること(今日の教訓)
 
