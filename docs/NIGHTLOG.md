@@ -345,6 +345,11 @@
 
 ## サイクル記録
 
+### 2026-09-19 R208 デモページ2枚のリンクプレビュー(OGカード)を整える
+- やったこと: `demo/hotel-page.html`/`demo/hotel-page-en.html` の `<title>` 直後に `og:type`/`og:title`/`og:description`/`og:url`/`og:image`/`twitter:card` 等を `index.html` を手本に追記。画像は既存の `docs/og.jpg` を使い回し、`og:url` は2枚それぞれ自身の絶対URL、`og:locale` は `ja_JP`/`en_US`。`index.html`・CSS・本文・iframeは無変更。
+- 見た目の確認結果: 両ページをmobile(375px)・PC幅で撮影・目視、ヘッダー・注意書き・iframeの位置に変化なし。`node scripts/check-all.mjs` 32本全PASS。
+- 次: push後に本番の両ページがHTTP 200のままであることを確認する。
+
 ### 2026-09-19 R207 英語版デモページへの入口をREADMEから作る
 - やったこと: README.md 冒頭の英語段落の直後に「**Demo for hotels / OTAs**: see how it looks embedded in a hotel's own page — [English](https://teer-tee.github.io/yadotabi/demo/hotel-page-en.html) / [日本語](https://teer-tee.github.io/yadotabi/demo/hotel-page.html)」を1行追記。表・段落の既存順序は不変。`demo/hotel-page.html`↔`demo/hotel-page-en.html` の相互リンクはR85で既に双方向で生きていたためHTMLは無変更(触らないのが正解のケース)。`docs/check.mjs` のREADMEリンク検査は`<img>`/`![]()`の画像専用でMarkdownの`[text](url)`は対象外と確認し、`HTML_PAGES`行を含め検査スクリプトは無変更のままとした。
 - 見た目の確認結果: `http://127.0.0.1:3000/demo/hotel-page-en.html?fixture=kusatsu` をmobile(375px)・PC幅で撮影・目視、ヘッダーの`日本語`リンクを含む3項目navは折り返し崩れなし。`node scripts/check-all.mjs` **32本中32本PASS**(343.4s)。
