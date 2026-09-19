@@ -348,8 +348,15 @@
       e.code === 22 || e.code === 1014;
   }
 
-  /** キャッシュから値を取り出す。未登録・期限切れ・壊れたJSONはすべて null。 */
-  function cacheGet(key) {
+  /**
+   * キャッシュを読む本体。`keepStale` が真のときは**期限切れでも消さずに返す**。
+   *
+   * R181: 期限切れエントリを即 removeItem していたのが縮退の隠れた原因のひとつだった。
+   * Overpass が落ちた回は「7日+1秒前に取った湯畑入りの結果」が手元にあっても、
+   * cacheGet がそれを捨ててから通信に行き、失敗して何も残らない。
+   * 鮮度が理想でないだけのデータは、**主役が消えるよりはるかにまし**なので取っておく。
+   */
+  function readCache(key, keepStale) {
     var store = getStore();
     if (!store) return null;
     var full = CACHE_PREFIX + key;
@@ -372,10 +379,27 @@
 
     if (!entry || typeof entry !== 'object' || typeof entry.exp !== 'number') return null;
     if (entry.exp <= Date.now()) {
-      try { store.removeItem(full); } catch (e3) { /* 無視 */ }
-      return null;
+      // 期限切れ。通常読み(keepStale=false)では従来どおり捨てて null を返す。
+      if (!keepStale) {
+        try { store.removeItem(full); } catch (e3) { /* 無視 */ }
+        return null;
+      }
+      return entry.v;
     }
     return entry.v;
+  }
+
+  /** キャッシュから値を取り出す。未登録・期限切れ・壊れたJSONはすべて null。 */
+  function cacheGet(key) {
+    return readCache(key, false);
+  }
+
+  /**
+   * 期限切れでも構わず読む。**通信に失敗した後の最後の砦としてだけ**使うこと。
+   * 通常の取得経路で使うと、いつまでも古い結果を返し続けることになる。
+   */
+  function cacheGetStale(key) {
+    return readCache(key, true);
   }
 
   /** 古い(expが小さい)エントリを count 件削除して容量を空ける。 */
@@ -901,6 +925,81 @@
   }
 
   /**
+   * R181: スポットキャッシュの「粗いキー」を作る。
+   *
+   * **なぜ粗いキーが要るか(実測)**: 従来のキーは宿の座標を小数3桁(約100m)に
+   * 丸めたもので、**宿が1軒違えばキャッシュは必ず外れる**。湯畑や松山城が消えたのは
+   * どれも「その宿を初めて選んだ回」で、手元に何も無い状態で Overpass が落ちた時だった。
+   * つまり従来のキャッシュは、この事故に対して**構造的に一度も効かない**。
+   *
+   * 一方で検索半径は15kmある。fixtures/kusatsu.json の実スポットで、宿の座標だけを
+   * ずらして「15km以内に入る集合」を比べると:
+   *     111m移動 → 一致率100.0% / 555m → 99.4% / 1.1km → 97.5% / 2.2km → 96.2%
+   * 15km の円は、宿が1km動いた程度ではほとんど動かない。100m刻みという細かさは
+   * **精度に何も貢献しないまま、キャッシュを外していただけ**だった。
+   *
+   * そこで小数2桁(緯度約1.1km)の粗いキーを**併記**して保存する。同じ温泉街の別の宿を
+   * 一度でも見ていれば、初めて選ぶ宿でも Overpass 抜きで候補を用意できる。
+   * ★粗いキーは**通信に失敗したときの代替**としてだけ読む(正常時は従来どおり
+   *   その宿の座標で取り直すので、提案の質は変わらない)。
+   */
+  function areaCacheKey(lat, lon, radius) {
+    return 'spotsArea:' + lat.toFixed(2) + ',' + lon.toFixed(2) + ':' + radius;
+  }
+
+  /**
+   * R181: 粗いキーの「隣のマス」も含めた候補キー一覧(自分 + 周囲8マス)。
+   *
+   * ★これが無いと格子の境目で取りこぼす: 実際に 36.6226 は 36.62 に、わずか400m先の
+   *   36.6260 は 36.63 に丸まる。同じ温泉街の隣同士なのにマスが違うだけで代替が
+   *   見つからない、という事故が起きる(実測で確認済み)。近い順に並べて返すので、
+   *   呼び出し側は先に見つかったものを使えばよい。
+   */
+  function areaCacheKeysNear(lat, lon, radius) {
+    var STEP = 0.01; // 粗いキーの刻み(小数2桁)と同じ幅
+    var keys = [];
+    var seen = Object.create(null);
+    [0, -1, 1].forEach(function (dy) {
+      [0, -1, 1].forEach(function (dx) {
+        var k = areaCacheKey(lat + dy * STEP, lon + dx * STEP, radius);
+        if (seen[k]) return;
+        seen[k] = true;
+        keys.push(k);
+      });
+    });
+    return keys;
+  }
+
+  /**
+   * R181: 別の宿(または過去の自分)の座標で取ったスポット配列を、**今の宿からの
+   * 距離に計算し直して**返す。
+   *
+   * ★これを省くと順位が壊れる: 配列の distanceM は保存時の宿を基準にした値で、
+   *   engine.js の fromOsmSpot は `isFinite(spot.distanceM)` ならそれをそのまま使い、
+   *   その値が WEIGHT.DISTANCE_PER_KM の減点に直結する。1km ずれた宿の距離で
+   *   採点すると並びが変わってしまう(= 提案の質を落とす)ので、必ず引き直す。
+   */
+  function rebaseSpots(spots, lat, lon, radius) {
+    if (!Array.isArray(spots)) return [];
+    var limit = isFinite(radius) && radius > 0 ? radius : Infinity;
+    var out = spots.map(function (spot) {
+      if (!spot || !isFinite(spot.lat) || !isFinite(spot.lon)) return null;
+      var copy = {};
+      for (var k in spot) { if (Object.prototype.hasOwnProperty.call(spot, k)) copy[k] = spot[k]; }
+      copy.distanceM = haversineM(lat, lon, spot.lat, spot.lon);
+      return copy;
+    }).filter(function (s) {
+      if (!s || !isFinite(s.distanceM)) return false;
+      // 隣のマスの結果を借りた場合、円が少しずれる分だけ半径外の点が混ざりうる。
+      // 本来の検索半径に収め直して、普段より広い範囲を出してしまわないようにする。
+      return s.distanceM <= limit;
+    });
+    // fetchSpots の戻り値は「距離の近い順」が約束なので、引き直した距離で並べ直す
+    out.sort(function (a, b) { return a.distanceM - b.distanceM; });
+    return out;
+  }
+
+  /**
    * ホテル周辺の観光スポットを取得する。
    * @param {number} lat ホテルの緯度
    * @param {number} lon ホテルの経度
@@ -940,9 +1039,48 @@
       } catch (e) {
         // 混雑のときだけ3秒待って1回だけ再試行する。タイムアウトや通信断は
         // 待っても状況が変わらない(既に60秒待っている)ので再試行しない。
-        if (!e || !e.overpassBusy) throw e;
-        await delay(OVERPASS_RETRY_WAIT_MS);
-        data = await requestOverpass(query, timeoutMsg);
+        if (e && e.overpassBusy) {
+          await delay(OVERPASS_RETRY_WAIT_MS);
+          try {
+            data = await requestOverpass(query, timeoutMsg);
+          } catch (e2) {
+            data = null;
+          }
+        } else {
+          data = null;
+        }
+
+        // R181: ここまで来たら Overpass からは取れていない。**通信を諦める前に、
+        // 手元の代替を順に当たる**。外部リクエストは1本も増えない(全部 localStorage)。
+        //   1. この宿ぴったりのキャッシュ(期限切れ可)
+        //   2. 同じ一帯(約1.1km四方)のキャッシュ … 別の宿で温めた分が効く
+        // 見つかったら距離を引き直して返す。**空で返すより桁違いにまし**で、
+        // これが無いと湯畑・松山城のような OSM 専用スポットが丸ごと消える。
+        if (!data) {
+          var fallback = cacheGetStale(cacheKey);
+          var fallbackVia = 'exact';
+          if (!fallback || !fallback.length) {
+            // 自分のマス→隣接8マスの順に当たる(格子の境目で取りこぼさないため)
+            var nearKeys = areaCacheKeysNear(lat, lon, radius);
+            for (var ki = 0; ki < nearKeys.length; ki++) {
+              var hit = cacheGetStale(nearKeys[ki]);
+              if (hit && hit.length) {
+                fallback = hit;
+                fallbackVia = 'area';
+                break;
+              }
+            }
+          }
+          if (fallback && fallback.length) {
+            if (global.console && console.info) {
+              console.info('[yadotabi] Overpass 失敗 → キャッシュで代替(' +
+                fallbackVia + ', ' + fallback.length + '件)');
+            }
+            return rebaseSpots(fallback, lat, lon, radius);
+          }
+          // 代替も無い。ここは本当に手が無いので従来どおり縮退させる。
+          throw e;
+        }
       }
     }
 
@@ -990,7 +1128,13 @@
     // R162: wikidata タグはあるが wikipedia タグが無い候補の記事名を復元する。
     await resolveWikipediaTitles(spots);
 
-    if (!fixtureData) cacheSet(cacheKey, spots, TTL_SPOTS_MS);
+    if (!fixtureData) {
+      cacheSet(cacheKey, spots, TTL_SPOTS_MS);
+      // R181: 粗いキーにも同じ結果を控える。次に**同じ一帯の別の宿**を初めて選んだ回に
+      // Overpass が落ちても、ここから主役を拾える。保存は localStorage 1本増えるだけで
+      // 外部リクエストは増えない。容量が厳しい環境では cacheSet 側が古い順に捨てる。
+      cacheSet(areaCacheKey(lat, lon, radius), spots, TTL_SPOTS_MS);
+    }
     return spots;
   }
 
@@ -2338,6 +2482,8 @@
 
   global.YadoCache = {
     get: cacheGet,
+    // R181: 期限切れでも読む口。通信失敗時の代替にだけ使う(検査からも観測する)。
+    getStale: cacheGetStale,
     set: cacheSet,
     clear: cacheClear
   };
