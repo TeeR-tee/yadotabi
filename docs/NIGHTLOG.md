@@ -946,3 +946,4 @@
 - 遠い候補の「徒歩65分」表記を`app.js`の表示側だけで解消。徒歩30分(分速80m換算=約2.4km)を境に、超えたら徒歩を出さず車+距離のみにする`timesText()`を追加。`rank()`/`engine.js`/`geo.js`/fixturesは無変更で、5エリアとも`dump-rank.mjs`のbefore/after差分ゼロ(順位不変)を確認した
 - 表示22件×5エリアで境界を実測: 残った最大29分(浜脇温泉)・消えた最小31分(鈴廣かまぼこ博物館ほか)で「近いのに消えた/遠いのに残った」は0件。hakone・dogoを撮影しRead目視、「・」の余りなど不自然な表示なし
 - 申し送り: `check-all.mjs`は31本中30本PASS。`scripts/check-distance.mjs`の`TIMES_RE`が徒歩表記を必須フォーマットとしているため、今回の仕様変更(30分超で徒歩非表示)とFAILする。`scripts/`は他作業役の担当領域のため未修正。`TIMES_RE`の徒歩部分をオプショナルに緩める対応が必要
+- **追記(司令塔承認後)**: `scripts/check-distance.mjs`を修正。`TIMES_RE`の徒歩部分をオプショナル化(車と距離は引き続き必須)し、「徒歩表記の有無が距離2.4km境界と対応しているか」を見る検査を1本追加(丸め誤差の緩衝帯2300〜2500mを除外)。`node scripts/check-distance.mjs`単独で12 pass/0 fail、`node scripts/check-all.mjs`は**31本中31本PASS**。app.jsは今回未変更(既存コミットc1cacf3のまま)

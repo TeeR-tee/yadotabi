@@ -9,10 +9,12 @@
 //
 // 確認項目:
 //   1. ?fixture=kusatsu の全 .feedcard__times が末尾に距離(m/km)を含む形式に一致する
+//      (R165: 徒歩部分は2.4km超で省かれるためオプショナル。車と距離は必須のまま)
 //   2. kusatsu の1位カード(距離が最も近い想定)がm表記であることを確認する
 //   3. ?fixture=hakone の中に少なくとも1件はkm表記のカードが存在する
 //   4. 375px viewport で全 .feedcard__times が scrollWidth <= clientWidth(はみ出しなし)
 //   5. コンソールエラー0件
+//   6. (R165) 徒歩表記の有無が距離2.4km境界と対応しているか(丸め誤差の緩衝帯あり)
 
 import { chromium } from 'file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs';
 import { ensureServer } from './lib/server.mjs';
@@ -30,7 +32,30 @@ function waitFor(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-const TIMES_RE = /^🚶徒歩\d+分 · 🚗車\d+分( · (\d+m|\d+(\.\d)?km))?$/;
+// R165: 徒歩30分(約2.4km)を超える候補は徒歩表記を出さないため、徒歩部分をオプショナルにした。
+// 「5.2kmに徒歩65分」という誰も歩かない表記をやめたもの。
+// 車と距離は全カードで必須のまま(消えたらそれは異常)。
+const TIMES_RE = /^(🚶徒歩\d+分 · )?🚗車\d+分( · (\d+m|\d+(\.\d)?km))?$/;
+
+// R165: 徒歩表記の有無と距離の対応が壊れていないかを見る。
+// 実際の境界は正確に2400m(徒歩30分=Math.ceil(d/80)<=30 ⟺ d<=2400)だが、
+// distanceText() が距離を100m単位に丸めて表示するため、表示文字列から逆算した
+// メートル数には最大±50m程度の誤差が乗る。境界のごく近傍(2300〜2500m)は
+// 丸め起因の見た目と実距離のズレで誤検知しうるので判定から除外し、
+// それより明確に近い/遠いカードだけを対象にする。
+function checkWalkDistanceConsistency(texts) {
+  let mismatched = [];
+  texts.forEach((t) => {
+    const hasWalk = /^🚶徒歩\d+分/.test(t);
+    const distMatch = t.match(/ · (\d+)m$| · (\d+(?:\.\d)?)km$/);
+    if (!distMatch) return; // 距離表記が無いカードは対象外
+    const meters = distMatch[1] !== undefined ? Number(distMatch[1]) : Number(distMatch[2]) * 1000;
+    if (meters >= 2300 && meters <= 2500) return; // 丸め誤差の緩衝帯
+    const expectWalk = meters < 2300;
+    if (hasWalk !== expectWalk) mismatched.push({ text: t, meters, hasWalk, expectWalk });
+  });
+  return mismatched;
+}
 
 async function main() {
   const { base, stop } = await ensureServer();
@@ -59,6 +84,9 @@ async function main() {
     const kusatsuHasMeter = kusatsuTexts.some((t) => / · \d+m$/.test(t));
     ok(kusatsuHasMeter, 'kusatsu: m表記のカードが1件以上ある', kusatsuTexts);
 
+    const kusatsuWalkMismatch = checkWalkDistanceConsistency(kusatsuTexts);
+    ok(kusatsuWalkMismatch.length === 0, 'kusatsu: 徒歩表記の有無と距離(2.4km境界)が対応している', kusatsuWalkMismatch);
+
     const firstText = kusatsuTexts[0] || '';
     ok(/ · (\d+m|\d+(\.\d)?km)$/.test(firstText), 'kusatsu: 1位カードに距離が表示されている', firstText);
 
@@ -80,6 +108,9 @@ async function main() {
 
     const hakoneHasKm = hakoneTexts.some((t) => / · \d+(\.\d)?km$/.test(t));
     ok(hakoneHasKm, 'hakone: km表記のカードが1件以上ある', hakoneTexts);
+
+    const hakoneWalkMismatch = checkWalkDistanceConsistency(hakoneTexts);
+    ok(hakoneWalkMismatch.length === 0, 'hakone: 徒歩表記の有無と距離(2.4km境界)が対応している', hakoneWalkMismatch);
 
     const overflowCountHakone = await page.locator('.feedcard__times').evaluateAll(
       (els) => els.filter((el) => el.scrollWidth > el.clientWidth + 1).length
