@@ -345,6 +345,11 @@
 
 ## サイクル記録
 
+### 2026-09-19 R207 英語版デモページへの入口をREADMEから作る
+- やったこと: README.md 冒頭の英語段落の直後に「**Demo for hotels / OTAs**: see how it looks embedded in a hotel's own page — [English](https://teer-tee.github.io/yadotabi/demo/hotel-page-en.html) / [日本語](https://teer-tee.github.io/yadotabi/demo/hotel-page.html)」を1行追記。表・段落の既存順序は不変。`demo/hotel-page.html`↔`demo/hotel-page-en.html` の相互リンクはR85で既に双方向で生きていたためHTMLは無変更(触らないのが正解のケース)。`docs/check.mjs` のREADMEリンク検査は`<img>`/`![]()`の画像専用でMarkdownの`[text](url)`は対象外と確認し、`HTML_PAGES`行を含め検査スクリプトは無変更のままとした。
+- 見た目の確認結果: `http://127.0.0.1:3000/demo/hotel-page-en.html?fixture=kusatsu` をmobile(375px)・PC幅で撮影・目視、ヘッダーの`日本語`リンクを含む3項目navは折り返し崩れなし。`node scripts/check-all.mjs` **32本中32本PASS**(343.4s)。
+- 次: push後に本番 `demo/hotel-page-en.html` がHTTP 200のままであることとGitHub上のREADMEレンダリングを確認する。
+
 ### 2026-09-19 R85 営業用デモページの英語版 `demo/hotel-page-en.html`
 - やったこと: `demo/hotel-page.html`(266行)をコピーして文言のみ英訳した(レイアウト・CSS構造・iframe src・リンク先は不変)。`lang="ja"`→`lang="en"`、`<title>`も英語化。iframeの中身(やどたび本体)は日本語のままなので、直上に「Note: the embedded widget itself is currently Japanese-only.」を設置。両ページのヘッダーに `EN`/`日本語` の相互リンクを追加(`hotel-page.html`への唯一の変更)。`docs/check.mjs` の `HTML_PAGES` に新ページを追加。
 - 見た目の確認結果: `http://127.0.0.1:3000/demo/hotel-page-en.html` をmobile(375px)・PC幅で撮影・目視。初回はヘッダーnavが3項目(Search/My Page/日本語)で幅不足になり「日本語」が2文字に割れて崩れたため、`header nav`に`flex-wrap`を追加して修正、再撮影で崩れ解消を確認。日本語版側は文字数が短く崩れなし。日本語文字混入チェックは`OK: no JP`。`node scripts/check-all.mjs`は32本中31本PASS、失敗の`docs/check.mjs`は本番未pushによる新ページ404が原因(push後に解消見込み)。
