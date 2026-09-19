@@ -123,6 +123,48 @@
     '河原公園', '地蔵堂'
   ];
 
+  // R166: タグで記事名が分かっている候補の要約・写真を取りに行く(fetchWikiByTitles)の設定。
+  //
+  // **何をする仕組みか**: geosearch(座標から探す)で写真・要約が埋まらなかった候補のうち、
+  // OSM の `wikipedia` タグ等で**記事名が確定しているもの**を集めて、
+  // `action=query&titles=A|B|C` で記事を**名指しで**引く「2段目」。
+  //
+  // **なぜ必要か**: geosearch は宿の座標の周りを近い順に返すだけなので、
+  // 記事名が分かっていても geosearch の網に入らなければ素材が付かない。
+  // 実測(2026-09-19・上位35件内)で素材の欠けは hakone 18 / dogo 20 / beppu 12 件あり、
+  // その中に **別府地獄めぐり(#34・要約も写真も無し)** ・箱根神社・大涌谷・小田原城天守閣・
+  // 強羅公園・神奈川県立生命の星・地球博物館が含まれていた。
+  // geosearch の件数上限の問題ではなく、**名指しで引く経路そのものが無かった**のが原因。
+  //
+  // extracts は1リクエスト20ページまで(exlimit は 1..20 しか受け付けない。
+  // WIKI_NEARBY_MAX_CALLS のコメントにある実測と同じ制約)。
+  var WIKI_TITLES_BATCH_SIZE = 20;
+  //
+  // ★ 引く相手を上位 WIKI_TITLES_POOL 件に絞る理由(無料APIのマナー):
+  //   箱根は `ja:` タグを持つ要素が 250件あり、素朴に全件引くと13リクエストに膨らむ。
+  //   一方で素材が効くのは表示圏(cards 5 + more 30 = 35件)の前後だけなので、
+  //   上位80件に絞れば表示圏を覆える。**60 では足りなかった**のが実測の結論で、
+  //   pool は「素材が付く前」の基礎スコアで選ぶため、素材を貰って上がってくる候補が
+  //   pool の外に居ることがある(大涌谷・箱根町立箱根湿生花園が実際にそうだった)。
+  //   実測のリクエスト数は hakone 49件=3 / dogo 44件=3 / beppu 21件=2 /
+  //   kinosaki 9件=1 / kusatsu 1件=1。
+  //   R163 の BACKLINK_FETCH_POOL=100 と同じ考え方だが、こちらは1件あたりの単価が
+  //   高い(20件/リクエスト)ので 80 に抑えてある。
+  //   **増やすときは必ず5エリアで実リクエスト数を測り直すこと**。
+  //   engine.js の WIKI_TITLES_FETCH_POOL と揃えること。
+  var WIKI_TITLES_POOL = 80;
+  // 1エリアあたりのリクエスト上限。実測(2026-09-19)の R166 単体の発行数は
+  //   hakone 49件=3 / dogo 44件=3 / beppu 21件=2 / kinosaki 9件=1 / kusatsu 1件=1
+  // なので、3 で頭打ちにすれば実質どのエリアも打ち切られない。
+  //
+  // ★ geo.js 全体の自主上限「1エリア20リクエスト」(BACKLINK_* のコメント参照)との関係:
+  //   R163 のコメントにある被リンクの実測は hakone 10 / dogo 16 / beppu 8 /
+  //   kusatsu 3 / kinosaki 3。ここに R166 の最大3が上乗せされるので、
+  //   **最も重い dogo で 16+3 = 19**(+ geosearch 数回)。
+  //   dogo は既に上限に近いので、**WIKI_TITLES_MAX_CALLS も WIKI_TITLES_POOL も
+  //   これ以上増やさないこと**。増やすなら先に被リンク側を減らすこと。
+  var WIKI_TITLES_MAX_CALLS = 3;
+
   // 地図の表示範囲から宿を引くときの上限。これより広いと Overpass に負荷をかけるので呼ばない。
   var BBOX_MAX_DEG = 0.25;
   // 即時候補(suggestHotels)の設定
@@ -1516,6 +1558,136 @@
   }
 
   // ---------------------------------------------------------------------------
+  // 記事名を名指しで引く (fetchWikiByTitles) — R166
+  // ---------------------------------------------------------------------------
+
+  /**
+   * R166: 記事名を**名指しで**指定して、要約(extract)と写真(thumbnail)を取る。
+   *
+   * fetchWikiNearby(geosearch)が「座標から記事を探す」のに対し、こちらは
+   * 「記事名が既に分かっているものを直接引く」。OSM の `wikipedia` タグや
+   * R162 の Wikidata 経由で記事名が確定している候補を救うための経路。
+   *
+   * **取り違えが起きにくい経路である理由**: 突き合わせの鍵が記事名そのもので、
+   * 距離や名前の類似では一切判定していない。ただし R162(Q番号)と違って
+   * **タグの値が間違っていれば間違った記事が返る**ので、呼ぶ側(engine.js)が
+   * どの記事名を渡すかの責任を持つ。実測では OSM 全349タグ中27件(7.7%)で
+   * 名前とタグ値が食い違い、うち大半は旧字体(竈/竃・縣/県)や語順違いの
+   * **同一施設**だった(R163 が同じ理由で部分文字列規則を採らなかったのと同じ実測)。
+   *
+   * `redirects=1` を付けているので `松山城 (伊予国)` → `松山城` のような転送も吸収する。
+   * 返り値のキーは**呼び出し側が渡した記事名**(転送前)にしてあるので、
+   * 呼ぶ側は転送を意識しなくてよい。
+   *
+   * 負荷: extracts は1リクエスト20ページまで(exlimit の上限。exsentences を外しても
+   * 20件のまま)。WIKI_TITLES_MAX_CALLS リクエストで打ち切る。
+   *
+   * 失敗しても致命的ではない(素材が付かないだけ = 変更前と同じ並び)ので例外は握りつぶす。
+   *
+   * @param {string[]} titles 引きたい記事名。呼び出し側で上位に絞ってから渡すこと
+   * @returns {Promise<Object>} 記事名 → {extract, thumbnailUrl, pageid} の表。失敗時は空
+   */
+  async function fetchWikiByTitles(titles) {
+    var out = Object.create(null);
+    if (!Array.isArray(titles) || !titles.length) return out;
+
+    // 重複を除く(同じ記事を指す候補が複数あることがある)
+    var uniq = [];
+    var seenTitle = Object.create(null);
+    titles.forEach(function (t) {
+      var s = typeof t === 'string' ? t.trim() : '';
+      if (!s || seenTitle[s]) return;
+      seenTitle[s] = true;
+      uniq.push(s);
+    });
+    if (!uniq.length) return out;
+
+    // 固定データモードでは外部APIを叩かない。make-fixture.mjs が保存した表を使う。
+    if (fixtureData) {
+      var table = fixtureData.wikiByTitle || null;
+      if (!table) return out;
+      uniq.forEach(function (t) {
+        var hit = table[t];
+        if (hit) out[t] = hit;
+      });
+      return out;
+    }
+
+    var batches = chunk(uniq, WIKI_TITLES_BATCH_SIZE).slice(0, WIKI_TITLES_MAX_CALLS);
+
+    var jobs = batches.map(async function (batch) {
+      var cacheKey = 'wikititles:' + batch.join('|');
+      var cached = cacheGet(cacheKey);
+      if (cached) {
+        Object.keys(cached).forEach(function (k) { out[k] = cached[k]; });
+        return;
+      }
+
+      var params = new URLSearchParams({
+        action: 'query',
+        format: 'json',
+        formatversion: '2',
+        titles: batch.join('|'),
+        prop: 'extracts|pageimages',
+        // 松山城 (伊予国) → 松山城 のような転送を吸収する
+        redirects: '1',
+        exintro: '1',
+        explaintext: '1',
+        exsentences: '2',
+        exlimit: 'max',
+        pilimit: 'max',
+        pithumbsize: '480',
+        origin: '*'
+      });
+
+      var data = await callWikipediaApi(params);
+      var query = (data && data.query) || {};
+
+      // 転送・正規化で記事名が変わった分を「渡した名前 → 返ってきた名前」に対応付ける。
+      // これをやらないと呼び出し側が結果を自分の候補に結び付けられない。
+      var backMap = Object.create(null);
+      batch.forEach(function (t) { backMap[t] = t; });
+      ['normalized', 'redirects'].forEach(function (key) {
+        (query[key] || []).forEach(function (r) {
+          if (!r || !r.from || !r.to) return;
+          Object.keys(backMap).forEach(function (orig) {
+            if (backMap[orig] === r.from) backMap[orig] = r.to;
+          });
+        });
+      });
+
+      var byTitle = Object.create(null);
+      (query.pages || []).forEach(function (page) {
+        if (!page || page.missing) return;
+        byTitle[page.title] = page;
+      });
+
+      var got = Object.create(null);
+      Object.keys(backMap).forEach(function (orig) {
+        var page = byTitle[backMap[orig]];
+        if (!page) return;
+        var extract = typeof page.extract === 'string' ? page.extract.trim() : '';
+        var thumb = (page.thumbnail && page.thumbnail.source) || null;
+        if (!extract && !thumb) return; // 素材がまったく無いなら覚えない
+        got[orig] = {
+          extract: extract || null,
+          thumbnailUrl: thumb || null,
+          pageid: page.pageid || null,
+          // 転送先の正式な記事名。被リンクを引く先としてはこちらが正しい
+          resolvedTitle: page.title || orig
+        };
+      });
+
+      cacheSet(cacheKey, got, TTL_WIKI_NEARBY_MS);
+      Object.keys(got).forEach(function (k) { out[k] = got[k]; });
+    });
+
+    // 一部のバッチが落ちても他の結果は活かす(取れなかった分は素材が付かないだけ)
+    await Promise.allSettled(jobs);
+    return out;
+  }
+
+  // ---------------------------------------------------------------------------
   // 人気度推定 (enrichFame)
   // ---------------------------------------------------------------------------
 
@@ -1741,6 +1913,9 @@
     fetchHotelsInBbox: fetchHotelsInBbox,
     fetchSpots: fetchSpots,
     fetchWikiNearby: fetchWikiNearby,
+    // R166: タグで記事名が確定している候補の要約・写真を名指しで取りに行く2段目。
+    // engine.js の collect が、geosearch との統合が済んだ後に呼ぶ。
+    fetchWikiByTitles: fetchWikiByTitles,
     // R163: 「有名さ」を測る唯一の指標。engine.js の collect が rank の直前に呼ぶ。
     fetchBacklinkCounts: fetchBacklinkCounts,
     // R164: 記事を持たないスポット(別府の地獄・城崎の外湯・湯畑)を救う親記事の本文照合。

@@ -251,7 +251,7 @@ async function fetchWikidataTitles(elements) {
  * continue は必ず完走させる(lhlimit=max の500枠は全タイトル合算なので、
  * 1リクエストで打ち切ると被リンクの多い記事に枠を食われて他が0件で返る)。
  */
-async function collectWantedTitles(fixtureWithoutBacklinks) {
+async function collectWantedTitles(fixtureSoFar) {
   const assetsDir = join(ROOT, 'assets');
   // geo.js / engine.js は (function (global) {...})(window||globalThis) 形式なので
   // そのまま評価すれば globalThis に YadoGeo / YadoEngine が載る。
@@ -261,21 +261,122 @@ async function collectWantedTitles(fixtureWithoutBacklinks) {
   (0, eval)(engineSrc);
 
   const wanted = [];
-  // fetchBacklinkCounts を「記事名を記録するだけ」に差し替えて collect を走らせる。
+  // R166: attachWikiByTitles が要求した記事名。attachBacklinks より前に走るので
+  // 同じ collect の中で両方まとめて記録できる。
+  const wantedByTitle = [];
+  // fetchBacklinkCounts / fetchWikiByTitles を「記事名を記録するだけ」に差し替えて走らせる。
   const realFetch = globalThis.YadoGeo.fetchBacklinkCounts;
+  const realByTitle = globalThis.YadoGeo.fetchWikiByTitles;
   globalThis.YadoGeo.fetchBacklinkCounts = async function (titles) {
     (titles || []).forEach((t) => { if (t && wanted.indexOf(t) < 0) wanted.push(t); });
     return {};
   };
+  globalThis.YadoGeo.fetchWikiByTitles = async function (titles) {
+    (titles || []).forEach((t) => { if (t && wantedByTitle.indexOf(t) < 0) wantedByTitle.push(t); });
+    // 既に作ってある表があればそれを返す(2周目で本番と同じ素材を再現するため)。
+    const table = (fixtureSoFar && fixtureSoFar.wikiByTitle) || null;
+    if (!table) return {};
+    const out = Object.create(null);
+    (titles || []).forEach((t) => { if (table[t]) out[t] = table[t]; });
+    return out;
+  };
   try {
-    globalThis.YadoGeo.setFixture(fixtureWithoutBacklinks);
+    globalThis.YadoGeo.setFixture(fixtureSoFar);
     await globalThis.YadoEngine.collect({
       id: 'fixture/' + AREA, name: AREA_LABEL, lat: LAT, lon: LON
     });
   } finally {
     globalThis.YadoGeo.fetchBacklinkCounts = realFetch;
+    globalThis.YadoGeo.fetchWikiByTitles = realByTitle;
   }
-  return wanted;
+  return { backlinks: wanted, byTitle: wantedByTitle };
+}
+
+/**
+ * R166: 記事名を名指しで引いて要約・写真の表を作る。
+ * ★ assets/geo.js の fetchWikiByTitles と同条件にすること
+ *   (titles=A|B|C・redirects=1・prop=extracts|pageimages・20件/リクエスト)。
+ *
+ * 返す表のキーは **engine.js が渡した記事名**(転送前)にする。geo.js の
+ * fixture モードはこの表を記事名で引くだけなので、転送の解決はここで済ませておく。
+ */
+async function fetchWikiByTitles(titles) {
+  const table = Object.create(null);
+  if (!titles.length) return table;
+
+  const BATCH = 20; // extracts は1リクエスト20ページまで(exlimit の上限)
+  let reqs = 0;
+  console.log('記事名を名指しで取得中(' + titles.length + '件 / '
+    + Math.ceil(titles.length / BATCH) + 'リクエスト)…');
+
+  for (let b = 0; b < titles.length; b += BATCH) {
+    const batch = titles.slice(b, b + BATCH);
+    const params = new URLSearchParams({
+      action: 'query',
+      format: 'json',
+      formatversion: '2',
+      titles: batch.join('|'),
+      prop: 'extracts|pageimages',
+      redirects: '1',
+      exintro: '1',
+      explaintext: '1',
+      exsentences: '2',
+      exlimit: 'max',
+      pilimit: 'max',
+      pithumbsize: '480'
+    });
+    const res = await fetch(WIKIPEDIA_API_URL + '?' + params.toString(), {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': 'yadotabi-fixture/1.0 (https://github.com/TeeR-tee/yadotabi)'
+      }
+    });
+    reqs++;
+    if (res.status === 429 || res.status === 504) {
+      throw new Error('wikipedia busy ' + res.status + '(押し込まず中止します)');
+    }
+    if (!res.ok) throw new Error('wikipedia ' + res.status);
+    const data = await res.json();
+    const query = (data && data.query) || {};
+
+    // 「渡した名前 → 返ってきた名前」の対応(geo.js の backMap と同じ手順)
+    const backMap = Object.create(null);
+    batch.forEach((t) => { backMap[t] = t; });
+    ['normalized', 'redirects'].forEach((key) => {
+      (query[key] || []).forEach((r) => {
+        if (!r || !r.from || !r.to) return;
+        Object.keys(backMap).forEach((orig) => {
+          if (backMap[orig] === r.from) backMap[orig] = r.to;
+        });
+      });
+    });
+
+    const byTitle = Object.create(null);
+    (query.pages || []).forEach((page) => {
+      if (!page || page.missing) return;
+      byTitle[page.title] = page;
+    });
+
+    Object.keys(backMap).forEach((orig) => {
+      const page = byTitle[backMap[orig]];
+      if (!page) return;
+      const extract = typeof page.extract === 'string' ? page.extract.trim() : '';
+      const thumb = (page.thumbnail && page.thumbnail.source) || null;
+      if (!extract && !thumb) return;
+      table[orig] = {
+        extract: extract || null,
+        thumbnailUrl: thumb || null,
+        pageid: page.pageid || null,
+        resolvedTitle: page.title || orig
+      };
+    });
+
+    if (b + BATCH < titles.length) await delay(1200);
+  }
+
+  console.log('  リクエスト数: ' + reqs + ' / 素材を引けた記事: ' + Object.keys(table).length + '件');
+  return table;
 }
 
 /**
@@ -448,12 +549,25 @@ async function main() {
     // R162: geo.js の resolveWikipediaTitles が fixture モードで読む対応表
     wikidataTitles: wikidataTitles,
     // R164: geo.js の fetchParentMentions が fixture モードで読む親記事の本文
-    parentExtract: parentExtract
+    parentExtract: parentExtract,
+    // R166: geo.js の fetchWikiByTitles が fixture モードで読む「記事名→素材」の表。
+    // 中身は下の2周目で埋める(engine.js にどの記事名が要るかを決めさせるため)。
+    wikiByTitle: null
   };
 
-  // R163: engine.js 自身に「どの記事の被リンクが要るか」を決めさせてから引く。
-  const wanted = await collectWantedTitles(fixture);
-  fixture.backlinks = await fetchBacklinks(wanted);
+  // R166 → R163 の順で2周する。
+  //
+  // 1周目: attachWikiByTitles が要求した記事名を集めて、要約・写真の表を作る。
+  // 2周目: その表を積んだ状態でもう一度 collect を走らせ、**素材が付いた後の並び**で
+  //        attachBacklinks が選んだ記事名を集める。
+  // ★ 2周するのは、R166 が素材(=基礎スコア)を変えるため、1周目に集めた被リンクの
+  //   顔ぶれが本番とずれるから。collect は外部APIを叩かない(fixture モード)ので
+  //   2周してもリクエストは増えない。
+  const pass1 = await collectWantedTitles(fixture);
+  fixture.wikiByTitle = await fetchWikiByTitles(pass1.byTitle);
+
+  const pass2 = await collectWantedTitles(fixture);
+  fixture.backlinks = await fetchBacklinks(pass2.backlinks);
 
   const outDir = join(ROOT, 'fixtures');
   await mkdir(outDir, { recursive: true });

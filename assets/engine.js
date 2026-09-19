@@ -645,6 +645,25 @@
    * geo.js の BACKLINK_MAX_TITLES と揃えること。
    */
   var BACKLINK_FETCH_POOL = 100;
+  /**
+   * R166: タグで記事名が確定している候補の要約・写真を名指しで取りに行く相手の上限。
+   *
+   * 表示圏は cards 5 + more 30 = 35件。**60 では足りず 80 にした**のが実測の結論:
+   * pool は「素材が付く前」の基礎スコアで選ぶため、素材を貰って上がってくる候補が
+   * pool の外に居ることがある。実際 60 だと **大涌谷(結果 #25)と
+   * 箱根町立箱根湿生花園(#22)が pool 外に落ち**、表示圏に居るのに要約が付かなかった
+   * (どちらも geosearch には居るが、geosearch 側の continue 予算切れで extract が空)。
+   * 80 にすると両方 pool に入る。
+   *
+   * 実測のリクエスト数(80・20件/リクエスト)は
+   * hakone 49件=3 / dogo 44件=3 / beppu 21件=2 / kinosaki 9件=1 / kusatsu 1件=1。
+   * geo.js の WIKI_TITLES_POOL / WIKI_TITLES_MAX_CALLS(3)と揃えること。
+   *
+   * ★ BACKLINK_FETCH_POOL(100)より小さいのは、こちらが1件あたり高くつくため
+   *  (被リンクは50件/リクエスト、こちらは20件/リクエスト)。
+   *   箱根は `ja:` タグを持つ要素が250件あり、全件引くと13リクエストに膨らむ。
+   */
+  var WIKI_TITLES_FETCH_POOL = 80;
   /** 同カテゴリを無条件で許す件数。これを超えると CATEGORY_PENALTY が累積する。 */
   var CATEGORY_FREE_SLOTS = 2;
   /**
@@ -1299,6 +1318,81 @@
   }
 
   /**
+   * R166: タグで記事名が確定しているのに素材(要約・写真)が欠けている候補を、
+   * 記事名を名指しで引いて埋める。渡された配列をその場で書き換える。
+   *
+   * **なぜ必要か**: geosearch は「宿の座標の近くにある記事」を返すだけなので、
+   * OSM のタグで記事名が名指しされていても、その記事が geosearch の網に入らなければ
+   * 要約も写真も付かない。実測(上位35件内)の欠けは hakone 18 / dogo 20 / beppu 12 件で、
+   * **別府地獄めぐり**(要約も写真も無く #34)がその代表だった。
+   *
+   * **対象の絞り方**: 「被リンクを 0点としたときの基礎スコア」上位
+   * WIKI_TITLES_FETCH_POOL 件のうち、記事名を持ち、かつ要約か写真が欠けているものだけ。
+   * attachBacklinks と同じ並びを使うので、引く相手の選び方が2箇所でぶれない。
+   *
+   * ★ **必ず attachBacklinks より前に置くこと**: こちらは要約・写真を付ける
+   *   = 基礎スコアが変わる処理なので、後に置くと attachBacklinks が見る並びが
+   *   「素材が付く前」のままになり、被リンクを引く相手が実態とずれる。
+   *
+   * **取り違えへの備え**: 引いてきた extract は geosearch 由来の記事とまったく同じ
+   * isExcludedArticle() を通す。タグが事故・事件の記事を指している場合
+   * (実測: 英国旅客機遭難者慰霊碑 → `ja:英国海外航空機空中分解事故`)に、
+   * 慰霊碑のカードへ航空事故の要約と写真が乗るのを防ぐ。
+   *
+   * 失敗しても致命的ではない(素材が付かない = 変更前と同じ並び)ので例外は握りつぶす。
+   */
+  async function attachWikiByTitles(items, now) {
+    var geo = global.YadoGeo || {};
+    if (typeof geo.fetchWikiByTitles !== 'function') return;
+    if (!Array.isArray(items) || !items.length) return;
+
+    // attachBacklinks と同じ並び(被リンク 0点のときの基礎スコア順・同点は近い順)。
+    // ★ スコアは比較関数の中で計算しないこと(箱根2855件で collect が数秒遅くなる)。
+    var scoredPool = items.map(function (item) {
+      return { item: item, score: baseScore(item, now) };
+    });
+    scoredPool.sort(function (a, b) {
+      if (b.score !== a.score) return b.score - a.score;
+      return (a.item.distanceM || 0) - (b.item.distanceM || 0);
+    });
+
+    var byTitle = Object.create(null);
+    var titles = [];
+    scoredPool.slice(0, WIKI_TITLES_FETCH_POOL).forEach(function (entry) {
+      var item = entry.item;
+      // 要約も写真も揃っているなら引く必要が無い(リクエストの無駄)
+      if (item.summary && item.imageUrl) return;
+      var t = typeof item.wikipediaTitle === 'string' ? item.wikipediaTitle.trim() : '';
+      if (!t) return;
+      if (!byTitle[t]) { byTitle[t] = []; titles.push(t); }
+      byTitle[t].push(item);
+    });
+    if (!titles.length) return;
+
+    var got;
+    try {
+      got = await geo.fetchWikiByTitles(titles);
+    } catch (e) {
+      return; // 素材が付かない = 変更前と同じ並び
+    }
+    if (!got) return;
+
+    Object.keys(got).forEach(function (t) {
+      var hit = got[t];
+      if (!hit || !byTitle[t]) return;
+      // geosearch 由来の記事と同じ語のルールを通す。タグが事故・事件・廃止施設の
+      // 記事を指していたときに、その要約と写真がカードに乗るのを防ぐ。
+      if (isExcludedArticle(hit.resolvedTitle || t, hit.extract)) return;
+      byTitle[t].forEach(function (item) {
+        // 既にある素材は上書きしない(geosearch で突き合わさった記事の方が、
+        // 座標で裏が取れているぶん確かなため)。
+        if (!item.summary && hit.extract) item.summary = hit.extract;
+        if (!item.imageUrl && hit.thumbnailUrl) item.imageUrl = hit.thumbnailUrl;
+      });
+    });
+  }
+
+  /**
    * R163: 候補に被リンク数(item.backlinks)を付ける。渡された配列をその場で書き換える。
    *
    * 引く相手は「被リンクを0点としたときの基礎スコア」の上位 BACKLINK_FETCH_POOL 件のうち、
@@ -1653,6 +1747,11 @@
     // 「被リンクを 0点(= 現状)としたときの基礎スコア上位」だけに絞れば十分
     //(この順で BACKLINK_FETCH_POOL 件までを引く)。上位から漏れた候補は
     // 被リンク0点のまま = 現状の順位そのままで、沈むことはない。
+    // R166: タグで記事名が確定しているのに素材が欠けている候補を、記事名を名指しで
+    // 引いて埋める。**attachBacklinks より前**に置く(素材が付くと基礎スコアが変わるため、
+    // 後に置くと被リンクを引く相手が実態とずれる)。
+    await attachWikiByTitles(merged, normalizeContext(null).now);
+
     await attachBacklinks(merged, normalizeContext(null).now);
 
     // R164: 親記事の本文が名前を挙げた候補に印を付ける。
