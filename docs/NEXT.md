@@ -15,6 +15,7 @@
 | 宿の検索(例:「草津温泉 ホテル櫻井」) | 0件 | **1件ヒット** |
 | 検査の自動化 | ローカルのみ(Windows手動) | **GitHub Actions で32本全PASS**(R64、342.5秒・Windowsと結果一致) |
 | 営業用デモ | 日本語1枚のみ | **英語版 `demo/hotel-page-en.html` 追加**(R85、本番HTTP 200) |
+| 英語デモへの入口 | デモ内の `EN` リンク1本のみ | **README冒頭に英語/日本語デモの絶対URLを追記**(R207、GitHub上でクリック可能を確認済み) |
 
 ※ 草津の1位が「湯畑」で確定したのは今夜の最後(R197)です。途中、検証ツールの不具合で「本番で湯畑が出ていない」という誤報が2回(R195〜R196)ありましたが、**原因は検証環境側**で、コードは無傷でした(詳細は4番目の教訓へ)。
 
@@ -78,44 +79,55 @@
 
 ## 3. ★次のサイクルでやる1件(計画役が選定・判断待ちに依存しません)
 
-### R207: 英語版デモページへの入口を作る(作った営業素材が誰からも見えない状態の解消)
+### R208: デモページ2枚のリンクプレビュー(OGカード)を整える
 
-**なぜこれを選んだか**: R85 で英語デモページは本番に出ましたが、**そこへ辿り着く導線が `demo/hotel-page.html` の `EN` リンク1本だけ**で、
-README(英語で書かれた冒頭の紹介文がある)からも、本番トップからも到達できません。海外の宿/OTA に売り込む素材として作ったのに、
-**相手に見せる URL が README にも載っていない**のは「ユーザー入口を毎スライスで整備する」原則に反します。R102(撮影枚数の一覧コマンド)は
-自分用の便利ツールで外向きの価値が無いため、こちらを優先します。判断不要・本体コード不変・コスト0円。
+**なぜこれを選んだか**: R85(英語デモ作成)→ R207(READMEに導線追加)で「営業相手に URL を渡せる」状態までは来ました。
+しかし**今その URL を Slack・X・メールに貼ると、プレビューが真っ白**になります。`index.html` には og:title/og:image 一式が
+入っているのに、`demo/hotel-page.html` と `demo/hotel-page-en.html` には**1つも入っていない**ことを確認済みです
+(grep で検証、両ファイルとも og:/twitter: が0件)。せっかく作った営業素材が、貼った瞬間に一番みすぼらしく見える状態で、
+R207 で作った導線の価値を直接目減りさせています。他の候補(R209 検査一覧表・R210 embed-check の説明書き・R211 dump-rank の
+日時出力・R102 撮影枚数一覧)は**すべて自分用の開発内部ツール**で外向きの価値がないため、外に見える R208 を優先します。
+判断不要・本体コード不変・新規画像を作らないのでコスト0円。
 
-- **タスクID**: R207
-- **目的**: 英語デモページに、README と日本語デモページの双方から確実に辿り着ける導線を作り、リンク切れ検査で守る。
+- **タスクID**: R208
+- **目的**: デモページ2枚の URL を貼ったとき、タイトル・説明・画像入りのリンクカードが出るようにする。
 - **変える対象ファイル(絶対パス)**:
-  - `C:\workspace\claude\旅行先用サイト\yadotabi\README.md`(冒頭の英語段落の直後に1〜2行追記のみ)
-  - `C:\workspace\claude\旅行先用サイト\yadotabi\demo\hotel-page-en.html`(ヘッダーの相互リンクの文言・可読性の微修正のみ、必要なら)
-  - `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md`(R207 を `[x] 2026-09-19` で記録)
-  - `C:\workspace\claude\旅行先用サイト\yadotabi\docs\NIGHTLOG.md`(末尾の「## サイクル記録」に `### 2026-09-19 R207 …` 見出し+3行)
+  - `C:\workspace\claude\旅行先用サイト\yadotabi\demo\hotel-page.html`(`<head>` 内にメタタグを追記するのみ)
+  - `C:\workspace\claude\旅行先用サイト\yadotabi\demo\hotel-page-en.html`(同上)
+  - `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md`(R208 を `[x] 2026-09-19` で記録)
+  - `C:\workspace\claude\旅行先用サイト\yadotabi\docs\NIGHTLOG.md`(末尾の「## サイクル記録」に `### 2026-09-19 R208 …` 見出し+3行)
 - **作り方**:
-  1. README 冒頭の英語段落の直後に **"**Demo for hotels / OTAs**: see how it looks embedded in a hotel's own page — [English](https://teer-tee.github.io/yadotabi/demo/hotel-page-en.html) / [日本語](https://teer-tee.github.io/yadotabi/demo/hotel-page.html)"** に相当する1行を足す。既存の表・段落の順序は変えない。
-  2. 英語ページ側の `日本語` リンクが R85 で `flex-wrap` 対応済みなので、**崩れていなければ HTML は触らない**(触らないのが正解のケース)。
-  3. README に足したリンクは `docs/check.mjs` の README 画像検査とは別枠なので、**リンク切れ検査に載るかを確認**し、載らない場合のみ `docs/check.mjs` の README リンク収集に URL を含める最小追記をする(HTML_PAGES は既に英語ページを含むので**変更しない**)。
+  1. `index.html` の 8〜20行目のメタタグ群を**お手本にして**、各デモページの `<title>` の直後に同じ形で追記する。
+  2. 画像は**既存の `https://teer-tee.github.io/yadotabi/docs/og.jpg` を使い回す**(実在確認済み・76KB)。新規に画像を作らない。
+  3. `og:url` は各ページ自身の絶対URL(`.../demo/hotel-page.html` と `.../demo/hotel-page-en.html`)にする。**2枚で同じ URL にしない**。
+  4. 文言は各ページの言語に合わせる。日本語版は「宿の予約ページに埋め込んだ例(サンプル)」、英語版は英語で同趣旨。
+     `og:locale` は日本語版 `ja_JP` / 英語版 `en_US`。
+  5. **`index.html` は1バイトも触らない**。CSS・本文・iframe・ヘッダーのリンクも触らない(追記するのは `<head>` 内のメタタグだけ)。
 - **完了条件(検証可能な形)**:
-  1. `README.md` に英語デモページの**絶対URL**が1つ以上含まれる(`grep -c "hotel-page-en" README.md` が 1 以上)。
-  2. `demo/hotel-page.html` の `EN` リンクと `demo/hotel-page-en.html` の `日本語` リンクが**双方向で生きている**(両ファイルを grep して相互参照を確認)。
-  3. `node scripts/check-all.mjs` が **32本全PASS**(本数は増やさない)。
-  4. `git push` 後、本番 https://teer-tee.github.io/yadotabi/demo/hotel-page-en.html が HTTP 200 のまま。
-  5. GitHub のリポジトリトップ(README のレンダリング結果)で、足したリンクが**クリックできる形**になっている(push 後に実ブラウザで確認)。
-- **検証手順(撮影)**: ローカル(`scripts/lib/server.mjs` 起動の `http://127.0.0.1:3000/demo/hotel-page-en.html`)を
-  `node C:\workspace\tools\shot\shot.mjs <URL> --mobile`(375px)と PC幅(既定)で各1枚、ラベルは `r207-demo-en-nav`。
-  **撮った画像を必ず Read で開いて目視**し、ヘッダーのリンクが折り返しで崩れていないことを確認する。
-  iframe は固定データ(`?fixture=kusatsu`)のままでよいので**外部API消費は0回**。
+  1. 両ファイルが `og:type` / `og:title` / `og:description` / `og:url` / `og:image` / `twitter:card` の**6タグすべて**を持つ
+     (各ファイルで `grep -c` して6以上、かつ6種類すべてが1回以上出現)。
+  2. `og:url` が2ファイルで**異なり**、それぞれ自分自身の絶対URLになっている(grep で目視確認)。
+  3. `og:image` が両方とも `https://teer-tee.github.io/yadotabi/docs/og.jpg`(絶対URL。相対パスは不可)。
+  4. `node scripts/check-all.mjs` が **32本全PASS**(本数は増やさない・検査スクリプトは変更しない)。
+  5. `git diff --stat` の変更ファイルが上記4ファイルのみで、`index.html` が含まれない。
+  6. `git push` 後、本番の両ページが HTTP 200 のまま。
+- **検証手順(撮影)**: `scripts/lib/server.mjs` を起動し、
+  `http://127.0.0.1:3000/demo/hotel-page.html` と `http://127.0.0.1:3000/demo/hotel-page-en.html` を
+  `node C:\workspace\tools\shot\shot.mjs <URL> --mobile`(375px)と PC幅(既定)で各1枚ずつ計4枚、ラベルは `r208-og`。
+  **撮った画像を必ず Read で開いて目視**し、**メタタグ追記で見た目が1ミリも変わっていないこと**(ヘッダー・注意書き・iframe の
+  位置が従来どおり)を確認する。メタタグは表示に影響しないはずなので、**変化があれば追記ミス**。
+  iframe は固定データのままなので**外部API消費は0回**。
 - **変更禁止範囲(絶対に触らない)**: `assets/engine.js` / `assets/geo.js` / `assets/rank*` / `fixtures/*.json` /
-  `WEIGHT` 定数 / `index.html` 本体 / `.github/workflows/*` / `.gitignore` / `docs/check.mjs` の `HTML_PAGES` 行。
-  順位ロジックには一切影響させないこと。
-- **所要目安**: 25〜40分(README追記10分・撮影と目視15分・記録とコミット10分)。
+  `WEIGHT` 定数 / `index.html` / `.github/workflows/*` / `.gitignore` / `scripts/check-*.mjs` / `docs/check.mjs`。
+  デモページも `<head>` 内のメタタグ追記だけで、`<body>` と `<style>` には触らないこと。
+- **所要目安**: 20〜35分(メタタグ追記10分・撮影と目視10分・記録とコミット10分)。
 
 ### 積み残し(判断待ちが解けてから)
 - R177 と「箱根神社が圏外」— 判断待ち(1)が決まり次第。
 - R138(座標欠落40件・`geo.js` 変更が要る)— みのるんの判断待ち。
 - R64 の残り — CI を `schedule` で1日1回回すかの判断のみ(本体は完了)。
-- R102 `scripts/list-shots.mjs`(読み取り専用の枚数一覧)— 判断不要なので R207 の次の候補。
+- R209(検査32本の一覧表)・R210(embed-check に説明書き)・R211(dump-rank に日時とコミットID)・
+  R102(`scripts/list-shots.mjs`)— いずれも判断不要。R208 の次の候補。
 
 ## 4. ★次のサイクルで必ず守ること(今日の教訓)
 
