@@ -1620,12 +1620,13 @@
     if (!hits) return;
 
     // R168: true ではなく出現回数を持たせる(配点は parentMentionBonus が決める)。
+    // R183: `_title` も `_image` と同じ添え物なので、加点の対象から外す。
     Object.keys(hits).forEach(function (n) {
-      if (n === '_image' || !hits[n] || !byName[n]) return;
+      if (n === '_image' || n === '_title' || !hits[n] || !byName[n]) return;
       byName[n].forEach(function (item) { item.parentMention = hits[n]; });
     });
 
-    attachParentImage(items, hits._image, geo);
+    attachParentImage(items, hits._image, geo, hits._title);
   }
 
   /**
@@ -1647,12 +1648,14 @@
    * 効かないエリアでは何も起きない(= 変更前と同じ並び)。実測では5エリア中
    * **草津だけが条件を通り**、別府は代表画像が別府タワーの写真だったため配っていない。
    */
-  function attachParentImage(items, image, geo) {
+  function attachParentImage(items, image, geo, parentTitle) {
     if (!image || !image.url) return;
     if (typeof geo.pickParentImageTarget !== 'function') return;
 
     var areaKey = typeof geo.parentAreaKey === 'function' ? geo.parentAreaKey(items) : '';
-    var target = geo.pickParentImageTarget(items, image, areaKey);
+    // R183: 採用した親記事の名前を渡す。親記事そのものが候補に混ざっているエリア
+    // (本番の草津)で、親記事が自分自身に写真を配ろうとして誰にも配れなくなるのを防ぐ。
+    var target = geo.pickParentImageTarget(items, image, areaKey, parentTitle);
     if (!target) return;
 
     target.imageUrl = image.url;

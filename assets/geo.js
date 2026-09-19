@@ -1473,6 +1473,11 @@
       // **採用後の最終的な親記事**。固定データモードでは追加の判定をしない。
       text = typeof fixtureData.parentExtract === 'string' ? fixtureData.parentExtract : '';
       image = fixtureData.parentImage || null;
+      // R183: 昇格が起きたエリア(箱根)では make-fixture.mjs が採用後の名前を
+      // parentTitle に残している。本番の resolved と同じものを入れておく。
+      if (typeof fixtureData.parentTitle === 'string' && fixtureData.parentTitle) {
+        resolved = fixtureData.parentTitle;
+      }
     } else {
       var first = await fetchParentArticle(title);
       if (!first) return hits; // 誰も加点されない = 変更前と同じ並び
@@ -1494,6 +1499,11 @@
       }
     }
 
+    // R183: 採用した親記事の名前を同梱する。**親記事そのものが候補に混ざっている**
+    // ことがあり(本番の草津では geosearch が「草津温泉」を46m先の記事として返す)、
+    // その1件を素通しすると R173 の写真配りが乗っ取られる。詳細は
+    // pickParentImageTarget の「条件0」を参照。固定データでも本番でも同じ名前が入る。
+    matched._title = resolved;
     if (image && image.url) matched._image = image;
     return matched;
   }
@@ -1712,11 +1722,48 @@
    * @param {string} areaKey エリア名のローマ字(fixture の meta.area / 本番は空でよい)
    * @returns {Object|null} 配る相手の候補。該当が無ければ null
    */
-  function pickParentImageTarget(items, image, areaKey) {
+  /**
+   * R183: 親記事の名前と候補の名前を突き合わせるための正規化。
+   *
+   * 見るのは「この候補は親記事そのものか」だけなので、**曖昧さ回避の括弧を落として
+   * 前後の空白を詰めるだけ**に留める。ここを緩めて部分一致にすると、
+   * 「草津温泉」に対して「草津温泉スキー場」まで巻き込んでしまう。
+   * engine.js の stripDisambiguation と同じ形だが、geo.js は engine.js に依存しない。
+   */
+  function normalizeParentName(name) {
+    if (typeof name !== 'string') return '';
+    return name.replace(/\s*[（(][^）)]*[）)]\s*$/, '').trim();
+  }
+
+  function pickParentImageTarget(items, image, areaKey, parentTitle) {
     if (!image || !image.url || !Array.isArray(items) || !items.length) return null;
 
+    // 条件0(R183): **親記事そのものを数えない**。
+    //
+    // **本番でだけ起きていた事故**: 草津の geosearch は宿の46m先に「草津温泉」の記事を
+    // 返すので、親記事自身が1件の候補として並ぶ。その名前は当然ながら本文に最も多く
+    // 出る(実測117回 vs 湯畑35回)ため条件1の1位を必ず取り、しかも自分の記事写真を
+    // 持っているので条件3で null になる。つまり **親記事が候補に混ざったエリアでは
+    // R173 が丸ごと無効化され**、湯畑は写真25点を受け取れないまま #3 に沈んでいた。
+    // 固定データでは宿名が「草津温泉(固定データ)」で isHotelItself が親記事を
+    // 偶然弾いていたため、この事故は5エリアの dump-rank に一度も現れなかった。
+    //
+    // 親記事は「その土地そのもの」であって、その土地の中で行く先ではない。R173 が
+    // 配ろうとしているのは「親記事が最も多く語った**行き先**」なので、親記事自身は
+    // 母数から外すのが趣旨どおり。parentTitle が無い(取れなかった)ときは従来どおり。
+    var parentName = typeof parentTitle === 'string' ? normalizeParentName(parentTitle) : '';
+    // 親記事そのものを除いた母数。条件1(言及回数)と条件4(画像の衝突)の**両方**で使う。
+    // ★条件4でも外すのが要:親記事の候補は当然その代表画像を持っているので、
+    //   残したままだと `Yubatake_(Kusatsu_Onsen).jpg` の固有語 [yubatake] を
+    //   「別の候補のもの」と誤認し、湯畑への配布が条件4で止まる(実測で確認)。
+    var pool = parentName
+      ? items.filter(function (it) {
+        return it && normalizeParentName(it.name) !== parentName;
+      })
+      : items;
+
     // 条件1: 言及回数の1位と2位を出す
-    var ranked = items
+    var ranked = pool
       .filter(function (it) { return it && it.parentMention > 0; })
       .sort(function (a, b) { return b.parentMention - a.parentMention; });
     if (!ranked.length) return null;
@@ -1733,7 +1780,7 @@
 
     // 条件4: その画像が別の候補のものだと分かるなら降りる
     var tokens = parentImageTokens(image.file || commonsFileFromUrl(image.url), areaKey);
-    if (isParentImageClaimedByOther(tokens, items, top, areaKey)) return null;
+    if (isParentImageClaimedByOther(tokens, pool, top, areaKey)) return null;
 
     return top;
   }
