@@ -15,6 +15,10 @@
 //   4. 375px viewport で全 .feedcard__times が scrollWidth <= clientWidth(はみ出しなし)
 //   5. コンソールエラー0件
 //   6. (R165) 徒歩表記の有無が距離2.4km境界と対応しているか(丸め誤差の緩衝帯あり)
+//   7. (R228) ?fixture=kusatsu の状態Bで #feed-origin が表示され、宿名を含む
+//   8. (R228) 状態A(宿未選択・トップ)では #feed-origin が表示されない
+//   9. (R228) ?fixture=kusatsu&simulate=empty(カード0件)では #feed-origin が表示されない
+//  10. (R228) 375px viewport で #feed-origin が scrollWidth <= clientWidth(はみ出しなし)
 
 // R205: CI(ubuntu-latest)でも動かせるよう、Playwright の読み込み先を環境変数で差し替え可能にした。
 // 環境変数 PLAYWRIGHT_IMPORT が無ければ従来どおり Windows の絶対パスを使うので、
@@ -126,6 +130,48 @@ async function main() {
     ok(consoleErrors.length === 0, 'コンソールエラー0件', consoleErrors);
 
     await context.close();
+
+    // --- R228: 距離の起点(選んだ宿)を示す凡例 #feed-origin ---
+    const originContext = await browser.newContext({ viewport: { width: 375, height: 812 } });
+    const originPage = await originContext.newPage();
+
+    // 7: 状態B(?fixture=kusatsu)で #feed-origin が表示され、宿名を含む
+    await originPage.goto(`${BASE}/?fixture=kusatsu`, { waitUntil: 'load' });
+    await waitFor(1500);
+
+    const originHiddenB = await originPage.locator('#feed-origin').evaluate((el) => el.hidden);
+    ok(originHiddenB === false, 'R228: 状態Bで #feed-origin が表示される', originHiddenB);
+
+    const originText = await originPage.locator('#feed-origin').textContent();
+    ok(!!originText && originText.includes('草津温泉'), 'R228: #feed-origin が宿名を含む', originText);
+
+    // 8: 状態A(宿未選択・トップ)では #feed-origin が表示されない
+    await originPage.goBack();
+    await waitFor(600);
+
+    const viewSelectHidden = await originPage.evaluate(() => document.getElementById('view-select').hidden);
+    ok(viewSelectHidden === false, 'R228: goBack後は状態A(#view-select表示)', viewSelectHidden);
+
+    const originHiddenA = await originPage.locator('#feed-origin').evaluate((el) => el.hidden);
+    ok(originHiddenA === true, 'R228: 状態A(宿未選択)では #feed-origin が表示されない', originHiddenA);
+
+    // 9: カード0件(?simulate=empty)では #feed-origin が表示されない
+    await originPage.goto(`${BASE}/?fixture=kusatsu&simulate=empty`, { waitUntil: 'load' });
+    await waitFor(1500);
+
+    const originHiddenEmpty = await originPage.locator('#feed-origin').evaluate((el) => el.hidden);
+    ok(originHiddenEmpty === true, 'R228: カード0件(simulate=empty)では #feed-origin が表示されない', originHiddenEmpty);
+
+    // 10: 375px viewport で #feed-origin のはみ出しが0件
+    await originPage.goto(`${BASE}/?fixture=kusatsu`, { waitUntil: 'load' });
+    await waitFor(1500);
+
+    const originOverflow = await originPage.locator('#feed-origin').evaluate(
+      (el) => el.scrollWidth > el.clientWidth + 1
+    );
+    ok(originOverflow === false, 'R228: #feed-origin のはみ出しが0件(375px)', originOverflow);
+
+    await originContext.close();
   } finally {
     await browser.close();
     await stop();

@@ -408,6 +408,16 @@ body {
   font-weight: 600;
 }
 
+/* R228: 距離の起点(選んだ宿)を示す1行の凡例。宿名が長くても崩れないよう折り返しを許す。 */
+.feedorigin {
+  margin: 0;
+  padding: 0 var(--sp-4) var(--sp-2);
+  font-size: var(--fs-sm);
+  color: var(--c-text-sub);
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+
 .feed {
   display: flex;
   flex-direction: column;

@@ -1407,6 +1407,16 @@
       return;
     }
 
+    // R228: カードの徒歩/車の分数・距離が「選んだ宿からの値」であることを示す凡例。
+    // カードが0件のときは起点を語っても意味がない(嘘になる)ため出さない。
+    if (els.feedOrigin) {
+      var showOrigin = !!state.cards.length;
+      els.feedOrigin.hidden = !showOrigin;
+      els.feedOrigin.textContent = showOrigin
+        ? '距離は「' + (hotel.name || '') + '」からの目安です'
+        : '';
+    }
+
     var html = state.cards.map(function (c, i) { return cardHtml(c, i, true); }).join('');
     if (state.moreOpen) {
       html += moreBundledHtml();
@@ -1748,6 +1758,8 @@
     if (isFeed) {
       renderFeed();
     } else {
+      // R228: 状態Aに戻ったら、前の宿の起点凡例を残さない(view-feed自体もhiddenだが二重に防ぐ)
+      if (els.feedOrigin) { els.feedOrigin.hidden = true; els.feedOrigin.textContent = ''; }
       // 地図は使い回しなので、表示が戻ったタイミングで寸法を測り直す
       if (map) setTimeout(function () { map.invalidateSize(); }, 0);
       window.scrollTo(0, 0);
@@ -2354,6 +2366,7 @@
       feedBadgeDate: document.getElementById('feed-badge-date'),
       feedMap: document.getElementById('feed-map'),
       feedStatus: document.getElementById('feed-status'),
+      feedOrigin: document.getElementById('feed-origin'),
       feedList: document.getElementById('feed-list'),
       feedMore: document.getElementById('feed-more'),
       feedFar: document.getElementById('feed-far'),
