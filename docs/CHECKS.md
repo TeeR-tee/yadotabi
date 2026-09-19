@@ -71,7 +71,7 @@
 | check-geo | `geo.js` の同心円リング収集ロジック(fetchをスタブ) |
 | check-osmfallback | R181: Overpass が落ちた回でも「その土地の主役」(OSM専用候補、例: 湯畑・松山城)が提案から消えないこと。外部APIは叩かず、fetchを差し替えたvm上でgeo.jsを動かして検証 |
 | check-r5 | 段階描画の発火順 |
-| docs/check.mjs | 本番URLへのGET・応答時間・ファイルKB・リンク切れ検査(他4本と違い、ローカルではなく本番URLへのHTTPアクセスのためサーバもPlaywrightも不要)。R109: 埋め込みタグの sandbox/referrerpolicy が3箇所で一致しているか。R214: 4ページすべてに `rel="icon"` の link があり、hrefが `data:image/svg+xml` で始まり、4ページで同一であること |
+| docs/check.mjs | 本番URLへのGET・応答時間・ファイルKB・リンク切れ検査(他4本と違い、ローカルではなく本番URLへのHTTPアクセスのためサーバもPlaywrightも不要)。R109: 埋め込みタグの sandbox/referrerpolicy が3箇所で一致しているか。R214: 5ページすべてに `rel="icon"` の link があり、hrefが `data:image/svg+xml` で始まり、5ページで同一であること。R216: `404.html` の日本語見出し・案内文・3本の行き先(トップ/営業デモ日英)を中身の軸で照合 |
 
 実測では「サーバを使う30本」と「Playwrightを使う30本」は完全に同じ集合(`grep -l ensureServer` と `grep -l playwright` の結果が一致。ただし `check-all.mjs` 自身は親サーバ起動のため `ensureServer` を含むがSCRIPTS対象外なので除外して数える)で、サーバ不要かPlaywright不要かで割れる本は存在しない。上記5本だけがどちらも不要。
 
