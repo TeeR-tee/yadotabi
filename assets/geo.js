@@ -1131,16 +1131,34 @@
       throw busyError(429);
     }
 
-    var res = await fetchWithTimeout(
-      OVERPASS_URL,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: 'data=' + encodeURIComponent(query)
-      },
-      TIMEOUT_OVERPASS_MS,
-      timeoutMessage
-    );
+    // R196: fetch 自体が失敗した回(TypeError: Failed to fetch)は、この下の
+    // status 判定に**一度も到達しない**ため 429/504 のログが出ない。
+    // 実際 R195 は「429も504も再現できない」と報告したが、真相は
+    // **Overpass のホストにそもそも到達できていなかった**(/api/status すら
+    // 280ms で失敗。同じ端末から Wikipedia と Nominatim は 1 秒台で 200)。
+    // 到達できない回を黙って「通信に失敗」に丸めると、次に調べる人がまた
+    // 同じ空振りをするので、ここで所要時間付きの1行を残す。挙動は変えない。
+    var sentAt = Date.now();
+    var res;
+    try {
+      res = await fetchWithTimeout(
+        OVERPASS_URL,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'data=' + encodeURIComponent(query)
+        },
+        TIMEOUT_OVERPASS_MS,
+        timeoutMessage
+      );
+    } catch (e) {
+      if (global.console && console.warn) {
+        console.warn('[yadotabi] Overpass に到達できず(' +
+          Math.round((Date.now() - sentAt) / 1000) + '秒で失敗) — ' +
+          '429/504 ではなくネットワーク到達性の問題。R181のキャッシュ代替へ落ちる。');
+      }
+      throw e;
+    }
 
     if (res.status === 429) {
       lastRateLimitedAt = Date.now();
