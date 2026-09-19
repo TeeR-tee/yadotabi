@@ -1733,6 +1733,42 @@
       sendOsmStage(osmItems, { osmFailed: false });
     }, function () { /* 失敗時は allSettled 側で扱う */ });
 
+    // R180: Wikipedia だけで作る **最初の1枚**("wikifirst" 段)。
+    //
+    // **なぜ要るか(本番実測)**: 初回カードが出るまでの時間は Overpass の応答に
+    // 丸ごと支配されている。同一クエリを連続で測ると **6.8s / 9.3s(504) / 11.4s**、
+    // 箱根の悪い回では **15.8s・29.9s** と乱高下し、その間ずっと画面は
+    // 「周辺を集めています…」のままだった(= R179 が測った30秒の正体)。
+    // 一方 Wikipedia の geosearch は同じ条件で **1〜3秒**で返っている。
+    //
+    // そこで「OSM を待たずに、先に取れた Wikipedia 側だけで暫定カードを出す」段を足す。
+    // **外部リクエストは1本も増えない**(既に投げてある wikiTask の結果を使うだけ)。
+    //
+    // ★ この段は **表示を早めるだけで、最終結果には一切影響しない**。
+    //   下の allSettled 以降の統合・rank は従来と同じ入力で同じように走るため、
+    //   `done` で確定する並び(= dump-rank.mjs が見るもの)は変わらない。
+    // ★ OSM が先に返った場合はこの段を出さない(osmStageSent で抑止)。
+    //   OSM 込みのほうが良い並びなので、わざわざ劣る暫定を挟まない。
+    var wikiFirstSent = false;
+    wikiTask.then(function (value) {
+      if (osmStageSent || wikiFirstSent) return;
+      if (typeof onStage !== 'function' || !Array.isArray(value)) return;
+      var early = [];
+      value.forEach(function (article) {
+        if (!article || !isFinite(article.lat) || !isFinite(article.lon)) return;
+        // osmItems がまだ無いので、タグ証拠による救済(hasOsmTagEvidence)は掛けられない。
+        // 語のルールだけで落とす = 本来通る記事が漏れることはあっても、余計な物は出ない。
+        if (isExcludedArticle(article.title, article.extract)) return;
+        var item = fromWikiArticle(article, h);
+        if (!item.name) return;
+        if (isHotelItself(item, h)) return;
+        early.push(item);
+      });
+      if (!early.length) return;
+      wikiFirstSent = true;
+      onStage('wikifirst', early, { osmFailed: false });
+    }, function () { /* 失敗時は allSettled 側で扱う */ });
+
     var settled = await Promise.allSettled([osmTask, wikiTask]);
     var osmResult = settled[0];
     var wikiResult = settled[1];

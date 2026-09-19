@@ -1263,6 +1263,9 @@
 
   function statusText(stage, osmFailed) {
     if (stage === 'loading' || stage === 'osm') return '周辺を集めています…';
+    // R180: Wikipedia だけで先に出した暫定カードの段。まだ宿周辺(OSM)が来ていないので
+    // 「集めています」と同じ文言にする(利用者には「まだ増える」ことだけ伝わればよい)。
+    if (stage === 'wikifirst') return '周辺を集めています…';
     if (stage === 'wiki') return 'Wikipediaで補強しています…';
     if (stage === 'done' && osmFailed) {
       return '周辺の宿情報だけ混雑中。Wikipediaの情報で提案しています。';
@@ -1343,7 +1346,8 @@
     // 混雑の告知は進捗表示より目立たせたいので、見た目を分ける
     els.feedStatus.classList.toggle('feedstatus--warn', state.stage === 'done' && !!state.osmFailed);
 
-    var loading = state.stage === 'loading' || state.stage === 'osm' || state.stage === 'wiki';
+    var loading = state.stage === 'loading' || state.stage === 'wikifirst'
+      || state.stage === 'osm' || state.stage === 'wiki';
 
     if (state.stage === 'error') {
       els.feedList.innerHTML = '<div class="card empty">' +

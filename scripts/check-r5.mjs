@@ -39,8 +39,15 @@ const delay = (ms, v) => new Promise(r => setTimeout(() => r(v), ms));
     fetchWikiNearby: () => delay(20, [{ id: 'wp/1', title: '湯畑', lat: 35.234, lon: 139.10, distanceM: 400, extract: '温泉である。', thumbnailUrl: null, url: '' }])
   });
   const st = [], metas = []; const r = await E.suggest(H, {}, (s, p, m) => { st.push(s); metas.push(m && m.osmFailed); });
-  ok(JSON.stringify(st) === '["osm","wiki","done"]', 'OSM失敗でも osm→wiki→done', st);
-  ok(metas[0] === true && metas[1] === true, 'OSM失敗時 meta.osmFailed=true', metas);
+  // R180: OSM が落ちた回は Wikipedia が先に返るので "wikifirst" が先頭に入る。
+  // 画面を空のまま待たせないための段で、**その後の osm→wiki→done の順序は不変**。
+  // ここで見たいのは「osm 段が1回だけ出ること」なので、wikifirst を取り除いて比べる。
+  const stCore = st.filter((s) => s !== 'wikifirst');
+  ok(JSON.stringify(stCore) === '["osm","wiki","done"]', 'OSM失敗でも osm→wiki→done', st);
+  // wikifirst の meta は「まだ OSM の成否が分からない」時点なので false で正しい。
+  // osm 段以降が true であることを確かめる(= 混雑の告知が出る条件)。
+  const metasCore = st.map((s, i) => [s, metas[i]]).filter((x) => x[0] !== 'wikifirst').map((x) => x[1]);
+  ok(metasCore[0] === true && metasCore[1] === true, 'OSM失敗時 meta.osmFailed=true', metas);
   ok(r.osmFailed === true, '結果に osmFailed', r.osmFailed);
   ok(r.cards.length === 1, 'Wikiだけで返る');
 }
