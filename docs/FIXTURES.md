@@ -112,3 +112,86 @@ Overpass は `out center tags;` で全タグを返すため、生の fixture に
 - 今後 `make-fixture.mjs` で新規生成する fixture は保存時に最初からこの keep-list を通るため、生成直後から軽量。
 
 関連: R14(hakone.json 900KB の軽量化)・R19(far 分布)・R40(別府追加)はいずれもこの手順を前提にする。
+
+---
+
+## 固定データで検証できること・できないこと(R187・2026-09-19)
+
+### 背景
+
+2026-09-19の1日で、**固定データでは原理的に再現しない不具合が3件**見つかった。79コミット・20サイクルのうち本番を実際に触ったのは最後の6サイクルだけで、それ以外は固定データだけで「検証済み」としていた。3件とも「検証が甘かった」のではなく、**固定データの構造上そもそも見えない領域**だった。この節はその再発防止のために書く。
+
+### 1. 固定データが実際に保存しているもの
+
+`fixtures/<area>.json` の実際のキー(`kusatsu.json` で確認):
+
+| キー | 中身 | 対応する geo.js の関数 |
+|---|---|---|
+| `meta` | `area`/`label`/`lat`/`lon`/`osmRadiusM`/`wikiRadiusM`/`generatedAt` | - |
+| `overpass` | Overpass の生レスポンス(`{elements:[...]}`) | `fetchSpots` |
+| `wiki` | Wikipedia geosearch の生レスポンス(`{query:{pages:{...}}}`) | `fetchWikiNearby` |
+| `wikidataTitles` | Q番号→記事名の対応表 | `resolveWikipediaTitles` |
+| `backlinks` | 記事名→被リンク数の表 | `fetchBacklinkCounts` |
+| `parentExtract` | 親記事の本文(explaintext)の文字列 | `fetchParentMentions` |
+| `parentImage` | 親記事の代表画像 `{url, file}` | `fetchParentMentions` |
+| `parentTitle` | 昇格が起きたエリアだけ、採用後の親記事名(通常は無い) | `fetchParentMentions` |
+| `wikiByTitle` | 記事名→`{extract,thumbnailUrl,pageid}` の表 | `fetchWikiByTitles` |
+
+保存しているのは**加工前の生レスポンス**で、そこから先の整形(カテゴリ判定・重複統合・スコア計算)は本番と完全に同じコードを通る。つまり「APIが返した後の処理」は固定データでも本番と同じ経路で検証できる。
+
+### `assets/geo.js` の `fixtureData` 分岐一覧(全11箇所・行番号は2026-09-19時点)
+
+読んで確認した全分岐:
+
+1. **L1040, L1152**(`fetchSpots`): fixture中は localStorage の読み書きをスキップ(本物データと混ざらないよう)。
+2. **L1050**(`fetchSpots`): `fixtureData.overpass` があれば Overpass を叩かずそれを使う。
+3. **L1182**(`resolveWikipediaTitles`): `fixtureData.wikidataTitles` の対応表を使い、Wikidata API を叩かない。
+4. **L1289**(`fetchBacklinkCounts`): `fixtureData.backlinks` の表を使い、Wikipedia API(linkshere)を叩かない。
+5. **L1432**(`parentArticleTitle`): fixture中は `fixtureData.meta.label` を**そのまま**親記事名として返す。本番は `hotel.displayName`(Nominatimの住所文字列)をカンマで分解して地名を抽出するロジックを通る。**この分岐が今回の不具合3の直接原因**(後述)。
+6. **L1500, L1524**(`fetchParentMentions`): `fixtureData.parentExtract`/`parentImage`/`parentTitle` を使い、本文取得・R175の昇格判定(`promoteParentIfThin`)を丸ごとスキップする(make-fixture.mjs側で判定済みの結果を使う)。
+7. **L1831**(`parentAreaKey`): `fixtureData.meta.area` をエリア名としてそのまま使う。本番は候補の画像ファイル名から推測するロジックを通る。
+8. **L1948**(`fetchHotelsInBbox`): fixture中は空配列を返す(地図上の宿ピンは出さない)。
+9. **L2069, L2112, L2199**(`fetchWikiNearby`): fixture中は localStorage を使わず、`fixtureData.wiki.query.pages` を1回流すだけ(半径ループ・continueを回さない)。
+10. **L2249**(`fetchWikiByTitles`): `fixtureData.wikiByTitle` の表を使う。
+11. **L2541**(`enrichFame`): fixture中は Wikidata(sitelinks)/pageviews を一切取得せず即座に返す(fixtureに含めていないため、fame は常に null)。
+
+### 2. ★固定データでは検証できないもの(これが本題)
+
+#### (a) 速度(APIの応答時間・タイムアウト・リトライ)
+固定データはローカルJSONを1回読むだけで、fetchそのものが発生しない。本番でOverpassが平均30秒かかる、Nominatimが1秒スロットルで直列化される、といった**体感速度・タイムアウトの発火・リトライの動き**は固定データでは一切再現しない。`TIMEOUT_OVERPASS_MS`(25秒)を変えても固定データの動作は1ミリ秒も変わらない。
+
+#### (b) APIの失敗時の挙動(429/504・縮退モード・フォールバック)
+`?simulate=overpass504` で疑似的に失敗させることはできるが、これは「常に失敗する」という単純なシミュレーションであり、**実際のOverpass/Wikipedia/Nominatimが返す本物の429/504・タイムアウト・部分的な失敗**とは別物。特に「Overpassだけ落ちてWikipediaは生きている」「一部バッチだけ失敗する」といった**部分的な混雑**は本番でしか起きない。
+
+#### (c) 住所の解析(Nominatimの結果を使う経路)
+`parentArticleTitle`(geo.js L1431〜)は fixture 中は `meta.label` を直接返すため、**本番専用の「`hotel.displayName` をカンマ分解して地名を抽出する」ロジックを一度も通らない**。道路名を除外する処理(R186)・都道府県で打ち切る処理・「温泉」を補う処理は、fixture では検証できず、必ず実在の宿名を本番のNominatimに投げて確認する必要がある。
+
+#### (d) 宿名に依存する処理(`isHotelItself` など)
+`engine.js` の `isHotelItself`(L1249)は宿名と候補名を正規化して比較する。**固定データの宿名は `meta.label + '(固定データ)'`**(例:「草津温泉(固定データ)」)であり、実在のどの宿の名前とも一致しない特殊な文字列。そのため「親記事(草津温泉)が候補に混ざったときに宿自身として誤判定されて消える」という不具合(不具合2)は、固定データでは**宿名が偶然衝突しないため再現しない**。実在の宿名(例:「ホテル一井」)で確認しないと発見できない。
+
+#### (e) キャッシュ(localStorageの状態に依存する処理)
+`fetchSpots`/`fetchWikiNearby` は fixture 中は localStorage を読み書きしない(L1040/1152/2069/2199)。つまり**キャッシュのTTL切れ・古い形式(`CACHE_FORMAT_VERSION`)の破棄・容量超過時の退避(`evictOldest`)・R181の粗いキー救済**は固定データでは一切動かない。本番で「古いキャッシュが残っていて結果が変わる」事故は、固定データでは構造的に起こりようがない。
+
+#### (f) その他、geo.js/engine.js を読んで見つけたもの
+- `parentAreaKey`(geo.js L1830): fixtureでは `meta.area` を直接使うが、本番は候補画像のファイル名から推測するロジック(3件以上の共通語を拾う)を通る。推測が外れるケースは fixture では絶対に発生しない。
+- `enrichFame`(geo.js L2539): fixtureには fame(Wikidataのsitelinks数・月間ページビュー)が一切含まれないため、**「定番/穴場」判定に使われる人気度スコアが常にnull**。fame起因の並び順の変化は固定データのカードには一切反映されない。
+- `fetchHotelsInBbox`(geo.js L1946): fixtureでは空配列固定。地図上の他の宿ピン表示は固定データでは絶対に見えない。
+- Nominatimの`suggestHotels`(打鍵候補)・`geocodeHotel`(検索欄からの確定)は、そもそも fixture 分岐が無く**常に本番APIを叩く別経路**なので、固定データを使っていても「宿を検索する」操作自体は毎回本物のNominatimを叩いている。ここは固定データの範囲外というより「常に本番」の領域。
+
+### 3. 本番でしか確認できないことの確認手順
+
+1. **Chromeのブラウザ自動化**(`mcp__claude-in-chrome__*`)で `https://teer-tee.github.io/yadotabi/` を開き、宿検索欄に実在の宿名を入力して結果画面まで進める。`read_console_messages` でエラー・警告を、`read_network_requests` でOverpass/Nominatim/Wikipediaへの実リクエストと応答時間を確認する。
+2. **どの宿で試すべきか**: 実在の宿名を使うこと。2026-09-19の検証で使ったのは「ホテル櫻井」「富士屋ホテル」「杉乃井ホテル」「ホテル一井」など。固定データの宿名(「草津温泉(固定データ)」のような `label + '(固定データ)'`)では(d)(c)の不具合は再現しない。
+3. **必ずlocalStorageをクリアしてから試す**: DevToolsまたは `mcp__claude-in-chrome__javascript_tool` で `localStorage.clear()` を実行してからページを再読み込みする。2026-09-19に、古いキャッシュが残っていたために結果が変わった実例がある(前述(e))。
+4. **1回の確認で確定としない**: 2026-09-19、R183が3宿で「直った」と確認したものが、R185で再現しなかった実例がある。Overpassの応答は毎回同じとは限らず(429/504・部分失敗・順序のゆらぎ)、**複数回・複数宿で確認してから完了とする**こと。
+5. 確認する観点: 表示までの体感時間、候補の並び(親記事が混ざって消えていないか)、親記事名の抽出結果(道路名で壊れていないか)、429/504時の縮退表示、コンソールエラーの有無。
+
+### 4. 今日の3件の記録
+
+| # | 不具合 | 何が起きたか | なぜ固定データで見えなかったか |
+|---|---|---|---|
+| 1 | 本番で平均30秒かかる | 本番のOverpassクエリが実測で30秒前後かかり、体感が遅い | 固定データは`overpass`キーの生JSONを即座に読むだけで、fetch自体が発生しない。API応答時間という概念が固定データには存在しない |
+| 2 | 親記事が候補に混ざり湯畑が沈む | 親記事(草津温泉)自身が候補の1件としてOverpass/Wikipediaに含まれることがあり、`isHotelItself` の判定に本来引っかからないはずが、固定データでは宿名が「草津温泉(固定データ)」という特殊文字列だったため偶然 `isHotelItself` に一致して消えていた。本番の実在宿名(例:ホテル一井)では一致せず、親記事がそのまま候補に残って湯畑を押しのけて上位に出た | 固定データの宿名(`meta.label + '(固定データ)'`)が、たまたま親記事名と正規化後に一致する特殊ケースになっており、実在の宿名では起きない誤判定の「隠蔽」が起きていた |
+| 3 | 住所の道路名で親記事名が壊れる | 本番で草津の宿を検索すると、Nominatimの`displayName`が「◯◯ホテル, しゃくなげ通り, 草津町, ...」のように宿名の次に道路名を挟むことがあり、旧ロジックだと「しゃくなげ通り温泉」という実在しない記事名を作ってしまい、親記事による加点がエリア全体で効かなくなっていた(R186で道路名を飛ばす修正済み) | `parentArticleTitle`(geo.js L1431)は fixture 中は `meta.label` を直接返すため、**住所文字列(`displayName`)をカンマ分解して地名を抽出する経路そのものを一度も通らない**。この経路は本番のNominatim応答でしか実行されない |
+
+**教訓**: 固定データは「APIが返した後の整形・スコア計算ロジック」を高速かつ無料で検証するための仕組みであり、**「APIをどう呼ぶか」「APIの応答をどう解析するか」「宿固有の文字列(名前・住所)がロジックにどう作用するか」は原理的に検証できない**。大きな変更のあとは必ず本番で実在の宿を使って確認すること。
