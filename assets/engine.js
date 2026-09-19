@@ -575,16 +575,24 @@
   /** 同カテゴリを無条件で許す件数。これを超えると CATEGORY_PENALTY が累積する。 */
   var CATEGORY_FREE_SLOTS = 2;
   /**
-   * R160: カテゴリ減点を数える母数。上位このn件までしか「何件目か」を数えない。
-   * 減点が防ぎたいのは「カードに神社が5枚並ぶ」ことであって、画面に出ない候補まで
-   * 数える意味はない。箱根の place_of_worship は候補だけで1162件あり、全件を数えると
-   * 44件目で -774点、1162件目で -20898点と、基礎スコア(数十〜数百点)を無意味にする
-   * 「候補を消し去る力」になっていた。
-   * 40にする理由: 画面に出るのは最大30件(REASON_POOL)。30ちょうどだと30位付近の候補が
-   * 「自分より下を数えていない」状態になり境界が不自然なので、少し余裕を持たせて40とする。
-   * 41件目以降は減点ゼロ(そもそも画面に出ないので数える意味がない)。
+   * R161: カテゴリ減点の頭打ち。同カテゴリの何件目かがこの値を超えても減点は増えない。
+   *
+   * 減点が防ぎたいのは「カードに神社が5枚並ぶ」ことなのに、頭打ちが無いと
+   * 箱根の place_of_worship 1162件目が -20898点、箱根神社の位置(44件目)でも -774点と、
+   * 基礎スコア(数十〜数百点)に対して「順位を決める力」ではなく「候補を消し去る力」になる。
+   *
+   * R160 では母数を上位40件に絞って対処しようとしたが、これは誤りだった:
+   * 41件目以降が減点ゼロの有利な集団になり、母数の内側で減点を受けた候補が
+   * 外側の無名候補に抜かれて沈む「境界の崖」が生まれる(箱根神社 #200→#2608)。
+   * 母数は全候補のままにし、減点の側に上限を置くのが正しい(崖が生まれない)。
+   *
+   * 3にする理由: 実測(有名どころ42件の順位)で上限なし→平均75/100位超14件に対し、
+   * 8:平均70/14件、4:平均62/10件、3:平均53/100位超5件と3で明確に改善する。
+   * 2まで下げると減点が「3件目以降は一律 -18」の定数になり多様性の段階が消え、
+   * 城崎の初期5件が変わってしまう(4件目以降を4件目より重く扱う性質は残したい)。
+   * つまり CATEGORY_FREE_SLOTS(2) の外側に -18 / -36 の2段階だけを残す設定。
    */
-  var PENALTY_SCOPE = 40;
+  var PENALTY_CAP = 3;
 
   // ---------------------------------------------------------------------------
   // 小道具
@@ -1525,8 +1533,8 @@
     });
 
     var categoryCount = Object.create(null);
-    // R160: 母数は上位 PENALTY_SCOPE 件まで。41件目以降は数えないし減点もしない。
-    scored.slice(0, PENALTY_SCOPE).forEach(function (entry) {
+    // R161: 母数は全候補のまま(絞ると「減点ゼロの有利な集団」ができて崖になる)。
+    scored.forEach(function (entry) {
       var cat = entry.item.category || 'other';
       // 'other' は「カテゴリが分からなかった」だけで、中身が似ているとは限らない。
       // (Wikipedia 単独候補は推定が外れると全部ここに落ちる)
@@ -1536,9 +1544,11 @@
       categoryCount[cat] = seen + 1;
       entry.breakdown.categoryIndex = seen;
       if (seen >= CATEGORY_FREE_SLOTS) {
-        // 3件目以降は出るほど重く減点し、同じカテゴリが延々と続くのを防ぐ
-        entry.score -= WEIGHT.CATEGORY_PENALTY * (seen - CATEGORY_FREE_SLOTS + 1);
-        entry.breakdown.categoryPenalty = -(WEIGHT.CATEGORY_PENALTY * (seen - CATEGORY_FREE_SLOTS + 1));
+        // 3件目以降は出るほど重く減点し、同じカテゴリが延々と続くのを防ぐ。
+        // R161: ただし PENALTY_CAP 件目で頭打ちにする(それ以上は増えない)。
+        var capped = Math.min(seen, PENALTY_CAP);
+        entry.score -= WEIGHT.CATEGORY_PENALTY * (capped - CATEGORY_FREE_SLOTS + 1);
+        entry.breakdown.categoryPenalty = -(WEIGHT.CATEGORY_PENALTY * (capped - CATEGORY_FREE_SLOTS + 1));
       }
     });
 
