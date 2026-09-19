@@ -18,7 +18,10 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // エリアごとの座標テーブル。assets/app.js の fixtureNameFromUrl と同じ正規表現で名前を検証する。
 const AREAS = {
   kusatsu: { lat: 36.6226, lon: 138.5960, label: '草津温泉' },
-  hakone: { lat: 35.2324, lon: 139.1069, label: '箱根湯本', osmRadiusM: 30000 },
+  // R176: 以前は osmRadiusM: 30000 だったが、箱根の主要スポットは全て15km以内(ポーラ美術館8.2km・
+  // 大涌谷7.6km・箱根神社8.0km・芦ノ湖遊覧船9.2km)で、15〜30kmは熱海・御殿場・大磯など別の観光地だった。
+  // 本番の assets/engine.js は OSM_RADIUS_M=15000 固定なので、30000 は fixture だけが本番と食い違う状態でもあった。
+  hakone: { lat: 35.2324, lon: 139.1069, label: '箱根湯本' },
   dogo: { lat: 33.8520, lon: 132.7860, label: '道後温泉' },
   beppu: { lat: 33.2846, lon: 131.4914, label: '別府温泉' },
   kinosaki: { lat: 35.6262, lon: 134.8055, label: '城崎温泉' }
