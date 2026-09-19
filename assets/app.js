@@ -872,6 +872,25 @@
   // R54: 距離(m)を表示用テキストに整形する。
   // 1000m未満は整数m(例 850m)、1000m以上は小数第1位でkm(例 1.2km)、
   // ちょうど整数kmになる場合は小数点を出さない(例 2km)。
+  // R165: 徒歩分数の表示上限。分速80m換算で徒歩30分=約2.4km。
+  // 「観光地まで歩いて行こうと思える」上限として一般的な感覚に近く、
+  // これを超える距離(5km級)に「徒歩65分」等と出しても実質誰も歩かず、
+  // 案内として無意味どころか距離感覚を疑わせる表示になるため、
+  // 徒歩30分を超えたら徒歩の表記自体を出さず車と距離だけにする。
+  // 順位(rank)には一切影響しない、表示側だけの変更。
+  var WALK_MIN_DISPLAY_LIMIT = 30;
+
+  /** カードの所要時間表示。徒歩が長すぎるときは徒歩を省き車と距離だけにする(R165)。 */
+  function timesText(card) {
+    var dist = distanceText(card.distanceM);
+    var showWalk = isFinite(card.walkMin) && card.walkMin <= WALK_MIN_DISPLAY_LIMIT;
+    var parts = [];
+    if (showWalk) parts.push('🚶徒歩' + escapeHtml(String(card.walkMin)) + '分');
+    parts.push('🚗車' + escapeHtml(String(card.driveMin)) + '分');
+    if (dist) parts.push(escapeHtml(dist));
+    return parts.join(' · ');
+  }
+
   function distanceText(m) {
     if (!isFinite(m) || m < 0) return '';
     if (m < 1000) return Math.round(m) + 'm';
@@ -1044,10 +1063,7 @@
         reason +
         '<p class="feedcard__meta">' +
           '<span class="feedcard__cat">' + escapeHtml(emoji) + ' ' + escapeHtml(card.categoryLabel || '') + '</span>' +
-          '<span class="feedcard__times">🚶徒歩' + escapeHtml(String(card.walkMin)) + '分 · 🚗車' +
-            escapeHtml(String(card.driveMin)) + '分' +
-            (distanceText(card.distanceM) ? ' · ' + escapeHtml(distanceText(card.distanceM)) : '') +
-            '</span>' +
+          '<span class="feedcard__times">' + timesText(card) + '</span>' +
         '</p>' +
         hours +
         summary +
