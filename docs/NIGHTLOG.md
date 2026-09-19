@@ -2090,3 +2090,8 @@ R175(親記事の上位概念昇格)・R189(`looksOnsenAreaTitle`が末尾一致
 ### 2026-09-20 R213 embed-check.html に説明書き追加・README営業デモ記述を実態に統一
 `demo/embed-check.html` にタイトルのみで用途説明が無かった問題(R210)と、README本文53行目の営業用デモが日本語版1枚しか案内しておらずR207で足した冒頭英語段落と食い違っていた問題を同時に解消。
 iframe要素・既存スクリプトは無変更(バイト一致確認済み)、`node docs/check.mjs` exit 0・`node scripts/check-all.mjs` 32本全PASS、モバイル/PC幅のスクリーンショットで説明文の可読性を目視確認済み。
+
+### 2026-09-20 R218 営業デモ2枚をブラウザ検査で守る(check-demo.mjs 新設・33本化)
+NEXT.mdの「検査32本がdemo/3枚を一切見ていない」は不正確で、実測では`docs/check.mjs`が3枚をリンク切れ観点で見ており`check-embedheight.mjs`が`demo/hotel-page.html`1枚を開いていた。真の穴は**`demo/hotel-page-en.html`と`demo/embed-check.html`の2枚にブラウザで中身を見る検査が0本**だったこと(直近のR85/R207/R208/R213で作り込んだばかりの2枚)。
+`scripts/check-demo.mjs`を`check-embedheight.mjs`の書式(`ensureServer()`・`PLAYWRIGHT_IMPORT`方式)に完全に揃えて新設し、26項目を検査(HTTP200/`<title>`/`lang`/JSエラー0件/iframeが`embed=1`+`fixture=kusatsu`で実描画されカードが出ること/en側は主要見出し・日本語版への導線・OGタグ4種・高さ通知で640px超/embed-checkは説明文3本以上)。固定データのみで外部API消費0回。セレクタを存在しない値に一時改変して3項目FAILすることを確認後に復元し、「落ちる検査」であることを検証済み。
+単体 26 pass / 0 fail、`node scripts/check-all.mjs` **33本中33本PASS(348.3s)**、`check-demo`単体は5.8s。`docs/CHECKS.md`の本数(32→33)・表・所要目安を同じサイクルで更新(R212の再発防止)。`demo/`3枚・`assets/`・`index.html`・既存検査32本は1バイトも変更なし。

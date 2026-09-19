@@ -1,12 +1,12 @@
-# CHECKS.md — `scripts/check-all.mjs` が回す32本の一覧と並列化できない理由
+# CHECKS.md — `scripts/check-all.mjs` が回す33本の一覧と並列化できない理由
 
 この表は `scripts/check-all.mjs` の `SCRIPTS` 配列(`check-all.mjs:17`)と**一対一で一致させること**。check 本を増減したらこの表も同じコミットで直す。
 
 ## 対象範囲
 
-`node scripts/check-all.mjs` は `scripts/check-*.mjs` の31本と `docs/check.mjs` の1本、計32本を `spawnSync` で直列に呼ぶだけの外側の殻です。各 check 本の中身はこのタスクでは無編集(AUTOPILOT の運用どおり)。
+`node scripts/check-all.mjs` は `scripts/check-*.mjs` の計32ファイルと `docs/check.mjs` の1ファイル、合計33本を `spawnSync` で直列に呼ぶだけの外側の殻です。各 check 本の中身はこのタスクでは無編集(AUTOPILOT の運用どおり)。
 
-## サーバを立てる27本(全て Playwright あり)
+## サーバを立てる28本(全て Playwright あり)
 
 **R130 以降、サーバの起動・停止は `scripts/lib/server.mjs` の `ensureServer()` に一本化しました**(各本が自前でポート3000を spawn/kill するのをやめた)。`check-all.mjs` が親として1回だけサーバを立て、環境変数 `YADOTABI_BASE` で各子プロセスに渡すため、子は起動せず奪い合いが起きません。単体実行時は同変数が無いので従来どおり自分で起動し、`listen(0)` で実測した空きポートを使い、`stop()` がプロセスの終了とポートの解放を待ってから返ります(終了待ちが無かったのが連続実行で1本ずつ落ちていた原因)。
 
@@ -20,6 +20,7 @@
 | check-autozoom | 地図の自動ズーム挙動。R113: 同じエリアチップ連打で再取得が増えないこと/別チップでは増えることも含む |
 | check-chipcurrent | `?q=`/チップ選択時に該当エリアチップが強調されること(R29) |
 | check-debugflag | `?fixture=` 併用時だけ効く `?debug=1` のスコア内訳表示(fixture 無しでは出ないこと) |
+| check-demo | R218: 営業デモ `demo/hotel-page-en.html` と `demo/embed-check.html` をブラウザで開き、HTTP200・`<title>`・`lang`・JSエラー0件・iframe が `embed=1`+`fixture=kusatsu` で実描画されカードが出ること・en側の主要見出し/日本語版への導線/OGタグ4種/高さ通知(640px超)・embed-check の説明文3本以上を検査(この2枚は既存の他の検査がブラウザで開いていなかった) |
 | check-distance | 距離表示・並び順 |
 | check-embedbg | embed時の背景表示 |
 | check-embedheight | embed時の高さ調整 |
@@ -42,7 +43,7 @@
 | check-recent | 検索候補に「最近見た宿」が見出し付きで統合されること(R32) |
 | check-sample | サンプル導線チップの表示・件数 |
 
-所要目安(現在値・2026-09-20 R205 実測): **32本**(check-all.mjs)の合計は **343.4s(Windows)/ 342.5s(CI)**、最遅は `check-reason.mjs 28.9s`。CI(GitHub Actions)でもWindowsと同じ32本全PASSの結果が出ることをR205で確認済み。過去(check本数が少なかった頃)の記録はNIGHTLOGの当該サイクルを参照(この節は現在値だけを保持する運用にする)。
+所要目安(現在値・2026-09-20 R218 実測): **33本**(check-all.mjs)の合計は **348.3s(Windows)**、最遅は **`check-reason.mjs 28.2s`**。R218 で `check-demo`(5.8s)を1本追加して33本になった。直前のR205実測は追加前の状態で343.4s(Windows)/ 342.5s(CI)、CI(GitHub Actions)でもWindowsと同じ結果が出ることを確認済み。過去(check本数が少なかった頃)の記録はNIGHTLOGの当該サイクルを参照(この節は現在値だけを保持する運用にする)。
 
 ## サーバもPlaywrightも不要な5本
 
@@ -54,7 +55,7 @@
 | check-r5 | 段階描画の発火順 |
 | docs/check.mjs | 本番URLへのGET・応答時間・ファイルKB・リンク切れ検査(他4本と違い、ローカルではなく本番URLへのHTTPアクセスのためサーバもPlaywrightも不要)。R109: 埋め込みタグの sandbox/referrerpolicy が3箇所で一致しているか |
 
-実測では「サーバを使う27本」と「Playwrightを使う27本」は完全に同じ集合(`grep -l ensureServer` と `grep -l playwright` の結果が一致。ただし `check-all.mjs` 自身は親サーバ起動のため `ensureServer` を含むがSCRIPTS対象外なので除外して数える)で、サーバ不要かPlaywright不要かで割れる本は存在しない。上記5本だけがどちらも不要。
+実測では「サーバを使う28本」と「Playwrightを使う28本」は完全に同じ集合(`grep -l ensureServer` と `grep -l playwright` の結果が一致。ただし `check-all.mjs` 自身は親サーバ起動のため `ensureServer` を含むがSCRIPTS対象外なので除外して数える)で、サーバ不要かPlaywright不要かで割れる本は存在しない。上記5本だけがどちらも不要。
 
 ## 並列化できない理由
 
@@ -93,4 +94,4 @@
 - 一致しなければ、`scripts/check-all.mjs:17` の `SCRIPTS` 配列と本ファイルの表を名前ベースで比較し、増減分をこの表にも反映する。
 - **(R135追加)本数の比較は総数だけでなく、節見出しに書いた本数(「サーバを立てる◯本」等)にも行う**。節見出しの数字・節内の表の行数・`grep -l ensureServer` / `grep -l playwright` の実測本数の3つが一致しているか確認すること。R135では表の行数は合っていたのに見出しの本数だけ古いままになっており、総数一致の確認だけでは見つからなかった。
 - **(R135追加)記述と実装の対応も見る**。「並列化できない理由」「必要な改修」など理由・手順を書いた節は、`grep -rn "PORT = 3000" scripts/` や `grep -rn "ensureServer\|findFreePort" scripts/lib/server.mjs` を実際に流し、書かれている技術的理由が現在のコードと矛盾していないかを確認する。本数だけ合わせて理由の文章を放置すると、存在しない仕組みを前提にした説明が生き残る(R135で発覚した事故はこのパターン)。
-- **(R212追加・実例)** 検査を32本まで増やす過程で、1行目の見出し・節見出し(「サーバを立てる◯本」「不要な◯本」)・表そのものが揃って古いままになっていた(`check-bundle`・`check-osmfallback`の2本が表から漏れていた)うえ、所要目安も1サイクル前の値(322.5s)のままだった。この確認方法どおりに `grep -c "^| check"` と `SCRIPTS` 配列を突き合わせて発見・修正した。
+- **(R212追加・実例)** 検査を R218 の直前の本数まで増やす過程で、1行目の見出し・節見出し(「サーバを立てる◯本」「不要な◯本」)・表そのものが揃って古いままになっていた(`check-bundle`・`check-osmfallback`の2本が表から漏れていた)うえ、所要目安も1サイクル前の値(322.5s)のままだった。この確認方法どおりに `grep -c "^| check"` と `SCRIPTS` 配列を突き合わせて発見・修正した。
