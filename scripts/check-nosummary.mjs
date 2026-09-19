@@ -178,10 +178,18 @@ async function main() {
         rel: link ? link.getAttribute('rel') : null,
       };
     });
+    // R162: geo.js の resolveWikipediaTitles が wikidata タグから記事名を復元するように
+    // なったため、「別府市美術館」は Q番号 → jawiki「別府市美術館」が解決され、
+    // Wikidata の転送URLではなく**記事への直リンク**が出るようになった(行き止まりの
+    // 解消としてはより良い側への変化)。不変条件は R124 と同じ「リンクが必ず1本出る」で、
+    // 転送URL・直リンクのどちらでも満たしていればよい、という判定に緩める。
+    const WIKIDATA_REDIRECT_RE = /^https:\/\/www\.wikidata\.org\/wiki\/Special:GoToLinkedPage\/jawiki\/Q[1-9][0-9]*$/;
+    const WIKIPEDIA_ARTICLE_RE = /^https:\/\/ja\.wikipedia\.org\/wiki\/\S+$/;
     ok(
-      !!umitamagoRow && !!umitamagoRow.href && /^https:\/\/www\.wikidata\.org\/wiki\/Special:GoToLinkedPage\/jawiki\/Q[1-9][0-9]*$/.test(umitamagoRow.href) &&
+      !!umitamagoRow && !!umitamagoRow.href &&
+        (WIKIDATA_REDIRECT_RE.test(umitamagoRow.href) || WIKIPEDIA_ARTICLE_RE.test(umitamagoRow.href)) &&
         umitamagoRow.target === '_blank' && umitamagoRow.rel === 'noopener',
-      '7. wikidataId のみの候補(別府市美術館)にWikidata転送リンクが出る',
+      '7. wikidataId のみの候補(別府市美術館)に記事リンク(転送URLまたは直リンク)が出る',
       umitamagoRow
     );
 

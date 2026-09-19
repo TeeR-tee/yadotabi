@@ -181,6 +181,64 @@ async function fetchWiki() {
   return { query: { pages: pages } };
 }
 
+/**
+ * R162: OSM の `wikidata` タグから日本語版Wikipediaの記事名を引く対応表を作る。
+ * ★ assets/geo.js の resolveWikipediaTitles と同期させること
+ *   (fixture 側だけ変えると本番とずれる)。
+ *
+ * 対象は geo.js と同じく「wikipedia タグが無く、wikidata タグだけがある」要素。
+ * wbgetentities は 50件/リクエストなので、1エリアでも数リクエストで済む。
+ */
+async function fetchWikidataTitles(elements) {
+  const ids = new Set();
+  for (const el of elements) {
+    const tags = el.tags || {};
+    const name = (tags['name:ja'] || tags.name || '').trim();
+    if (!name) continue;
+    if (tags.wikipedia || tags['wikipedia:ja']) continue;
+    const raw = typeof tags.wikidata === 'string' ? tags.wikidata.trim() : '';
+    if (/^Q\d+$/.test(raw)) ids.add(raw);
+  }
+  const list = [...ids];
+  if (!list.length) return {};
+  console.log('Wikidata sitelinks を照会中(' + list.length + '件 / ' + Math.ceil(list.length / 50) + 'リクエスト)…');
+
+  const table = {};
+  for (let i = 0; i < list.length; i += 50) {
+    const batch = list.slice(i, i + 50);
+    const params = new URLSearchParams({
+      action: 'wbgetentities',
+      ids: batch.join('|'),
+      props: 'sitelinks',
+      sitefilter: 'jawiki',
+      format: 'json',
+      origin: '*'
+    });
+    const res = await fetch('https://www.wikidata.org/w/api.php?' + params.toString(), {
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': 'yadotabi-fixture/1.0 (https://github.com/TeeR-tee/yadotabi)'
+      }
+    });
+    // 429/504 は押し込まずその場で止める(無料APIのマナー)
+    if (res.status === 429 || res.status === 504) {
+      throw new Error('wikidata busy ' + res.status + '(押し込まず中止します)');
+    }
+    if (!res.ok) throw new Error('wikidata ' + res.status);
+    const data = await res.json();
+    const entities = (data && data.entities) || {};
+    for (const id of batch) {
+      const link = entities[id] && entities[id].sitelinks && entities[id].sitelinks.jawiki;
+      const title = link && typeof link.title === 'string' ? link.title.trim() : '';
+      if (title) table[id] = title;
+    }
+    // 連打しない
+    if (i + 50 < list.length) await delay(1200);
+  }
+  console.log('  jawiki記事あり: ' + Object.keys(table).length + '件');
+  return table;
+}
+
 async function main() {
   // Wikipedia を先に取る(Overpass は重いので、Wikipedia 側で失敗したときに
   // Overpass を無駄に叩き直さないようにする)
@@ -198,6 +256,9 @@ async function main() {
   const droppedKeys = slimOverpassElements(elements);
   console.log('  削除タグ数: ' + droppedKeys);
 
+  // R162: slim 後の要素から wikidata→記事名 の対応表を作る(geo.js と同じ条件)。
+  const wikidataTitles = await fetchWikidataTitles(elements);
+
   const fixture = {
     meta: {
       area: AREA,
@@ -209,7 +270,9 @@ async function main() {
       generatedAt: new Date().toISOString()
     },
     overpass: { elements: elements },
-    wiki: wiki
+    wiki: wiki,
+    // R162: geo.js の resolveWikipediaTitles が fixture モードで読む対応表
+    wikidataTitles: wikidataTitles
   };
 
   const outDir = join(ROOT, 'fixtures');

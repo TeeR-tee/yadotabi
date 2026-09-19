@@ -779,8 +779,88 @@
     });
 
     spots.sort(function (a, b) { return a.distanceM - b.distanceM; });
+
+    // R162: wikidata タグはあるが wikipedia タグが無い候補の記事名を復元する。
+    await resolveWikipediaTitles(spots);
+
     if (!fixtureData) cacheSet(cacheKey, spots, TTL_SPOTS_MS);
     return spots;
+  }
+
+  /**
+   * R162: OSM の `wikidata` タグから日本語版Wikipediaの記事名を復元する。
+   *
+   * OSM では `wikidata` タグだけが付いていて `wikipedia` タグが無い要素が多い
+   * (実測: hakone 352件 / beppu 27件 / dogo 22件 / kusatsu 11件)。
+   * Wikidata の sitelinks を引けば、そのうち jawiki 記事を持つものの記事名が分かる
+   * (実測: dogo 18/22・beppu 13/27・kusatsu 3/11)。
+   *
+   * **取り違えが起きない経路である理由:** 突き合わせの鍵が Q番号という一意な識別子
+   * であり、名前の類似では一切判定していない。Q番号が指す項目の jawiki 記事は
+   * 定義上その項目そのものなので、別のスポットの記事が付くことがない。
+   *
+   * 負荷: wbgetentities は 50件/リクエスト。5エリア合計でも9リクエストで収まる。
+   * **1候補1リクエストにはしないこと**(無料APIのマナー)。
+   *
+   * 失敗しても致命的ではない(wikipediaTitle が null のままになるだけ)ので、
+   * 例外は握りつぶして候補づくり自体は必ず成立させる。
+   */
+  async function resolveWikipediaTitles(spots) {
+    // fixture モードでは外部APIを叩かない。make-fixture.mjs が保存した対応表を使う。
+    if (fixtureData) {
+      var table = fixtureData.wikidataTitles || null;
+      if (!table) return;
+      spots.forEach(function (s) {
+        if (s.wikipediaTitle || !s.wikidataId) return;
+        var t = table[s.wikidataId];
+        if (typeof t === 'string' && t) s.wikipediaTitle = t;
+      });
+      return;
+    }
+
+    // 対象は「wikipedia タグが無く、wikidata タグだけがある」候補に限る。
+    // 既に記事名が分かっているものを上書きしない(OSM のタグの方が現地の判断として強い)。
+    var byId = Object.create(null);
+    spots.forEach(function (s) {
+      if (s.wikipediaTitle || !s.wikidataId) return;
+      if (!byId[s.wikidataId]) byId[s.wikidataId] = [];
+      byId[s.wikidataId].push(s);
+    });
+    var ids = Object.keys(byId);
+    if (!ids.length) return;
+
+    var batches = chunk(ids, WIKIDATA_BATCH_SIZE).map(async function (batch) {
+      var params = new URLSearchParams({
+        action: 'wbgetentities',
+        ids: batch.join('|'),
+        props: 'sitelinks',
+        // 日本語版だけに絞ると応答が小さくなる(他言語は使わない)
+        sitefilter: 'jawiki',
+        format: 'json',
+        origin: '*'
+      });
+      var res = await fetchWithTimeout(
+        WIKIDATA_URL + '?' + params.toString(),
+        { method: 'GET', headers: { Accept: 'application/json' } },
+        TIMEOUT_FAME_MS,
+        'Wikidataの取得がタイムアウトしました。'
+      );
+      if (!res.ok) throw new Error('wikidata ' + res.status);
+      var data = await res.json();
+      var entities = (data && data.entities) || {};
+      batch.forEach(function (id) {
+        var entity = entities[id];
+        var link = entity && entity.sitelinks && entity.sitelinks.jawiki;
+        var title = link && typeof link.title === 'string' ? link.title.trim() : '';
+        if (!title) return;
+        byId[id].forEach(function (s) {
+          if (!s.wikipediaTitle) s.wikipediaTitle = title;
+        });
+      });
+    });
+
+    // 一部のバッチが落ちても他の結果は活かす(取れなかった分は null のまま)。
+    await Promise.allSettled(batches);
   }
 
   // ---------------------------------------------------------------------------
