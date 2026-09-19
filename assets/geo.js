@@ -155,6 +155,55 @@
     'hot', 'spring', 'springs', 'view', 'panorama', 'the'
   ];
 
+  // R175: 親記事が痩せているときだけ上位概念へ昇格する(市場調査 第12回)。
+  //
+  // **何を直す仕組みか**: 箱根だけ親記事が「湯本 (箱根町)」= 箱根町の一字の記事に
+  // 解決しており、本文1,001字で **箱根神社0回・大涌谷0回・彫刻の森0回・芦ノ湖0回**。
+  // R164(本文照合)のヒットが2件しかなく、R173(代表画像)も配られず、箱根だけ
+  // どの改善も効かない状態だった。正しい親記事は **箱根町**(8,766字・4大スポット全言及)。
+  //
+  // **★エリア名を一切参照しないデータ駆動の判定にすること**。使うのは
+  // 「本文の長さ」と「自分の照合で何件拾えたか」だけで、どのエリアでも同じように測れる。
+  //
+  // **なぜ無条件に昇格してはいけないか(第12回 12-3-2 の実測)**: 上位に遡ると粒度が
+  // 粗くなって子スポットが落ちる。城崎8→1件・草津7→2件でヒットが消え、さらに
+  // 市町村の記事の代表画像は **モンタージュ(複数枚の合成写真)** であることが多く、
+  // 城崎/別府/道後の3エリアで R173 の代表画像が合成写真に化ける。ゲートは必須。
+  var PARENT_PROMOTE_MAX_CHARS = 2000;
+  // 1. 本文がこの字数未満であること。実測で箱根1,001字 vs 次に短い城崎4,876字と
+  //    4.9倍の開きがあり、境目に候補が1つも無い。
+  var PARENT_PROMOTE_MAX_HIT_RATE = 10;
+  // 2. **候補1,000件あたりのヒット件数**がこの値未満であること。
+  //
+  //    ★市場調査 第12回は「ヒット0件」を条件に挙げていたが、**実装して実測したら
+  //    箱根は0件ではなく6件だった**(第12回は名前付きPOI 2,921件を母数に手で数えたのに対し、
+  //    実際に engine.js が渡す候補は 2,855件で顔ぶれも違う)。素の件数で閾値を引くと
+  //    箱根6件と道後12件の間に線を引くことになり、**危険なほど余裕が無い**。
+  //
+  //    候補数で割ると分離は一気に広がる(実測):
+  //      箱根 2.1 ‰ ／ 道後 25.0 ‰ ・城崎 55.6 ‰ ・別府 64.6 ‰ ・草津 177.2 ‰
+  //    箱根と次に低い道後で **12倍の開き**があり、閾値10‰はその中間に置いてある。
+  //    候補数が多いエリアほど素の件数は増えるので、**割合で見るほうが素の件数より頑健**。
+  //
+  //    ★2条件の AND にするのが肝で、片方だけだと「短いが良く書けた記事」
+  //    「たまたま照合に失敗しただけの良い記事」を巻き込む。
+  //
+  //    なお箱根の6件の中身は 小田急箱根x3・箱根登山バスx1・浅間山x1・鷹巣山x1・
+  //    函嶺洞門x1・箱根温泉x1 で、**観光スポットは1つも無い**(本文は町字の記事で、
+  //    「施設」「沿革」など節の見出しだけがあって中身が空)。第12回の
+  //    「その土地の解説として機能していない」という質的な判断はそのまま正しい。
+  //
+  // 3. 昇格先は **記事名の括弧から無料で取る**(「湯本 (箱根町)」→「箱根町」)。
+  //    括弧は Wikipedia の曖昧さ回避の規約そのもので、中身が所属する上位概念を表す。
+  //    ★Wikidata P131 を使わないこと: 5エリア全件で値を返すので「昇格すべきか」を
+  //    何も教えないうえ、城崎→豊岡市のように行政区画へ逸れ、実照会で 429 を食らった。
+  //    他4エリア(城崎温泉・別府温泉・草津温泉・道後温泉)には括弧が無いので、
+  //    **仮にゲートを誤って通過しても遡る先が取れずに何も起きない**(第2の安全装置)。
+  //
+  // 4. 引き直した結果のヒットが **増えたときだけ採用**する。← 呼び出し側で判定
+  //    これは「壊れないこと」をコード自身に保証させる安全弁で、将来エリアを増やしても
+  //    ヒットが減る方向の変更は自動的に棄却される。箱根は 2件 → 51件 なので通る。
+
   // R166: タグで記事名が分かっている候補の要約・写真を取りに行く(fetchWikiByTitles)の設定。
   //
   // **何をする仕組みか**: geosearch(座標から探す)で写真・要約が埋まらなかった候補のうち、
@@ -1266,63 +1315,129 @@
 
     var text = '';
     var image = null;
+    var resolved = title;
     if (fixtureData) {
       // 固定データモードでは外部APIを叩かない。make-fixture.mjs が保存した本文を使う。
+      // R175: make-fixture.mjs 側で昇格の判定まで済ませてあるので、ここに入っているのは
+      // **採用後の最終的な親記事**。固定データモードでは追加の判定をしない。
       text = typeof fixtureData.parentExtract === 'string' ? fixtureData.parentExtract : '';
       image = fixtureData.parentImage || null;
     } else {
-      var cacheKey = 'parent:' + title;
-      var cached = cacheGet(cacheKey);
-      // R173 より前のキャッシュは文字列で入っているので、両方の形を受ける。
-      if (cached && typeof cached === 'object' && typeof cached.text === 'string') {
-        text = cached.text;
-        image = cached.image || null;
-      } else if (typeof cached === 'string') {
-        text = cached;
-      } else {
-        try {
-          var params = new URLSearchParams({
-            action: 'query',
-            format: 'json',
-            formatversion: '2',
-            // R173: pageimages を足しても **リクエストは1本のまま**。親記事の代表画像
-            // (草津温泉なら湯畑の写真)を、同じ応答で受け取るためのパラメータ追加。
-            prop: 'extracts|pageimages',
-            explaintext: '1',   // HTML ではなく素のテキストで受け取る(後処理が要らない)
-            redirects: '1',     // 箱根湯本→湯本 (箱根町) のような転送を吸収する
-            pithumbsize: '480', // カードの写真と同じ幅(fetchWikiNearby に合わせる)
-            titles: title,
-            origin: '*'
-          });
-          var res = await fetchWithTimeout(
-            WIKIPEDIA_API_URL + '?' + params.toString(),
-            { method: 'GET', headers: { Accept: 'application/json' } },
-            TIMEOUT_FAME_MS,
-            '親記事の取得がタイムアウトしました。'
-          );
-          if (!res.ok) throw new Error('extracts ' + res.status);
-          var data = await res.json();
-          var pages = (data && data.query && data.query.pages) || [];
-          // formatversion=2 なので pages は配列。記事が無ければ missing で返る。
-          for (var i = 0; i < pages.length; i++) {
-            if (pages[i] && typeof pages[i].extract === 'string') {
-              text = pages[i].extract;
-              image = parentImageFromPage(pages[i]);
-              break;
-            }
-          }
-          // 記事が無かった場合も空で覚える(同じ宿で毎回引き直さない)。
-          cacheSet(cacheKey, { text: text, image: image }, TTL_FAME_MS);
-        } catch (e) {
-          return hits; // 誰も加点されない = 変更前と同じ並び
-        }
-      }
+      var first = await fetchParentArticle(title);
+      if (!first) return hits; // 誰も加点されない = 変更前と同じ並び
+      text = first.text;
+      image = first.image;
+      resolved = first.title || title;
     }
 
     if (!text) return hits;
     var matched = matchParentMentions(text, names);
+
+    // R175: 親記事が痩せていて1件も拾えないときだけ、記事名の括弧から上位概念へ昇格する。
+    // 固定データモードでは make-fixture.mjs が同じ判定を済ませているので何もしない。
+    if (!fixtureData) {
+      var promoted = await promoteParentIfThin(resolved, text, matched, names);
+      if (promoted) {
+        matched = promoted.hits;
+        image = promoted.image;
+      }
+    }
+
     if (image && image.url) matched._image = image;
     return matched;
+  }
+
+  /**
+   * R175: 親記事を1本だけ引く(ネットワーク)。fetchParentMentions が1本目と
+   * 昇格後の2本目の **両方で同じ条件を使う** ために切り出した。
+   *
+   * ★ scripts/make-fixture.mjs の fetchParentExtract と同条件にすること
+   *   (prop=extracts|pageimages&explaintext=1&redirects=1&pithumbsize=480、1リクエスト1記事)。
+   *
+   * @param {string} title 記事名
+   * @returns {Promise<{title:string,text:string,image:Object|null}|null>} 失敗時は null
+   */
+  async function fetchParentArticle(title) {
+    var cacheKey = 'parent:' + title;
+    var cached = cacheGet(cacheKey);
+    // R173 より前のキャッシュは文字列で入っているので、両方の形を受ける。
+    if (cached && typeof cached === 'object' && typeof cached.text === 'string') {
+      return { title: cached.title || title, text: cached.text, image: cached.image || null };
+    }
+    if (typeof cached === 'string') {
+      return { title: title, text: cached, image: null };
+    }
+
+    var text = '';
+    var image = null;
+    var resolved = title;
+    try {
+      var params = new URLSearchParams({
+        action: 'query',
+        format: 'json',
+        formatversion: '2',
+        // R173: pageimages を足しても **リクエストは1本のまま**。親記事の代表画像
+        // (草津温泉なら湯畑の写真)を、同じ応答で受け取るためのパラメータ追加。
+        prop: 'extracts|pageimages',
+        explaintext: '1',   // HTML ではなく素のテキストで受け取る(後処理が要らない)
+        redirects: '1',     // 箱根湯本→湯本 (箱根町) のような転送を吸収する
+        pithumbsize: '480', // カードの写真と同じ幅(fetchWikiNearby に合わせる)
+        titles: title,
+        origin: '*'
+      });
+      var res = await fetchWithTimeout(
+        WIKIPEDIA_API_URL + '?' + params.toString(),
+        { method: 'GET', headers: { Accept: 'application/json' } },
+        TIMEOUT_FAME_MS,
+        '親記事の取得がタイムアウトしました。'
+      );
+      if (!res.ok) throw new Error('extracts ' + res.status);
+      var data = await res.json();
+      var pages = (data && data.query && data.query.pages) || [];
+      // formatversion=2 なので pages は配列。記事が無ければ missing で返る。
+      for (var i = 0; i < pages.length; i++) {
+        if (pages[i] && typeof pages[i].extract === 'string') {
+          text = pages[i].extract;
+          image = parentImageFromPage(pages[i]);
+          // R175: 昇格の判定には **転送を解決した後の記事名** が要る
+          // (入力の「箱根湯本」には括弧が無く、解決後の「湯本 (箱根町)」に括弧が付く)。
+          if (typeof pages[i].title === 'string' && pages[i].title) resolved = pages[i].title;
+          break;
+        }
+      }
+      // 記事が無かった場合も空で覚える(同じ宿で毎回引き直さない)。
+      cacheSet(cacheKey, { title: resolved, text: text, image: image }, TTL_FAME_MS);
+    } catch (e) {
+      return null;
+    }
+    return { title: resolved, text: text, image: image };
+  }
+
+  /**
+   * R175: ゲートが発火したときだけ上位概念の記事を引き直し、
+   * **ヒットが増えたときだけ** 採用する(安全弁)。
+   *
+   * ★ scripts/make-fixture.mjs の promoteParent と同じ手順にすること。
+   *
+   * 負荷: ゲートが発火したエリアだけ **+1リクエスト**。実測では5エリア中箱根のみで、
+   * 他4エリアは1本目でゲートを通らないので増分ゼロ。
+   *
+   * @returns {Promise<{hits:Object,image:Object|null}|null>} 採用しないなら null
+   */
+  async function promoteParentIfThin(resolvedTitle, text, matched, names) {
+    var hitCount = Object.keys(matched).length;
+    var next = parentPromoteTitle(resolvedTitle, text, hitCount, names.length);
+    if (!next) return null;
+
+    var article = await fetchParentArticle(next);
+    if (!article || !article.text) return null;
+
+    var reHits = matchParentMentions(article.text, names);
+    // ★安全弁: ヒットが増えたときだけ採用する。減る・同数なら元に戻す。
+    // これで「壊れる方向には動けない」ことをコード自身が保証する。
+    if (Object.keys(reHits).length <= hitCount) return null;
+
+    return { hits: reHits, image: article.image };
   }
 
   /**
@@ -1543,6 +1658,48 @@
       if (count > 0) hits[name] = count;
     });
     return hits;
+  }
+
+  /**
+   * R175: 親記事が「その土地の解説として機能していない」かを判定し、
+   * 機能していないなら昇格先の記事名を返す(純粋関数)。
+   *
+   * ★ assets/geo.js と scripts/make-fixture.mjs で **同じ関数を使うこと**
+   *   (make-fixture.mjs は geo.js を eval して YadoGeo.parentPromoteTitle を呼ぶ)。
+   *
+   * 判定は2条件の AND(市場調査 第12回 12-2-2 を実測で補正したもの):
+   *   - 本文が PARENT_PROMOTE_MAX_CHARS(2,000)字未満
+   *   - 候補1,000件あたりの照合ヒットが PARENT_PROMOTE_MAX_HIT_RATE(10)未満
+   * どちらか一方だけだと誤爆する。実測で5エリア中 **箱根だけ** が両方を満たす。
+   *
+   * 昇格先は **解決後の記事名の括弧の中身**。括弧が無ければ空文字を返す
+   * (= 昇格しない)。他4エリアの記事名には括弧が無いので構造的に発火しえない。
+   *
+   * ★この関数は「昇格すべきか」までしか決めない。**実際に採用してよいかは
+   * 引き直した本文で再照合し、ヒットが増えたときだけ**(呼び出し側の責任)。
+   *
+   * @param {string} title 解決後の親記事名(例: '湯本 (箱根町)')
+   * @param {string} text 親記事の本文(explaintext)
+   * @param {number} hitCount その本文での照合ヒット件数
+   * @param {number} nameCount 照合にかけた候補の件数(割合の分母)
+   * @returns {string} 昇格先の記事名。昇格しないなら空文字
+   */
+  function parentPromoteTitle(title, text, hitCount, nameCount) {
+    var name = typeof title === 'string' ? title.trim() : '';
+    if (!name) return '';
+    var body = typeof text === 'string' ? text : '';
+    // ゲート: 痩せていて、かつ候補の数のわりにほとんど拾えていないときだけ先へ進む。
+    if (body.length >= PARENT_PROMOTE_MAX_CHARS) return '';
+    var total = typeof nameCount === 'number' && nameCount > 0 ? nameCount : 0;
+    if (!total) return ''; // 候補が無ければ割合を測れない = 判定しない
+    if (!((hitCount / total) * 1000 < PARENT_PROMOTE_MAX_HIT_RATE)) return '';
+    // 括弧から上位概念を取る。半角 () と全角 （）の両方を受ける
+    // (ja.wikipedia の規約は半角+前後の空白だが、表記ゆれで全角が来ても拾えるようにする)。
+    var m = name.match(/[(（]([^()（）]+)[)）]\s*$/);
+    if (!m) return '';
+    var parent = m[1].trim();
+    if (!parent || parent === name) return '';
+    return parent;
   }
 
   // ---------------------------------------------------------------------------
@@ -2199,6 +2356,9 @@
     parentAreaKey: parentAreaKey,
     // R173: make-fixture.mjs が geo.js と同じ形で parentImage を保存するために公開する。
     parentImageFromPage: parentImageFromPage,
+    // R175: 親記事が痩せているときの昇格判定。make-fixture.mjs が
+    // **同じ関数を呼ぶ**ことで、条件の二重実装を防ぐ。
+    parentPromoteTitle: parentPromoteTitle,
     enrichFame: enrichFame,
     // 固定データモード(?fixture=kusatsu)の差し込み口
     setFixture: setFixture,

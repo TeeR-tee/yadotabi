@@ -251,7 +251,7 @@ async function fetchWikidataTitles(elements) {
  * continue は必ず完走させる(lhlimit=max の500枠は全タイトル合算なので、
  * 1リクエストで打ち切ると被リンクの多い記事に枠を食われて他が0件で返る)。
  */
-async function collectWantedTitles(fixtureSoFar) {
+async function loadAssets() {
   const assetsDir = join(ROOT, 'assets');
   // geo.js / engine.js は (function (global) {...})(window||globalThis) 形式なので
   // そのまま評価すれば globalThis に YadoGeo / YadoEngine が載る。
@@ -259,6 +259,10 @@ async function collectWantedTitles(fixtureSoFar) {
   const engineSrc = await readFile(join(assetsDir, 'engine.js'), 'utf8');
   (0, eval)(geoSrc);
   (0, eval)(engineSrc);
+}
+
+async function collectWantedTitles(fixtureSoFar) {
+  await loadAssets();
 
   const wanted = [];
   // R166: attachWikiByTitles が要求した記事名。attachBacklinks より前に走るので
@@ -393,8 +397,8 @@ async function fetchWikiByTitles(titles) {
  * リクエスト数は増えない。配るかどうかの判断は geo.js の pickParentImageTarget が持ち、
  * ここでは取れたものをそのまま保存するだけ(条件を二重実装しない)。
  */
-async function fetchParentExtract() {
-  console.log('親記事の本文を取得中(' + AREA_LABEL + ')…');
+async function fetchParentExtract(title) {
+  console.log('親記事の本文を取得中(' + title + ')…');
   const params = new URLSearchParams({
     action: 'query',
     format: 'json',
@@ -403,7 +407,7 @@ async function fetchParentExtract() {
     explaintext: '1',
     redirects: '1',
     pithumbsize: '480',
-    titles: AREA_LABEL,
+    titles: title,
     origin: '*'
   });
   const res = await fetch(WIKIPEDIA_API_URL + '?' + params.toString(), {
@@ -426,9 +430,89 @@ async function fetchParentExtract() {
   const image = thumb
     ? { url: thumb, file: (page && typeof page.pageimage === 'string') ? page.pageimage : '' }
     : null;
+  // R175: 昇格の判定には **転送を解決した後の記事名** が要る
+  // (入力の「箱根湯本」には括弧が無く、解決後の「湯本 (箱根町)」に括弧が付く)。
+  const resolved = (page && typeof page.title === 'string' && page.title) ? page.title : title;
+  console.log('  解決先: ' + resolved);
   console.log('  本文: ' + text.length + '字' + (text ? '' : '(記事が見つかりませんでした)'));
   console.log('  代表画像: ' + (image ? image.file : '(なし)'));
-  return { text, image };
+  return { title: resolved, text, image };
+}
+
+/**
+ * R175: 親記事の照合対象になる候補名を集める。
+ *
+ * ★ **ここで独自に「名前付きPOIを全部」などと決めないこと**。engine.js の
+ * attachParentMentions が実際に fetchParentMentions へ渡す名前だけが正で、
+ * 記事持ちの扱い・空名の除外などの条件を二重実装するとゲート判定が本番とずれる。
+ * collectWantedTitles と同じ手口で、geo.js の差し込み口を横取りして記録する。
+ */
+async function collectParentNames(fixtureSoFar) {
+  await loadAssets();
+
+  let names = [];
+  const realParent = globalThis.YadoGeo.fetchParentMentions;
+  const realFetch = globalThis.YadoGeo.fetchBacklinkCounts;
+  const realByTitle = globalThis.YadoGeo.fetchWikiByTitles;
+  globalThis.YadoGeo.fetchParentMentions = async function (hotel, list) {
+    names = (list || []).slice();
+    return Object.create(null);
+  };
+  // 照合対象を数えたいだけなので、外部APIを叩く2つは黙らせる。
+  globalThis.YadoGeo.fetchBacklinkCounts = async function () { return {}; };
+  globalThis.YadoGeo.fetchWikiByTitles = async function () { return {}; };
+  try {
+    globalThis.YadoGeo.setFixture(fixtureSoFar);
+    await globalThis.YadoEngine.collect({
+      id: 'fixture/' + AREA, name: AREA_LABEL, lat: LAT, lon: LON
+    });
+  } finally {
+    globalThis.YadoGeo.fetchParentMentions = realParent;
+    globalThis.YadoGeo.fetchBacklinkCounts = realFetch;
+    globalThis.YadoGeo.fetchWikiByTitles = realByTitle;
+  }
+  return names;
+}
+
+/**
+ * R175: 親記事が痩せていて1件も拾えないときだけ、上位概念の記事へ昇格する。
+ * ★ assets/geo.js の promoteParentIfThin と同じ手順にすること
+ *   (判定そのものは geo.js の parentPromoteTitle を **共有して呼ぶ**)。
+ *
+ * 負荷: ゲートが発火したエリアだけ **+1リクエスト**。実測では5エリア中箱根のみ。
+ *
+ * @returns {Promise<{title:string,text:string,image:Object|null}|null>} 採用しないなら null
+ */
+async function promoteParent(parent, names) {
+  await loadAssets();
+  const geo = globalThis.YadoGeo;
+  const hits = geo.matchParentMentions(parent.text, names);
+  const hitCount = Object.keys(hits).length;
+  console.log('  照合ヒット: ' + hitCount + '件 / 候補 ' + names.length + '件');
+
+  const rate = names.length ? (hitCount / names.length) * 1000 : 0;
+  console.log('  ヒット率: ' + rate.toFixed(1) + ' / 1000候補');
+  const next = geo.parentPromoteTitle(parent.title, parent.text, hitCount, names.length);
+  if (!next) {
+    console.log('  昇格せず(本文' + parent.text.length + '字・ヒット率' + rate.toFixed(1) + '‰・'
+      + (/[(（]/.test(parent.title) ? '条件を満たさず' : '記事名に括弧なし') + ')');
+    return null;
+  }
+
+  console.log('  ★昇格を検討します: ' + parent.title + ' → ' + next);
+  const promoted = await fetchParentExtract(next);
+  if (!promoted.text) {
+    console.log('  昇格を棄却(記事が見つかりませんでした)');
+    return null;
+  }
+  const reCount = Object.keys(geo.matchParentMentions(promoted.text, names)).length;
+  // ★安全弁: ヒットが増えたときだけ採用する。減る・同数なら元に戻す。
+  if (reCount <= hitCount) {
+    console.log('  昇格を棄却(ヒットが ' + hitCount + '件 → ' + reCount + '件 で増えませんでした)');
+    return null;
+  }
+  console.log('  ★昇格を採用(ヒット ' + hitCount + '件 → ' + reCount + '件)');
+  return promoted;
 }
 
 async function fetchBacklinks(titles) {
@@ -544,7 +628,7 @@ async function main() {
 
   // R164: 親記事の本文(geo.js の fetchParentMentions が fixture モードで読む)。
   // R173: 同じ1リクエストで代表画像も返る(prop に pageimages を足しただけ)。
-  const parent = await fetchParentExtract();
+  let parent = await fetchParentExtract(AREA_LABEL);
 
   const fixture = {
     meta: {
@@ -567,8 +651,24 @@ async function main() {
     parentImage: parent.image,
     // R166: geo.js の fetchWikiByTitles が fixture モードで読む「記事名→素材」の表。
     // 中身は下の2周目で埋める(engine.js にどの記事名が要るかを決めさせるため)。
-    wikiByTitle: null
+    wikiByTitle: null,
+    // R175: 昇格の判定に使った「解決後の親記事名」。撮影・検証で
+    // どの記事が使われたかを後から確かめるために残す(geo.js は読まない)。
+    parentTitle: parent.title
   };
+
+  // R175: 親記事が痩せていて1件も拾えないときだけ、上位概念の記事へ昇格する。
+  // ★ここで **保存する前に** 判定する。geo.js は fixture モードでは追加の判定をせず、
+  //   ここで採用された最終的な親記事をそのまま読む。
+  // 照合対象の候補名は engine.js に決めさせる(独自に数えると本番とずれる)。
+  const parentNames = await collectParentNames(fixture);
+  const promoted = await promoteParent(parent, parentNames);
+  if (promoted) {
+    parent = promoted;
+    fixture.parentExtract = parent.text;
+    fixture.parentImage = parent.image;
+    fixture.parentTitle = parent.title;
+  }
 
   // R166 → R163 の順で2周する。
   //
