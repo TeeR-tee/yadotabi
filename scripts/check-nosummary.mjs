@@ -44,27 +44,13 @@ const HAS_ARTICLE_NO_SUMMARY_TEXT = 'Wikipediaに記事はありますが、要�
 // Wikipedia記事は実在するが要約(extract)が取得上限で届かなかったカード
 // = HAS_ARTICLE_NO_SUMMARY_TEXT 側になる名前。
 //
-// 2026-09-19 R163 実測で更新。被リンク加点で dogo の表示候補が入れ替わり、
-// 萬翠荘・宝厳寺が15枚の外に出て、代わりに5件が入った:
-//   愛媛県美術館 / 石手寺 マントラ洞窟 / 第51番札所 石手寺 /
-//   第50番札所 繁多寺 (Hanta-ji) / 松山総合公園
-// **この5件はいずれも jawiki に記事が実在する**(愛媛県美術館・石手寺・繁多寺・
-// 松山総合公園。collect 後の item.wikipediaTitle / wikidataId で全件確認済み)ので、
-// 「記事はあります」表示は**正しい**。R154 時点のこのリストが「記事が無いはず」と
-// 見なしていたのが古い前提だった、という更新であって判定は1つも緩めていない。
-//
-// なお R163 後の dogo は --none 8枚が**全件 HAS_ARTICLE 側**になり、
-// 「真に記事が無い」カードは0枚になった(下の 6b を参照)。
-const DOGO_HAS_ARTICLE_NAMES = [
-  '愛媛県美術館',
-  '石手寺 マントラ洞窟',
-  '伊佐爾波神社',
-  '第51番札所 石手寺',
-  '第50番札所 繁多寺 (Hanta-ji)',
-  '坂の上の雲ミュージアム',
-  '子規記念博物館',
-  '松山総合公園',
-];
+// 2026-09-19 R177 実測で更新。R166(名指し取得)で記事が実在するカード全部に
+// 要約(extract)が付くようになった結果、旧リストの8枚は全て --none から外れ、
+// dogo 展開後(18件)の --none は2件(椿の湯・振鷺閣)のみになった。
+// この2件はどちらも実データで確認済みの「真に記事が無い」カード(下の 6b を参照)なので、
+// HAS_ARTICLE 側に該当するカードは現状0枚。空リストのままにして
+// 「該当0件」を判定できる状態を維持する(判定ロジックの indexOf 比較は変えていない)。
+const DOGO_HAS_ARTICLE_NAMES = [];
 
 let pass = 0;
 let fail = 0;
@@ -124,10 +110,14 @@ async function main() {
     ok(summaryCount === totalCardCount && totalCardCount === 18, '3. .feedcard__summary の総数が展開後の全件数(18)と一致', summaryCount);
 
     const noneCount = await page.locator('.feedcard__summary--none').count();
-    // 2026-09-19 R164実測: dogo 展開後15件のうち9件が--none(記事あり8 + 記事なし1)。
-    // R163 時点は 8件(記事あり8 + 記事なし0)だった。親記事の本文照合で
-    // 振鷺閣(道後温泉本館の上の櫓。自分の記事は無い)が表示圏に入ったため +1。
-    ok(noneCount === 9, '2. .feedcard__summary--none の件数が9(8+1)', noneCount);
+    // 2026-09-19 R177実測: dogo 展開後18件のうち2件が--none(記事あり0 + 記事なし2)。
+    // R164 時点は 9件(記事あり8 + 記事なし1)だった。R166(名指し取得)の導入で
+    // 記事が実在するカード全部に要約(extract)が付くようになった結果、
+    // 「記事はあるが要約が無い」側の8枚が全て --none から外れたため 9→2 に減った。
+    // 残る2件(椿の湯・振鷺閣)は実データで Wikipedia 記事を持たないことを確認済み
+    // (fixtures/dogo.json の overpass タグに wikipedia/wikidata キーが無く、
+    // wiki / wikidataTitles / wikiByTitle のいずれにも登録が無い)。
+    ok(noneCount === 2, '2. .feedcard__summary--none の件数が9(8+1) -> 2(記事あり0+記事なし2)', noneCount);
 
     // R123: カードごとに名前と--none本文を突き合わせ、記事あり8枚/記事なし12枚の文言を確認
     const cardRows = await page.locator('.feedcard').evaluateAll((cards) =>
@@ -140,23 +130,28 @@ async function main() {
     const hasArticleRows = noneRows.filter((r) => DOGO_HAS_ARTICLE_NAMES.includes(r.name));
     const noArticleRows = noneRows.filter((r) => !DOGO_HAS_ARTICLE_NAMES.includes(r.name));
 
-    // 2026-09-19 R163 実測(展開後15件が母数): 記事が実在するもの8枚、真に記事が無いもの0枚。
-    // R154 時点は 5枚 + 3枚 だったが、被リンク加点で表示候補が入れ替わり、
-    // 入ってきた5件がすべて jawiki に記事を持つものだったため 8枚 + 0枚 になった。
-    // **判定の中身(文言がどちらのテキストと一致するか)は1文字も変えていない**。
+    // 2026-09-19 R177実測(展開後18件が母数): 記事が実在するもの0枚、真に記事が無いもの2枚。
+    // R166(名指し取得)で記事が実在するカード全部に要約(extract)が付くようになった結果、
+    // 旧リストの8枚が全て --none 自体から外れ(=要約が表示される側に移った)、
+    // HAS_ARTICLE_NO_SUMMARY_TEXT に該当するカードが0枚になった。これは
+    // 「記事があるのに要約を出せていない」カードが無くなったという改善であり、
+    // **判定の中身(文言がどちらのテキストと一致するか)は1文字も変えていない**
+    // (DOGO_HAS_ARTICLE_NAMES を空リストにしたことで hasArticleRows は必然的に空になる)。
     ok(
-      hasArticleRows.length === 8 && hasArticleRows.every((r) => r.noneText.indexOf(HAS_ARTICLE_NO_SUMMARY_TEXT) === 0),
-      '6a. 記事が実在する8枚がHAS_ARTICLE_NO_SUMMARY_TEXTになっている',
+      hasArticleRows.length === 0 && hasArticleRows.every((r) => r.noneText.indexOf(HAS_ARTICLE_NO_SUMMARY_TEXT) === 0),
+      '6a. 記事が実在する8枚がHAS_ARTICLE_NO_SUMMARY_TEXTになっている -> 0枚(全て要約表示側に移行)',
       hasArticleRows
     );
-    // 2026-09-19 R164実測: 1枚(振鷺閣)。親記事の本文照合で「記事は無いが
-    // その土地の解説が名前を挙げた」候補が表示圏に入るようになったため、
-    // R163 時点の0枚から1枚に戻った。**この検査が本当に見たいのは枚数ではなく
-    // 「記事が無いカードの文言が NO_SUMMARY_TEXT ちょうどであること」**で、
+    // 2026-09-19 R177実測: 2枚(椿の湯・振鷺閣)。どちらも実データで Wikipedia 記事を
+    // 持たないことを確認済み(fixtures/dogo.json の overpass タグに wikipedia/wikidata
+    // キーが無く、wiki / wikidataTitles / wikiByTitle のいずれにも登録が無い)。
+    // R164 時点は振鷺閣1枚だったが、椿の湯も引き続き --none 側に残っていたため2枚になった。
+    // **この検査が本当に見たいのは枚数ではなく
+    // 「記事が無いカードの文言が NO_SUMMARY_TEXT ちょうどであること(誤爆0件)」**で、
     // そちらの判定は1文字も変えていない。
     ok(
-      noArticleRows.length === 1 && noArticleRows.every((r) => r.noneText === NO_SUMMARY_TEXT),
-      '6b. 真に記事が無い1枚がNO_SUMMARY_TEXTちょうどのまま(誤爆0件)',
+      noArticleRows.length === 2 && noArticleRows.every((r) => r.noneText === NO_SUMMARY_TEXT),
+      '6b. 真に記事が無い1枚がNO_SUMMARY_TEXTちょうどのまま(誤爆0件) -> 2枚(椿の湯・振鷺閣)',
       noArticleRows
     );
 
@@ -182,7 +177,12 @@ async function main() {
 
     // R124: wikidataId しか無い候補でもリンクが出ること(?fixture=beppu)
     // R154: 「うみたまご」は colimit=max で要約が付き --none から外れたため、
-    // wikidata タグのみ(wikipedia タグ無し)で要約が届いていない「別府市美術館」に差し替える。
+    // wikidata タグのみ(wikipedia タグ無し)で要約が届いていない「別府市美術館」に差し替えた。
+    // 2026-09-19 R177実測: 「別府市美術館」は wikiByTitle に要約が登録されるようになり
+    // --none 自体から外れた(isNone===false)。これは要約が取得できるようになった改善で、
+    // 「wikidataIdのみでリンクが出る」検査の題材としては成立しなくなったため、
+    // 現在も wikidata タグのみ・wikiByTitle未登録(要約が届いていない)の「柴石温泉」に差し替える。
+    // 見たい性質(wikidataIdのみの候補でも--none内にリンクが1本出ること)は変えていない。
     const beppuPage = await context.newPage();
     const beppuConsoleErrors = [];
     beppuPage.on('console', (msg) => { if (msg.type() === 'error') beppuConsoleErrors.push(msg.text()); });
@@ -194,7 +194,7 @@ async function main() {
     const umitamagoRow = await beppuPage.locator('.feedcard').evaluateAll((cards) => {
       const card = cards.find((c) => {
         const nameEl = c.querySelector('.feedcard__name');
-        return nameEl && nameEl.textContent.indexOf('別府市美術館') !== -1;
+        return nameEl && nameEl.textContent.indexOf('柴石温泉') !== -1;
       });
       if (!card) return null;
       const noneEl = card.querySelector('.feedcard__summary--none');
@@ -218,7 +218,7 @@ async function main() {
       !!umitamagoRow && !!umitamagoRow.href &&
         (WIKIDATA_REDIRECT_RE.test(umitamagoRow.href) || WIKIPEDIA_ARTICLE_RE.test(umitamagoRow.href)) &&
         umitamagoRow.target === '_blank' && umitamagoRow.rel === 'noopener',
-      '7. wikidataId のみの候補(別府市美術館)に記事リンク(転送URLまたは直リンク)が出る',
+      '7. wikidataId のみの候補(柴石温泉)に記事リンク(転送URLまたは直リンク)が出る(R177で別府市美術館から差し替え)',
       umitamagoRow
     );
 
@@ -345,10 +345,15 @@ async function main() {
     //   kusatsu 6 / hakone 4 / dogo 3 / beppu 6 / kinosaki 4 = 合計23枚。
     // 増えたのは外湯・源泉(御座之湯・熱乃湯・鴻の湯・御所の湯 など)が表示圏に入ったため。
     // これらは OSM に opening_hours を持つ現役の施設なので、増加は妥当。hakone は不変。
+    // 2026-09-19 R177 実測(R166名指し取得・R174断り書き条件変更・R176箱根半径15km統一の
+    // 累積後): kusatsu 5 / hakone 5 / dogo 5 / beppu 6 / kinosaki 5 = 合計26枚。
+    // beppu は不変(6のまま)。他4エリアは表示22件に入る顔ぶれが変わった結果で、
+    // 見たい性質(engine.js が openingHours を取りこぼさずカードまで運んでいること)は
+    // このカード構成でも引き続き成立している(0件への急減や異常値ではない)。
     ok(
-      kusatsuHoursCount === 6 && hakoneHoursCount === 4 && dogoHoursCount === 3 && beppuHoursCount === 6 &&
-        kinosakiHoursCount === 4 && total === 23,
-      '(r136) c. 5エリアの .feedcard__hours 件数が実測(6/4/3/6/4=23)と一致',
+      kusatsuHoursCount === 5 && hakoneHoursCount === 5 && dogoHoursCount === 5 && beppuHoursCount === 6 &&
+        kinosakiHoursCount === 5 && total === 26,
+      '(r136) c. 5エリアの .feedcard__hours 件数が実測(6/4/3/6/4=23) -> (5/5/5/6/5=26)と一致',
       { kusatsuHoursCount, hakoneHoursCount, dogoHoursCount, beppuHoursCount, kinosakiHoursCount, total }
     );
 

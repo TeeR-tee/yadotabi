@@ -1074,3 +1074,8 @@
 - 検査: `node scripts/check-all.mjs` **31本中30本PASS**。FAILは `check-nosummary.mjs` のみで、**R174 由来の既知FAIL**(失敗項目は 椿の湯・振鷺閣・別府市美術館・hours件数で、**dogo/beppu/kusatsu という本タスクが触っていないエリアばかり**。hours は実測 5/5/5/6/5 で**期待値6/4/3/6/4 と4エリアが食い違っており**、うち3エリアは無改変=期待値側が古い)。新たに落ちた検査は無し
 - 撮影: `screenshots/r175-hakone-mobile.png` / `r175-hakone-pc.png` を Read で目視。**レイアウト崩れなし・コンソールエラー0件**。ただし上記のとおり**1位が小田原の博物館のままである点は改善していない**
 - **ポート3000の後始末**: 実行前に `netstat` で確認(別作業役のサーバーが LISTENING 中だったので自分では触らず、その後停止済みを確認)。撮影用に起動したサーバーは停止し、LISTENING が残っていないことを再確認した
+
+## R177(記録上R178) check-nosummary.mjs の期待値更新(2026-09-19)
+- FAIL2/6a/6bは同根: R166の名指し取得で dogo の「記事あり8枚」全部に要約が付き `DOGO_HAS_ARTICLE_NAMES` 該当0件に。残る--none 2件(椿の湯・振鷺閣)は fixtures/dogo.json 実測で wikipedia/wikidata タグ無し・wiki/wikidataTitles/wikiByTitle未登録を確認済みで、真に記事が無いカードと確定。
+- FAIL7(別府市美術館)は**不具合ではなく改善**と判定: `wikiByTitle`に要約が登録され`isNone:false`(要約が正常表示)に変わったため--none経由のリンク検査自体が成立しなくなった。同条件(wikidataのみ・wikiByTitle未登録)の柴石温泉に見本を差し替えて検査を継続。
+- FAILc(hours件数)は6/4/3/6/4=23→5/5/5/6/5=26に更新(beppuのみ不変、他は表示候補の入れ替わりで異常値ではない)。`node scripts/check-nosummary.mjs` 23 pass/0 fail、`node scripts/check-all.mjs` 31本中31本PASS(実行前後でポート3000のLISTING残存なしを確認)。
