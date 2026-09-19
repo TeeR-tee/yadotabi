@@ -33,6 +33,80 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const AREAS = ['kusatsu', 'hakone', 'dogo', 'beppu', 'kinosaki'];
 
 /**
+ * R222: JavaScript ソースからコメント(`//` 行コメント と ブロックコメント)を
+ * 取り除く。R214 で `docs/check.mjs` が「コメントアウトされた <link rel="icon"> を
+ * 『ある』と誤判定していた」のと同じ穴が、この検査の定義抽出にもあったため。
+ * 例: `// var FALLBACK_THEME = '…';` と消しても、従来は正規表現が拾って緑のまま通った。
+ *
+ * HTMLコメントと違い、JSは `'https://example.com'` のような**文字列リテラルの中の `//`**を
+ * 消してはいけない。素朴な `replace(/\/\/.*$/gm, '')` は URL を壊すので使えない。
+ * そこで1文字ずつ読み、いま「文字列の中か / コメントの中か」を持ちながら進める。
+ *   - `'…'` `"…"` `` `…` `` の中は素通し(`\` によるエスケープも見る)
+ *   - 正規表現リテラル `/…/` も素通し(直前の意味のあるトークンから割り算と区別する)
+ * コメントは**同じ長さの空白に置き換える**(改行は残す)ので、行番号も文字位置もずれない。
+ */
+function stripJsComments(src) {
+  let out = '';
+  let i = 0;
+  // 直前に現れた「意味のある文字」。`/` が正規表現の始まりか割り算かの判定に使う。
+  let prevToken = '';
+  while (i < src.length) {
+    const c = src[i];
+    const d = src[i + 1];
+    if (c === '/' && d === '/') {
+      while (i < src.length && src[i] !== '\n') { out += ' '; i++; }
+      continue;
+    }
+    if (c === '/' && d === '*') {
+      out += '  ';
+      i += 2;
+      while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) {
+        out += src[i] === '\n' ? '\n' : ' ';
+        i++;
+      }
+      out += '  ';
+      i += 2;
+      continue;
+    }
+    if (c === "'" || c === '"' || c === '`') {
+      const quote = c;
+      out += c;
+      i++;
+      while (i < src.length) {
+        if (src[i] === '\\') { out += src[i] + (src[i + 1] || ''); i += 2; continue; }
+        out += src[i];
+        if (src[i] === quote) { i++; break; }
+        i++;
+      }
+      prevToken = quote;
+      continue;
+    }
+    // 正規表現リテラルの始まりか?(割り算の `/` と区別する)
+    // 直前が値で終わっていれば割り算、そうでなければ正規表現とみなす。
+    if (c === '/' && !/[\w$)\]]/.test(prevToken)) {
+      out += c;
+      i++;
+      let inClass = false;
+      while (i < src.length) {
+        if (src[i] === '\\') { out += src[i] + (src[i + 1] || ''); i += 2; continue; }
+        if (src[i] === '[') inClass = true;
+        else if (src[i] === ']') inClass = false;
+        else if (src[i] === '\n') break;          // 改行を跨ぐ正規表現は無いので打ち切る
+        else if (src[i] === '/' && !inClass) { out += src[i]; i++; break; }
+        out += src[i];
+        i++;
+      }
+      prevToken = '/';
+      continue;
+    }
+    out += c;
+    if (!/\s/.test(c)) prevToken = c;
+    i++;
+  }
+  return out;
+}
+
+/**
  * 画面に出ている categoryLabel(「神社・寺院」など)→ テーマ束名 の表を、
  * ソースから組み立てる(検査側に手書きの写像を持たない)。
  *   geo.js  CATEGORY_LABELS      : category -> label
@@ -40,8 +114,10 @@ const AREAS = ['kusatsu', 'hakone', 'dogo', 'beppu', 'kinosaki'];
  *   engine.js THEME_OF           : category -> テーマ束名
  */
 function buildLabelToTheme() {
-  const geoSrc = fs.readFileSync(path.join(ROOT, 'assets', 'geo.js'), 'utf8');
-  const engSrc = fs.readFileSync(path.join(ROOT, 'assets', 'engine.js'), 'utf8');
+  // R222: 定義を探す正規表現は**コメントを除いたソース**にかける。
+  // そうしないと、定義をコメントアウトしても検査が「ある」と言い続けてしまう。
+  const geoSrc = stripJsComments(fs.readFileSync(path.join(ROOT, 'assets', 'geo.js'), 'utf8'));
+  const engSrc = stripJsComments(fs.readFileSync(path.join(ROOT, 'assets', 'engine.js'), 'utf8'));
 
   // R164: 1つの category が複数の label で画面に出ることがあるので **配列で持つ**。
   // 以前は engine 側の label で上書きしていたため、geo 側の label が表から消えていた。
