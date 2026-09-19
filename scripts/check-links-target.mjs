@@ -5,8 +5,9 @@
 // scripts/lib/server.mjs の ensureServer() 経由で python -m http.server を空きポートで起動し検証後に落とす
 // (check-all.mjs 経由なら親が YADOTABI_BASE で既存サーバーを渡すのでこの本は自分では起動しない)。
 //
-// Playwright は C:\workspace\tools\shot\node_modules のものを絶対パスで読む
+// Playwright は既定で C:\workspace\tools\shot\node_modules のものを絶対パスで読む
 // (このプロジェクトに npm install はしない)。check-debugflag.mjs の作りを踏襲する。
+// ただし環境変数 PLAYWRIGHT_IMPORT があればそちらを優先する(R204: GitHub Actions 用)。
 // 外部APIは1回も叩かない(全て ?fixture= 経由)。
 //
 // 背景: `target="_blank" rel="noopener"` は ?embed=1 用途の前提条件そのもの。
@@ -19,7 +20,13 @@
 //   3. ?fixture=kusatsu&embed=1 でも1・2と同じ(埋め込みが本丸)
 //   4. 「もっと見る」展開後の .feedcard__link も全件同条件(moreHtml分岐後も属性が落ちない)
 
-import { chromium } from 'file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs';
+// R204: CI(ubuntu-latest)でも動かせるよう、Playwright の読み込み先を環境変数で差し替え可能にした。
+// 環境変数 PLAYWRIGHT_IMPORT が無ければ従来どおり Windows の絶対パスを使うので、
+// ローカル(みのるんのWindows機)の挙動は一切変わらない。
+// CI 側は `npm install playwright` した node_modules を指す file:// URL を渡す。
+const PLAYWRIGHT_IMPORT =
+  process.env.PLAYWRIGHT_IMPORT || 'file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs';
+const { chromium } = await import(PLAYWRIGHT_IMPORT);
 import { ensureServer } from './lib/server.mjs';
 
 let BASE;

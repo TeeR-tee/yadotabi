@@ -1,0 +1,55 @@
+# R204: Playwright を使うロジック検査を GitHub Actions で回せるかの試験台。
+#
+# まだ「検査1本だけ」しか回さない。28本を一度に動かして3つの原因が絡んだまま落ちるのを
+# 避けるため、市場調査第18回の推奨どおり1本で緑を見てから広げる(第18回・着手順序2)。
+#
+# 選んだ1本: scripts/check-links-target.mjs
+#   - 外部API(Overpass/Wikipedia)を1回も叩かない(全て ?fixture=kusatsu 経由)
+#   - 判定が DOM 属性(target / rel)の有無だけで、時間しきい値を持たない
+#     → ランナーの速度差で揺れない
+#
+# 課金されない条件(第18回・出典 GitHub Docs):
+#   - リポジトリが public であること(TeeR-tee/yadotabi は public)
+#   - runs-on が標準ランナーであること。ubuntu-latest から変えないこと。
+#     大型ランナー(ubuntu-latest-4-core など)は public でも必ず課金される。
+#
+# トリガは workflow_dispatch(手動実行)のみ。push も schedule も付けない。
+name: check-playwright-trial
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  trial:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # ローカルサーバは scripts/lib/server.mjs が python/python3 を自動で選ぶ(R203)。
+      # ubuntu-latest には python3 が標準で入っているが、どのバージョンが使われたか
+      # ログに残しておくと落ちたときの切り分けが早い。
+      - name: python3 の確認
+        run: python3 --version
+
+      # このプロジェクトには package.json を置かない方針なので、ワークフロー内で直接入れる。
+      # node_modules/ は .gitignore 済みなのでリポジトリは汚れない。
+      - name: Playwright をインストール
+        run: npm install playwright
+
+      - name: Chromium 本体と OS 依存パッケージをインストール
+        run: npx playwright install --with-deps chromium
+
+      # 検査は Playwright を PLAYWRIGHT_IMPORT から読む(無ければ Windows の絶対パス)。
+      # ここで CI 上の node_modules を指す file:// URL を渡す。
+      - name: 検査1本を実行 (check-links-target)
+        env:
+          PLAYWRIGHT_IMPORT: file://${{ github.workspace }}/node_modules/playwright/index.mjs
+        run: node scripts/check-links-target.mjs
