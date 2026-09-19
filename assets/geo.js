@@ -755,6 +755,63 @@
     return kind;
   }
 
+  /**
+   * R191: 「宿でないもの」を見分けるための分類。**消すためではなく順位を下げるため**に使う。
+   * OSM の種別は不正確なことがある(宿が building=yes で登録されている等)ので、
+   * ここに当たっても候補からは外さない。
+   *
+   * 実測(2026-09-19, /search?format=jsonv2):
+   *   「新明館」1位 = 新明和工業研修館 → category=building / type=commercial(工場の研修施設)
+   *   同 4位 = タルイ会館 新明 → category=shop / type=funeral_directors(葬儀社)
+   *   「一井」4位 = 一井工業株式会社 → category=office / type=company
+   */
+  function isNonLodging(cls, type) {
+    if (cls === 'office' || cls === 'shop' || cls === 'craft' || cls === 'historic') return true;
+    if (cls === 'building' && /^(commercial|industrial|warehouse|office|retail|school|church)$/.test(type)) return true;
+    if (cls === 'amenity' && /^(community_centre|place_of_worship|funeral_directors|school|kindergarten|hospital)$/.test(type)) return true;
+    return false;
+  }
+
+  /**
+   * R191: 検索語と名前の一致度。0〜3。
+   *
+   * 「ホテル櫻井」は実測で `tourism=hotel` が3件返るが、正解(草津白根観光ホテル櫻井)は
+   * Nominatim の importance が大阪の有名ホテルに負けて3位に沈む。
+   * 3件のうち**名前に検索語がそのまま入っているのは正解だけ**なので、
+   * 種別だけでなく名前の一致も見ないと1位にできない。
+   * @param {string} name 候補の名前
+   * @param {string} q 検索語(空白除去済みの比較用)
+   */
+  function nameMatchScore(name, q) {
+    var n = String(name || '').replace(/[\s　]+/g, '');
+    if (!n || !q) return 0;
+    if (n === q) return 3;          // 完全一致
+    if (n.indexOf(q) === 0) return 2; // 前方一致(「一井旅館」など)
+    if (n.indexOf(q) >= 0) return 1;  // 部分一致(「草津白根観光ホテル櫻井」)
+    return 0;
+  }
+
+  /**
+   * R191: 「宿らしさ」の点数。大きいほど上。**並べ替えにのみ使い、候補は減らさない。**
+   *
+   * 追加のリクエストは出さない(/search の応答に既に入っている category / type
+   * だけで決める)。
+   * なお extratags(building=hotel など)は `extratags=1` を付けたときしか返らず、
+   * それはリクエストの追加にあたるので**使わない**。素の応答にある情報だけで決める。
+   * @param {{kind:string, name:string, cls:string, type:string}} row
+   * @param {string} q 空白を除いた検索語
+   */
+  function lodgingScore(row, q) {
+    var score = 0;
+    // 1) 宿と判定できたものを最優先(tourism=hotel/ryokan/guest_house/hostel/motel)
+    if (row.kind !== 'place') score += 100;
+    // 2) 明らかに宿でないもの(工場・事務所・葬儀社・集会所など)は下げる
+    if (isNonLodging(row.cls, row.type)) score -= 50;
+    // 3) 同じ宿らしさなら、名前が検索語に近いものを上に
+    score += nameMatchScore(row.name, q) * 10;
+    return score;
+  }
+
   // 同じ query の連続呼び出しを1つにまとめるための在庫(打鍵のたびに同じ語が飛んでくる)
   var suggestInflight = Object.create(null);
 
@@ -800,8 +857,35 @@
           lon: lon,
           // 宿と判定できなければ地名・施設として扱う(地図を寄せる用途には使える)
           kind: detectHotelKind(cls, item.type, name) || 'place',
-          displayName: item.display_name || ''
+          displayName: item.display_name || '',
+          // R191: 並べ替え用。呼び出し側には渡さないので下で削る。
+          _cls: cls,
+          _type: item.type
         });
+      });
+
+      // R191: 「宿らしいもの」を上位に。**並べ替えのみで候補は減らさない。**
+      // Nominatim の並びは importance 順で、有名な別の宿や宿ですらない施設(工場の
+      // 研修施設など)が上に来てしまう。応答に既に入っている情報だけで並べ替える。
+      var qCompact = q.replace(/[\s　]+/g, '');
+      var scored = results.map(function (row, i) {
+        return {
+          row: row,
+          // 同点なら Nominatim の元の並びを保つ(安定ソート)
+          i: i,
+          score: lodgingScore(
+            { kind: row.kind, name: row.name, cls: row._cls, type: row._type },
+            qCompact
+          )
+        };
+      });
+      scored.sort(function (a, b) {
+        return b.score - a.score || a.i - b.i;
+      });
+      results = scored.map(function (s) {
+        delete s.row._cls;
+        delete s.row._type;
+        return s.row;
       });
 
       results = results.slice(0, SUGGEST_LIMIT);
