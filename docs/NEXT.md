@@ -1,6 +1,6 @@
 # NEXT: 2026-09-19 夜間サイクルの結果と、次にやること
 
-みのるんへ。今日は94コミット・27サイクル動きました。まずここだけ読めばOKです。
+みのるんへ。今日は108コミット動きました。まずここだけ読めばOKです。
 (詳しい経緯は `docs/NIGHTLOG.md` にありますが、2000行近いので朝は読まなくて大丈夫です)
 
 ## 1. 今日変わったこと(本番で確認済みのみ)
@@ -13,6 +13,8 @@
 | 最初のカードが出るまで | 22秒前後 | **1.9〜4.5秒** |
 | 全国での親記事の解決率 | 6% | **67%** |
 | 宿の検索(例:「草津温泉 ホテル櫻井」) | 0件 | **1件ヒット** |
+| 検査の自動化 | ローカルのみ(Windows手動) | **GitHub Actions で32本全PASS**(R64、342.5秒・Windowsと結果一致) |
+| 営業用デモ | 日本語1枚のみ | **英語版 `demo/hotel-page-en.html` 追加**(R85、本番HTTP 200) |
 
 ※ 草津の1位が「湯畑」で確定したのは今夜の最後(R197)です。途中、検証ツールの不具合で「本番で湯畑が出ていない」という誤報が2回(R195〜R196)ありましたが、**原因は検証環境側**で、コードは無傷でした(詳細は4番目の教訓へ)。
 
@@ -76,47 +78,44 @@
 
 ## 3. ★次のサイクルでやる1件(計画役が選定・判断待ちに依存しません)
 
-### R85: 営業用デモページの英語版 `demo/hotel-page-en.html` を作る
+### R207: 英語版デモページへの入口を作る(作った営業素材が誰からも見えない状態の解消)
 
-**なぜこれを選んだか**: 未完了の他の候補はどれも上の「判断待ち2件」か、みのるんの判断を必要とします。
-R177(箱根)と箱根神社の件は判断待ち(1)そのもの、R138(座標欠落40件)は ROADMAP に「`geo.js` を触るため
-みのるんの判断が要る」と明記、R64 の残りは「CI を1日1回に自動実行するか」という判断のみ。
-R85 だけが**判断不要・やどたび本体のコードに一切触れない・コスト0円**で、かつ海外の宿/OTA に
-埋め込みを売り込むための素材という前向きな価値があります(R102 の一覧コマンドより営業価値が高い)。
+**なぜこれを選んだか**: R85 で英語デモページは本番に出ましたが、**そこへ辿り着く導線が `demo/hotel-page.html` の `EN` リンク1本だけ**で、
+README(英語で書かれた冒頭の紹介文がある)からも、本番トップからも到達できません。海外の宿/OTA に売り込む素材として作ったのに、
+**相手に見せる URL が README にも載っていない**のは「ユーザー入口を毎スライスで整備する」原則に反します。R102(撮影枚数の一覧コマンド)は
+自分用の便利ツールで外向きの価値が無いため、こちらを優先します。判断不要・本体コード不変・コスト0円。
 
-- **タスクID**: R85
-- **目的**: 海外の宿泊施設・OTA に「宿ページに埋め込むとこう見える」を見せる1枚を英語で用意する。
-- **作る/変える対象ファイル(絶対パス)**:
-  - 新規 `C:\workspace\claude\旅行先用サイト\yadotabi\demo\hotel-page-en.html`
-  - 追記のみ `C:\workspace\claude\旅行先用サイト\yadotabi\docs\check.mjs`(120行目 `HTML_PAGES` に `'demo/hotel-page-en.html'` を足すだけ)
-  - `docs/ROADMAP.md` を `[x] 2026-09-19` に、`docs/NIGHTLOG.md` に3行追記
-- **作り方**: `demo/hotel-page.html`(266行)を**コピーしてから文言だけ英訳**する。レイアウト・CSS・
-  iframe の src・リンク先はそのまま。`<html lang="ja">` → `lang="en"`、`<title>` も英語に。
-  iframe の中身(やどたび本体)は日本語のままなので、iframe のすぐ上に
-  「Note: the embedded widget itself is currently Japanese-only.」の1行を必ず置く。
-  日英を行き来できるよう、両ページのヘッダーに相互リンク(`EN` / `日本語`)を1つずつ足してよい
-  (これは `hotel-page.html` への唯一許可された変更)。
+- **タスクID**: R207
+- **目的**: 英語デモページに、README と日本語デモページの双方から確実に辿り着ける導線を作り、リンク切れ検査で守る。
+- **変える対象ファイル(絶対パス)**:
+  - `C:\workspace\claude\旅行先用サイト\yadotabi\README.md`(冒頭の英語段落の直後に1〜2行追記のみ)
+  - `C:\workspace\claude\旅行先用サイト\yadotabi\demo\hotel-page-en.html`(ヘッダーの相互リンクの文言・可読性の微修正のみ、必要なら)
+  - `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md`(R207 を `[x] 2026-09-19` で記録)
+  - `C:\workspace\claude\旅行先用サイト\yadotabi\docs\NIGHTLOG.md`(末尾の「## サイクル記録」に `### 2026-09-19 R207 …` 見出し+3行)
+- **作り方**:
+  1. README 冒頭の英語段落の直後に **"**Demo for hotels / OTAs**: see how it looks embedded in a hotel's own page — [English](https://teer-tee.github.io/yadotabi/demo/hotel-page-en.html) / [日本語](https://teer-tee.github.io/yadotabi/demo/hotel-page.html)"** に相当する1行を足す。既存の表・段落の順序は変えない。
+  2. 英語ページ側の `日本語` リンクが R85 で `flex-wrap` 対応済みなので、**崩れていなければ HTML は触らない**(触らないのが正解のケース)。
+  3. README に足したリンクは `docs/check.mjs` の README 画像検査とは別枠なので、**リンク切れ検査に載るかを確認**し、載らない場合のみ `docs/check.mjs` の README リンク収集に URL を含める最小追記をする(HTML_PAGES は既に英語ページを含むので**変更しない**)。
 - **完了条件(検証可能な形)**:
-  1. `demo/hotel-page-en.html` が存在し、`node --check` 相当としてブラウザで JS エラー0件で開ける。
-  2. ページ本文(iframe を除く)に**日本語の文字が1文字も残っていない**こと。
-     確認コマンド: `node -e "const s=require('fs').readFileSync('demo/hotel-page-en.html','utf8').replace(/<iframe[\s\S]*?<\/iframe>/g,''); const m=s.match(/[ぁ-んァ-ヶ一-龠]/g); console.log(m?m.join(''):'OK: no JP')"` が `OK: no JP` を出す(相互リンクの `日本語` だけは例外として許容、その場合は出力が `日本語` のみ)。
-  3. `docs/check.mjs` の `HTML_PAGES` に新ページが入り、リンク切れ検査を通る。
-  4. `node scripts/check-all.mjs` が **32本全PASS**(本数は増やさない)。
-  5. `git push` 後、本番 https://teer-tee.github.io/yadotabi/demo/hotel-page-en.html が HTTP 200。
-- **検証手順(撮影)**: 実装後にローカル(`scripts/lib/server.mjs` で起動した `http://127.0.0.1:3000/demo/hotel-page-en.html`)を
-  `node C:\workspace\tools\shot\shot.mjs <URL> --mobile`(375px)と PC幅(既定)で各1枚、ラベルは `r85-demo-en`。
-  **撮った画像を必ず Read で開いて目視**し、英語化による文字幅増加でのボタン折り返し・はみ出し・
-  ヘッダー崩れが無いことを確認する。崩れていたら同サイクルで直す。
-  外部APIを叩く撮影ではないので API 回数の消費は0(iframe は固定データ `?fixture=kusatsu` を使ってよい)。
+  1. `README.md` に英語デモページの**絶対URL**が1つ以上含まれる(`grep -c "hotel-page-en" README.md` が 1 以上)。
+  2. `demo/hotel-page.html` の `EN` リンクと `demo/hotel-page-en.html` の `日本語` リンクが**双方向で生きている**(両ファイルを grep して相互参照を確認)。
+  3. `node scripts/check-all.mjs` が **32本全PASS**(本数は増やさない)。
+  4. `git push` 後、本番 https://teer-tee.github.io/yadotabi/demo/hotel-page-en.html が HTTP 200 のまま。
+  5. GitHub のリポジトリトップ(README のレンダリング結果)で、足したリンクが**クリックできる形**になっている(push 後に実ブラウザで確認)。
+- **検証手順(撮影)**: ローカル(`scripts/lib/server.mjs` 起動の `http://127.0.0.1:3000/demo/hotel-page-en.html`)を
+  `node C:\workspace\tools\shot\shot.mjs <URL> --mobile`(375px)と PC幅(既定)で各1枚、ラベルは `r207-demo-en-nav`。
+  **撮った画像を必ず Read で開いて目視**し、ヘッダーのリンクが折り返しで崩れていないことを確認する。
+  iframe は固定データ(`?fixture=kusatsu`)のままでよいので**外部API消費は0回**。
 - **変更禁止範囲(絶対に触らない)**: `assets/engine.js` / `assets/geo.js` / `assets/rank*` / `fixtures/*.json` /
-  `WEIGHT` 定数 / `index.html` 本体 / `.github/workflows/*` / `.gitignore`。順位ロジックには一切影響させないこと。
-- **所要目安**: 40〜60分(翻訳30分・撮影と目視15分・記録とコミット10分)。
+  `WEIGHT` 定数 / `index.html` 本体 / `.github/workflows/*` / `.gitignore` / `docs/check.mjs` の `HTML_PAGES` 行。
+  順位ロジックには一切影響させないこと。
+- **所要目安**: 25〜40分(README追記10分・撮影と目視15分・記録とコミット10分)。
 
 ### 積み残し(判断待ちが解けてから)
 - R177 と「箱根神社が圏外」— 判断待ち(1)が決まり次第。
 - R138(座標欠落40件・`geo.js` 変更が要る)— みのるんの判断待ち。
-- R64 の残り — CI を `schedule` で1日1回回すかの判断のみ。
-- R102 `scripts/list-shots.mjs`(読み取り専用の枚数一覧)— 判断不要なので R85 の次の候補。
+- R64 の残り — CI を `schedule` で1日1回回すかの判断のみ(本体は完了)。
+- R102 `scripts/list-shots.mjs`(読み取り専用の枚数一覧)— 判断不要なので R207 の次の候補。
 
 ## 4. ★次のサイクルで必ず守ること(今日の教訓)
 
@@ -125,3 +124,4 @@ R85 だけが**判断不要・やどたび本体のコードに一切触れな�
 - **`geo.js`は10分間キャッシュされる**。pushした直後に確認しても古いコードが動いていることがあるので注意。
 - **`read_network_requests`は呼び出した時点から記録を開始する**。ページを開いた後に呼ぶと、それより前の通信は0件に見えてしまう(「呼ばれていない」ではなく「記録していなかった」)。
 - **数字を報告するときは必ず測定条件を添えること**。「どのエリアか」「固定データか本番か」「初見か2回目(キャッシュあり)か」を書かないと、後で食い違いの原因が分からなくなる。
+- **新しいページを作ったら入口も同じサイクルで作ること**(R85→R207 が発生した理由)。本番に出ただけでは誰にも届かない。
