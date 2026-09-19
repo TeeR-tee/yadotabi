@@ -2108,3 +2108,4 @@ NEXT.mdの「検査32本がdemo/3枚を一切見ていない」は不正確で�
 ### 2026-09-20 R214 サイトアイコン(favicon)を4ページに追加・docs/check.mjsに判定を相乗り
 3方向の実測(`index.html`/`demo/*`本番配信4ページ・リポジトリ直下・検査側grep)がすべて0件だった「タブが白紙」問題を解消。インディゴ系のスーツケース意匠のSVGを `data:image/svg+xml,` のインラインデータURIにして4ページ同一の1行を`<head>`に追加(新規ファイル0・外部リクエスト0)。`docs/check.mjs`の`collectLinks`に相乗りしてfavicon判定を追加(rel="icon"の存在・hrefがdata:image/svg+xmlで始まる・4ページで同一の3項目)。data:URIをリンク切れ検査の対象外に追加、HTMLコメント除去後に判定することでコメントアウトでも正しくFAILすることを確認。
 ローカルサーバーで一時的にBASEを差し替えてテストし、1ページのrel="icon"を完全削除・コメントアウトの両方でFAIL(exit 1)することを確認後に復元。Playwrightで4ページとも`document.querySelector('link[rel~="icon"]')`のhrefが存在することを確認、モバイル/PC幅の撮影でページ内容が1ピクセルも変わっていないことを目視確認済み。`docs/CHECKS.md`のdocs/check.mjs行にR214の説明を追記。検査本数は**34本のまま変更なし**。`assets/` `fixtures/` `scripts/`は無変更。外部API消費0回。
+push後、本番4ページがHTTP 200のまま・faviconが反映されたことを確認したうえで`node scripts/check-all.mjs`を実行し、**34本中34本PASS(338.0s・最遅 check-reason 28.2s)**。`docs/check.mjs`単体も821msでPASS。
