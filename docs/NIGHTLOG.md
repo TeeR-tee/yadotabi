@@ -2099,3 +2099,8 @@ NEXT.mdの「検査32本がdemo/3枚を一切見ていない」は不正確で�
 ### 2026-09-20 R215 JS無効時に真っ白になる問題を noscript で解消
 `index.html` の `<body>` 冒頭に `<noscript>` ブロックを1つ追加。Playwrightを`javaScriptEnabled: false`で起動して実測した`document.body.innerText`が2文字→**230文字**になり、「JavaScript」「再読み込み」「やどたび」の3語を含むことを確認。JS有効時(通常時)は`innerText`に「再読み込みしてください」を含まないことも確認し、既存表示に影響なし。
 `node scripts/check-all.mjs` **33本中33本PASS(341.1s)**。`assets/` `fixtures/` `demo/` `scripts/` は無変更、`index.html`のdiffは追加のみ(既存行の削除・書き換え0行)。外部API消費0回(ローカルサーバのみ)。
+
+### 2026-09-20 R221 JS無効時の案内(noscript)を守る検査を新設(check-noscript.mjs・34本化)
+2方向のgrep(`noscript` の語 / `javaScriptEnabled` などJSを切る側)がどちらも0件で、既存33本は**すべてJSが動く前提**。前夜のR215で `index.html:30-38` に入れたばかりの `<noscript>` を見る検査が1本も無く、`<body>` 先頭という「今後どのタスクも必ず通過する位置」にあるのに、消えても壊れても33本は全部緑のまま通る状態だった。
+`scripts/check-noscript.mjs` を `check-demo.mjs` の書式(`ensureServer()`・`PLAYWRIGHT_IMPORT` 方式)に完全に揃えて新設し8項目を検査。JS無効側(`javaScriptEnabled: false`)はHTTP200・本文200文字以上(実測230文字)・「JavaScript」「再読み込み」「やどたび」の3語・本番URLへのリンク、JS有効側は noscript の中身が見えないこと・カードが描画されること。固定データ(`?fixture=kusatsu`)とローカル配信のみで外部API消費0回。閾値5000文字・存在しない語・別URLに一時改変して3項目がFAIL(exit 1)することを確認してから復元し、「落ちる検査」であることを検証済み(`index.html` は一切触らず、検査スクリプト側だけを一時変更)。
+単体 8 pass / 0 fail(3.3s)、`node scripts/check-all.mjs` **34本中34本PASS(348.1s・最遅 check-reason 28.4s)**。`docs/CHECKS.md` の本数(33→34)・サーバ利用本数(28→29)・表・所要目安を同じコミットで更新(R212の再発防止)。`assets/` `fixtures/` `demo/` `index.html`・既存検査33本は1バイトも変更なし。
