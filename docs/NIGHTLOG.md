@@ -1,5 +1,31 @@
 # 夜間ログ(みのるんが朝に読む)
 
+## R204(2026-09-19 **CIで検査が緑になりました** — 関門突破・CIの第2段階)
+
+- **結論: GitHub Actions の Linux 上で、やどたびのブラウザ検査が実際に緑になりました。** 市場調査役が「ここが最重要の関門」と言っていた箇所を通過しました。実行時間は**45秒**、結果は **9 pass / 0 fail**。→ https://github.com/TeeR-tee/yadotabi/actions/runs/35447206192
+- **★一番の収穫: CI の結果が Windows と完全に一致しました。** リンク本数まで同じ(初期表示14本・埋め込み14本・もっと見る展開後55本)。数字がピタリと一致したということは、**CI は「別物を検査している」のではなく、みのるんのPCと同じものを同じように検査できている**という意味です。ここがズレていたら CI の結果は信用できませんでした。
+- **選んだ1本は `scripts/check-links-target.mjs` です。理由は3つ**:
+  1. **外部APIを1回も叩かない**(全て `?fixture=kusatsu` 経由)。Overpass の 406 事件(R197)のような「外部都合で赤くなる」事故が構造的に起きません
+  2. **時間のしきい値を持たない**。判定は「リンクに `target="_blank"` と `rel="noopener"` が付いているか」という DOM 属性の有無だけです。`check-firstcard.mjs` は「200ms以内」という速度判定があるため、ランナーの速度次第で揺れる可能性があり避けました
+  3. **短い(119行)** ので、落ちたときに原因を追いやすい
+- **やった改修は2行だけです。** 従来 `import { chromium } from 'file:///C:/workspace/tools/shot/...'` と Windows のパスを直書きしていた行を、こう変えました:
+  ```js
+  const PLAYWRIGHT_IMPORT = process.env.PLAYWRIGHT_IMPORT || 'file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs';
+  const { chromium } = await import(PLAYWRIGHT_IMPORT);
+  ```
+  **環境変数が無ければ今までどおりの絶対パス**なので、みのるんのPCでの動きは1ミリも変わりません(実測: `node scripts/check-all.mjs` **32本中32本PASS**)。CI 側だけが `PLAYWRIGHT_IMPORT` に Linux の `node_modules` を渡します。
+- **R203 の python3 対応が効いていることも確認できました。** ランナーのログに `Python 3.12.3` が出ており、`server.mjs` が `python` → `python3` へ自動フォールバックしてローカルサーバが起動しています。**もし R203 をやっていなければ、ここで「サーバが起動しませんでした」と落ちて原因調査から始まっていました。**
+- **お金はかかりません。** `runs-on: ubuntu-latest`(標準ランナー)で、リポジトリが public なので Actions は無料です。大型ランナーは public でも課金されるため使っていません。
+- **暴走しない作りにしてあります。** 新しいワークフロー `.github/workflows/check-playwright-trial.yml` の起動条件は **`workflow_dispatch`(手動実行)のみ**で、`push` も `schedule` も付けていません。**コミットしても勝手には走りません。** 既存の `check.yml` は一切触っていません。
+- **みのるんが自分で回したいとき**(`gh` を使わない手順):
+  1. https://github.com/TeeR-tee/yadotabi/actions を開く
+  2. 左の一覧から **check-playwright-trial** を選ぶ
+  3. 右上の **Run workflow** ボタン → ブランチ `main` のまま **Run workflow** を押す
+  4. 1分ほどで結果が出ます。緑のチェックなら成功です
+- **残っている作業(次の2手)**: ①他の27本を同じ `PLAYWRIGHT_IMPORT` 方式に `sed` で一括置換する ②ワークフローを `check-all.mjs` 全本に広げる。**②のトリガは `schedule`(1日1回)+ `workflow_dispatch` のみにして、`push` は付けないこと**(8分のジョブが毎コミット走るとキューが詰まるため)。
+- **注意点(今は無害)**: ランナーから2件の警告が出ていますが、どちらも動作には影響しません。(1) `actions/checkout@v4` と `setup-node@v4` が Node.js 20 対応で非推奨扱い(自動で Node 24 に載せ替えて実行されている)。(2) `ubuntu-latest` が 2026-10-19 から Ubuntu 26 に移行予定。**全本に広げるタイミングで `@v5` 系への更新を検討**すると良いです。
+- **変更ファイルは3つだけ**: `scripts/check-links-target.mjs`(2行)、`.github/workflows/check-playwright-trial.yml`(新規)、本ログと ROADMAP。**他の27本の検査・`assets/`・`check.yml` は無編集**です。
+
 ## R203(2026-09-19 `server.mjs` を python/python3 両対応にした — CIの第1段階)
 - **市場調査役の第18回で見つかった障壁を直しました。** `scripts/lib/server.mjs` は検査サーバの起動に `python -m http.server` を固定で叩いていましたが、**Ubuntu には `python` コマンドが無く `python3` のみ**なので、Linux/Mac では検査が1本も動きませんでした。
 - **対応方法: 起動前にどちらが使えるか実際に確認してから選ぶ方式にしました。** `python --version` を試して成功すれば `python`、失敗すれば `python3` にフォールバックします(どちらも無ければ分かりやすいエラーで止まる)。Windows は `python` が一般的・Linux/Mac は `python3` が一般的なので、**現状維持(python優先)+ フォールバック**が一番安全と判断しました。spawn してから失敗を待つ方式(起動失敗を9秒待ってから気づく)より、事前確認の方が速く確実です。
