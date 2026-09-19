@@ -345,6 +345,11 @@
 
 ## サイクル記録
 
+### 2026-09-20 R212 `docs/CHECKS.md` を実態(32本)に合わせて直す
+- やったこと: 1行目見出し「30本」→「32本」、「サーバを立てる26本」→「27本」、「サーバもPlaywrightも不要な4本」→「5本」に修正。表から漏れていた `check-bundle`(R157/R158の.feedbundle検査)・`check-osmfallback`(R181のOverpassフォールバック検査)を `SCRIPTS` 配列と同じ順序で追加(冒頭コメントから説明文を拾い、`check-osmfallback` はensureServer/playwrightどちらも未使用と実測しサーバ不要グループに分類)。所要目安を「322.5s」から「343.4s(Windows)/342.5s(CI)・最遅check-reason.mjs 28.9s」に更新。R209をR212で消化としてROADMAPに記録。
+- 検証: `grep -c "^| check" docs/CHECKS.md`=31、`grep -n "30本"`=0件、SCRIPTS全32本が表に存在(自作スクリプトでMISSING 0件確認)。`node scripts/check-all.mjs` **32本全PASS(339.9s)**。`git diff --stat` は CHECKS.md/ROADMAP.md/NIGHTLOG.md のみ、`scripts/`・`assets/` は無変更。
+- 次: R210(embed-check説明書き)・R211(dump-rank日時付与)から次サイクルで選定。
+
 ### 2026-09-19 R208 デモページ2枚のリンクプレビュー(OGカード)を整える
 - やったこと: `demo/hotel-page.html`/`demo/hotel-page-en.html` の `<title>` 直後に `og:type`/`og:title`/`og:description`/`og:url`/`og:image`/`twitter:card` 等を `index.html` を手本に追記。画像は既存の `docs/og.jpg` を使い回し、`og:url` は2枚それぞれ自身の絶対URL、`og:locale` は `ja_JP`/`en_US`。`index.html`・CSS・本文・iframeは無変更。
 - 見た目の確認結果: 両ページをmobile(375px)・PC幅で撮影・目視、ヘッダー・注意書き・iframeの位置に変化なし。`node scripts/check-all.mjs` 32本全PASS。
