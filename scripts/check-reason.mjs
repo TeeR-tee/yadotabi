@@ -16,6 +16,31 @@
 //   (e) R227: 💡理由行の**優先順**が「代表的な◯◯ → 歩いて行ける → 珍しい◯◯」であること
 //   (f) R231: 「もっと見る」を開いた画面に同じ「このあたりでは珍しいX」が2枚以上出ていない
 //   (g) R231: 「もっと見る」を開いた画面で理由行を持つカードの枚数が基準値を下回らない
+//   (h) R233-3: 母数の下限(5エリア合計)と、cards5 を通らない別軸(展開後の全カードの文言照合)
+//
+// ■ (h) を足した理由(R233-3。「母数が0でも緑」を塞ぐ)
+//   (e)(e2)(e3) の3つは `ok(mismatch.length === 0)` `ok(swallowed.length === 0)`
+//   `ok(rareButWalkable.length === 0)` という形で、**母集団 cards5 が空でも必ず緑**になる。
+//   しかも3つとも母数が cards5(= reasonWithMaterials() が返す materials.cards)という
+//   **1本の軸から作られている**ので、cards5 が空になる壊し方をすると3件同時に緑になる。
+//   → 対策は2本立て:
+//     (h1) **母数そのものを検査項目に格上げ**する。エリア単位ではなく **5エリア合計**で
+//          下限を置く(R226 で確立した形)。全エリアが同時に空になっても落ちる。
+//     (h2) **cards5 を通らない別軸**を足す。(e) は初期5枚しか見ないので、
+//          **「もっと見る」を開いた全カード(cards+more)** の理由行を材料から組み直して
+//          1枚ずつ突き合わせる。(e) と同じ expectedReason() を使うが、母集団が別。
+//
+//   ★この別軸が本当に効くことは実測で確かめた(2026-09-24)。旧版(R233-2 時点)に対して:
+//     - 壊し方C2「more のカードだけ『このあたりの代表的な◯◯』を『歩いて行ける』に差し替える」
+//       → 旧版 59 pass / 0 fail(素通り)。理由行の**本数は78本のまま1本も変わらない**ので
+//         (f)(g) のような枚数を数える検査では原理的に捕まえられない。画面では
+//         「代表的な◯◯」30本が消えて「歩いて行ける」が60本に増えるという大きな嘘になる。
+//     - 壊し方F「more のカードだけ『歩いて行ける』を『このあたりの代表的な◯◯』に格上げする」
+//       → 旧版 59 pass / 0 fail(素通り)。本数不変のまま嘘の権威づけが増える。
+//   ※計画役が推した2つの壊し方は**どちらも旧版で既に捕まった**ので採用していない:
+//     「理由行の描画をやめる」→ 旧版 42 pass / 17 fail、
+//     「歩いて行ける と 珍しい◯◯ の優先順を入れ替える」→ 旧版 58 pass / 1 fail。
+//     「既に別の軸で守られている」ものを実証に使っても格上げの効果は示せない(R233-2 の教訓)。
 //
 // ■ (b) が R231 まで何も見ていなかった理由(同じ穴を他で開けないための記録)
 //   (b) は `engine.js` の reasonFor() が作る**旧文言**「この一帯で唯一のX」を正規表現で
@@ -76,6 +101,21 @@ const PREFIX_NTH = '宿から';                     // 「宿からN番目に近
 // R231: 「もっと見る」を開いた画面で理由行を持つカードの枚数の下限(2026-09-20 実測)。
 // この値を下回る=直したつもりで理由行を消してしまった、ということ。
 const EXPECT_REASON_MIN = { kusatsu: 18, hakone: 15, dogo: 14, beppu: 15, kinosaki: 16 };
+
+// R233-3: (e)(e2)(e3) が見ている母集団の下限。**5エリア合計**で置く(エリア単位ではない)。
+// 2026-09-24 の実測値: cards5 は5エリアとも5枚ちょうどで合計25枚、そのうち理由行が
+// 画面に出ているのは24枚(箱根の1枚だけ engine.js が理由なしと判定して行を出さない)。
+// shouldBeRepresentative は 草津1・箱根3・別府4・道後3・城崎1 の合計12枚で、
+// **0件のエリアは無い**が、エリア単位の下限を置くと fixtures の更新で簡単に割れるので
+// 合計で持つ。rareButWalkable の母数(徒歩800m以内の cards5)は
+// 草津5・箱根2・別府1・道後3・城崎4 の合計15枚で、**別府は1枚しかない**。
+// 下限は実測値そのものではなく、5エリア全滅を確実に捕まえられる控えめな値にしてある。
+const EXPECT_CARDS5_TOTAL = 25;            // 5エリア × 初期5枚(この値は仕様上固定)
+const EXPECT_CARDS5_SHOWN_MIN = 20;        // cards5 のうち画面に理由行が出ている枚数(実測24)
+const EXPECT_REPRESENTATIVE_TOTAL_MIN = 6; // 代表格に当たる cards5 の合計(実測12)
+const EXPECT_WALKABLE_TOTAL_MIN = 8;       // 徒歩800m以内の cards5 の合計(実測15)
+// (h2) 別軸: 展開後(cards+more)の理由行の合計本数の下限(実測78本)。
+const EXPECT_EXPANDED_REASON_TOTAL_MIN = 60;
 
 /**
  * check-fame.mjs の stripJsComments と同じ方針。
@@ -264,6 +304,69 @@ async function reasonWithMaterials(page, base, area) {
 }
 
 /**
+ * R233-3 ★別軸: 「もっと見る」を開いた画面の**全カード(cards+more)**について、
+ * 材料から組み直した期待文言と画面の文言を突き合わせるための材料を返す。
+ *
+ * (e)(e2)(e3) は母集団が cards5(初期5枚)の1本に寄っていて、6枚目以降を一度も見ない。
+ * そのため「more のカードだけ文言を別の有効な文言に差し替える」壊し方は、理由行の
+ * **本数が1本も変わらない**ので (f)(g) の枚数検査でも捕まえられず、素通りしていた。
+ * ここは cards5 を経由せず、展開後の DOM と cards+more の材料を直接突き合わせる。
+ *
+ * 期待値の組み立ては app.js の reasonText() と同じく **行が出るか出ないかは初期5枚**、
+ * **「珍しい」を名乗る資格は cards+more** という2つの母集団を使う(expectedReason と同じ)。
+ */
+async function expandedWithMaterials(page, base, area) {
+  await page.goto(`${base}/?fixture=${area}`, { waitUntil: 'load' });
+  await waitFor(2000);
+  const btn = page.locator('#more-btn');
+  if (await btn.count() && await btn.first().isVisible()) {
+    await btn.first().click();
+    await waitFor(1200);
+  }
+  const dom = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('.feedcard')).map((el) => {
+      const nameEl = el.querySelector('.feedcard__name');
+      const reasonEl = el.querySelector('.feedcard__reason');
+      return {
+        name: nameEl ? nameEl.textContent.trim() : '',
+        reason: reasonEl ? reasonEl.textContent.trim().replace(/^💡\s*/, '') : '',
+      };
+    })
+  );
+  const materials = await page.evaluate(async (area) => {
+    const res = await fetch('fixtures/' + area + '.json');
+    const json = await res.json();
+    window.YadoGeo.setFixture(json);
+    const hotel = { id: 'fixture/' + json.meta.area, name: json.meta.label, lat: json.meta.lat, lon: json.meta.lon };
+    const items = await window.YadoEngine.collect(hotel);
+    const ranked = window.YadoEngine.rank(items, hotel, { now: new Date() });
+    const presented = window.YadoEngine.present(ranked, hotel);
+    const toMaterial = (c) => {
+      const d = c._debug || {};
+      return {
+        name: c.name,
+        hasReason: !!c.reason,
+        categoryLabel: c.categoryLabel,
+        category: d.category,
+        distanceM: isFinite(d.distanceM) ? d.distanceM : c.distanceM,
+        backlinks: isFinite(d.backlinks) ? d.backlinks : null,
+      };
+    };
+    return {
+      cards: presented.cards.map(toMaterial),
+      more: (presented.more || []).map(toMaterial),
+    };
+  }, area);
+
+  const pool = materials.cards.concat(materials.more);
+  const all = pool.map((m) => {
+    const shown = dom.find((x) => x.name === m.name);
+    return { ...m, shownReason: shown ? shown.reason : null };
+  });
+  return { all, cardsInView: materials.cards, pool };
+}
+
+/**
  * R227 + R231: 材料から「あるべき理由行」を組み立てる。app.js の reasonText() と同じ優先順:
  *   代表的な◯◯ → 歩いて行ける → 珍しい◯◯(または距離順の受け皿)
  * app.js を読んで写すのではなく、仕様として独立に書くので、app.js 側を戻すと食い違って落ちる。
@@ -315,6 +418,14 @@ async function main() {
   const backlinksMin = readBacklinksMin();
   ok(backlinksMin === EXPECT_BACKLINKS_MIN,
     `app.js の REASON_BACKLINKS_MIN が ${EXPECT_BACKLINKS_MIN}`, backlinksMin);
+
+  // R233-3: (e)(e2)(e3) の母数を5エリア合計で積む(エリア単位だと全滅を捕まえられない)。
+  // expandedChecked / expandedMismatch は cards5 を通らない別軸の母数。
+  const totals = {
+    cards5: 0, cards5Shown: 0, representative: 0, walkable: 0,
+    expandedCards: 0, expandedReason: 0, expandedChecked: 0,
+  };
+  const expandedMismatch = [];
 
   const browser = await chromium.launch();
   try {
@@ -425,8 +536,14 @@ async function main() {
           });
         }
       });
+      // R233-3 (h1): mismatch.length === 0 は **cards5 が空でも必ず緑**になる形だった。
+      // 何枚を突き合わせたのかを必ず表に出し、合計は main の最後で下限と突き合わせる。
+      const cards5Shown = cards5.filter((c) => c.shownReason);
+      totals.cards5 += cards5.length;
+      totals.cards5Shown += cards5Shown.length;
       ok(mismatch.length === 0,
-        `${area}: 理由行が「代表的な→歩いて行ける→珍しい」の優先順どおり`, mismatch);
+        `${area}: 理由行が「代表的な→歩いて行ける→珍しい」の優先順どおり`
+        + `(${cards5.length}枚を照合)`, mismatch);
 
       // (e2) 代表格として選ばれたカードが「歩いて行ける」で潰されていないこと。
       // 優先順を元に戻すと、徒歩圏の代表格は全部「歩いて行ける」になるのでここが落ちる。
@@ -435,8 +552,13 @@ async function main() {
         return e && e.indexOf(PREFIX_REPRESENTATIVE) === 0;
       });
       const swallowed = shouldBeRepresentative.filter((c) => c.shownReason === TEXT_WALKABLE);
+      // R233-3 (h1): 母数 shouldBeRepresentative は cards5 より更に細い。0件のエリアは
+      // 今のところ無い(草津1・箱根3・別府4・道後3・城崎1)が、0件になれば必ず緑になるので
+      // 何枚見たかを表に出し、合計で下限を置く。
+      totals.representative += shouldBeRepresentative.length;
       ok(swallowed.length === 0,
-        `${area}: 代表的な◯◯に当たるカードが「${TEXT_WALKABLE}」に潰されていない`,
+        `${area}: 代表的な◯◯に当たるカードが「${TEXT_WALKABLE}」に潰されていない`
+        + `(${shouldBeRepresentative.length}枚を照合)`,
         swallowed.map((c) => c.name));
 
       // (e3) R227: 徒歩圏(800m以下)のカードに「珍しい◯◯」が出ていないこと。
@@ -448,10 +570,64 @@ async function main() {
         (c) => c.shownReason && c.shownReason.indexOf(PREFIX_RARE) === 0 &&
           isFinite(c.distanceM) && c.distanceM <= WALKABLE_MAX_M
       );
+      // R233-3 (h1): この判定の母数は「徒歩800m以内の cards5」。別府は1枚しかないので
+      // エリア単位の下限は置けない。何枚見たかを表に出し、合計で下限を置く。
+      const walkableCards = cards5.filter((c) => isFinite(c.distanceM) && c.distanceM <= WALKABLE_MAX_M);
+      totals.walkable += walkableCards.length;
       ok(rareButWalkable.length === 0,
-        `${area}: 徒歩${WALKABLE_MAX_M}m以内のカードに「${PREFIX_RARE}◯◯」が出ていない`,
+        `${area}: 徒歩${WALKABLE_MAX_M}m以内のカードに「${PREFIX_RARE}◯◯」が出ていない`
+        + `(${walkableCards.length}枚を照合)`,
         rareButWalkable.map((c) => ({ name: c.name, distanceM: c.distanceM, reason: c.shownReason })));
+
+      // (h2) ★R233-3 別軸: cards5 を通らない。「もっと見る」を開いた**全カード**の理由行を
+      // 材料から組み直して1枚ずつ突き合わせる。(e) は初期5枚しか見ないので、
+      // 6枚目以降だけ文言を別の有効な文言にすり替える壊し方(本数は1本も変わらない)を
+      // 素通りさせていた。ここは本数ではなく**中身**を見るので、それが落ちる。
+      const exp = await expandedWithMaterials(page, base, area);
+      totals.expandedCards += exp.all.length;
+      totals.expandedReason += exp.all.filter((c) => c.shownReason).length;
+      exp.all.forEach((c) => {
+        const expect = expectedReason(c, exp.cardsInView, EXPECT_BACKLINKS_MIN, exp.pool);
+        const actual = c.shownReason || null;
+        totals.expandedChecked++;
+        if (expect !== actual) {
+          expandedMismatch.push({
+            area, name: c.name, expect, actual,
+            distanceM: c.distanceM, backlinks: c.backlinks, categoryLabel: c.categoryLabel,
+          });
+        }
+      });
     }
+
+    // ===== R233-3: 母数の下限(軸1)と、cards5 を通らない別軸(軸2) =====
+    console.log(
+      `\n  合計: cards5 ${totals.cards5}枚(理由行あり ${totals.cards5Shown}枚)` +
+      ` / 代表格 ${totals.representative}枚 / 徒歩圏 ${totals.walkable}枚` +
+      ` / 展開後 ${totals.expandedCards}枚(理由行 ${totals.expandedReason}本・照合 ${totals.expandedChecked}枚)\n`
+    );
+
+    // (h1) 軸1: (e)(e2)(e3) の母数そのものを検査項目にする。**5エリア合計**で置くので、
+    // 全エリアが同時に空になる壊し方(cards5 が1本の軸なので3件同時に緑になる)も落ちる。
+    ok(totals.cards5 === EXPECT_CARDS5_TOTAL,
+      `合計: (e)の母数 cards5 が ${EXPECT_CARDS5_TOTAL}枚`, totals.cards5);
+    ok(totals.cards5Shown >= EXPECT_CARDS5_SHOWN_MIN,
+      `合計: cards5 のうち画面に理由行が出ているのが ${EXPECT_CARDS5_SHOWN_MIN}枚以上`,
+      { actual: totals.cards5Shown, expect: EXPECT_CARDS5_SHOWN_MIN });
+    ok(totals.representative >= EXPECT_REPRESENTATIVE_TOTAL_MIN,
+      `合計: (e2)の母数「代表的な◯◯に当たるカード」が ${EXPECT_REPRESENTATIVE_TOTAL_MIN}枚以上`,
+      { actual: totals.representative, expect: EXPECT_REPRESENTATIVE_TOTAL_MIN });
+    ok(totals.walkable >= EXPECT_WALKABLE_TOTAL_MIN,
+      `合計: (e3)の母数「徒歩${WALKABLE_MAX_M}m以内のカード」が ${EXPECT_WALKABLE_TOTAL_MIN}枚以上`,
+      { actual: totals.walkable, expect: EXPECT_WALKABLE_TOTAL_MIN });
+
+    // (h2) 軸2: cards5 を通らない。展開後の全カードの理由行を材料から組み直して突き合わせる。
+    // 母数(照合枚数)も同時に検査するので、ここも「0枚を照合して緑」にはならない。
+    ok(totals.expandedReason >= EXPECT_EXPANDED_REASON_TOTAL_MIN,
+      `合計: 展開後の理由行が5エリアで ${EXPECT_EXPANDED_REASON_TOTAL_MIN}本以上`,
+      { actual: totals.expandedReason, expect: EXPECT_EXPANDED_REASON_TOTAL_MIN });
+    ok(totals.expandedChecked > totals.cards5 && expandedMismatch.length === 0,
+      `合計: 展開後の全カード(cards+more ${totals.expandedChecked}枚)の理由行が材料どおり`,
+      { checked: totals.expandedChecked, cards5: totals.cards5, mismatch: expandedMismatch.slice(0, 8) });
 
     ok(consoleErrors.length === 0, 'コンソールエラー0件', consoleErrors);
 
