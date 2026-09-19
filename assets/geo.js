@@ -612,11 +612,39 @@
   }
 
   /**
-   * Nominatim /search を呼び、生のJSON配列を返す。geocodeHotel と suggestHotels で共通。
+   * 「草津温泉 ホテル櫻井」のような入力から、温泉地名の「温泉」を落とした語を作る。
+   * 落とせるものが無ければ null。
+   *
+   * Nominatim は語をAND条件で扱うため、OSM に「草津温泉」という名前の宿や地名が
+   * 無い(実測ではバス停だけ)と、宿の名前が正しくても0件になる。実測:
+   *   「草津温泉 ホテル櫻井」0件 / 「草津 ホテル櫻井」1件(草津白根観光ホテル櫻井)
+   *   「有馬温泉 兵衛向陽閣」0件 / 「有馬 兵衛向陽閣」2件
+   * 宿名そのものに付く「温泉」(例: 鶴の湯温泉)まで削ると別物になるので、
+   * **2語以上あるときの、最後の語より前にある「◯◯温泉」だけ**を対象にする。
+   * @param {string} q 検索語
+   * @returns {string|null}
+   */
+  function dropOnsenFromArea(q) {
+    var words = String(q || '').split(' ').filter(Boolean);
+    if (words.length < 2) return null;
+    var changed = false;
+    // 最後の語(宿名とみなす)は触らない
+    for (var i = 0; i < words.length - 1; i++) {
+      var w = words[i];
+      if (w.length > 2 && /温泉$/.test(w)) {
+        words[i] = w.slice(0, -2);
+        changed = true;
+      }
+    }
+    return changed ? words.join(' ') : null;
+  }
+
+  /**
+   * Nominatim /search を1回だけ叩いて生のJSON配列を返す。
    * @param {string} q 検索語
    * @param {number} limit 最大件数
    */
-  async function searchNominatim(q, limit) {
+  async function requestNominatim(q, limit) {
     var params = new URLSearchParams({
       q: q,
       format: 'jsonv2',
@@ -646,6 +674,23 @@
     }
 
     return Array.isArray(data) ? data : [];
+  }
+
+  /**
+   * Nominatim /search を呼び、生のJSON配列を返す。geocodeHotel と suggestHotels で共通。
+   *
+   * 0件だったときに限り、温泉地名の「温泉」を落としてもう一度だけ引き直す。
+   * **見つかった場合は追加リクエストを出さない**ので、通常時の回数は変わらない。
+   * @param {string} q 検索語
+   * @param {number} limit 最大件数
+   */
+  async function searchNominatim(q, limit) {
+    var data = await requestNominatim(q, limit);
+    if (data.length) return data;
+
+    var retry = dropOnsenFromArea(q);
+    if (!retry || retry === q) return data;
+    return requestNominatim(retry, limit);
   }
 
   /** Nominatim の1件から短い名前を取り出す。display_name は「◯◯ホテル, ◯◯町, ...」形式。 */
