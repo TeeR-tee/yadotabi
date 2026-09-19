@@ -115,7 +115,11 @@ async function main() {
     const totalCardCount = await page.locator('.feedcard').count();
     const summaryCount = await page.locator('.feedcard__summary').count();
     // R154実測: dogo 展開後15件、全カードに.feedcard__summaryが1本ずつ付く。
-    ok(summaryCount === totalCardCount && totalCardCount === 15, '3. .feedcard__summary の総数が展開後の全件数(15)と一致', summaryCount);
+    // R168実測: 16件に増えた。親記事の言及回数で配点するようにした結果、道後温泉の
+    // 記事によく出る候補(道後公園・湯神社ほか)が表示圏に入ったため。
+    // **検査の本体は summaryCount === totalCardCount(全カードに1本ずつ)** で、
+    // ここは緩めていない。件数は実測値の記録なので追従させる。
+    ok(summaryCount === totalCardCount && totalCardCount === 16, '3. .feedcard__summary の総数が展開後の全件数(16)と一致', summaryCount);
 
     const noneCount = await page.locator('.feedcard__summary--none').count();
     // 2026-09-19 R164実測: dogo 展開後15件のうち9件が--none(記事あり8 + 記事なし1)。

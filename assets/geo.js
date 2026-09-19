@@ -1272,6 +1272,13 @@
    *   - 2文字以上(★3文字以上にすると柳湯・湯畑が落ちる)
    *   - 汎用語ブロックリストに載っている名前は弾く(これが無いと誤爆7.1%)
    *   - 単純な部分文字列一致(本文は explaintext の素テキスト)
+   *
+   * R168: 返す値を `true` から **本文中の出現回数** に変えた。二値だと同じ徒歩圏の
+   * 主役と脇役が区別できなかったため(草津で湯畑35回・白旗源泉2回・御座之湯1回が
+   * 全員同じ40点になり、湯畑が more から上がれなかった)。
+   * 呼び出し側は真偽値としても使えるので、0件=加点なしの扱いは変わらない。
+   *
+   * @returns {Object} 本文に出た名前をキーに**出現回数**(1以上)を持つ表
    */
   function matchParentMentions(text, names) {
     var hits = Object.create(null);
@@ -1282,7 +1289,16 @@
       if (name.length > PARENT_MENTION_MAX_CHARS) return;
       if (PARENT_MENTION_BLOCK.indexOf(name) > -1) return;
       if (hits[name]) return;
-      if (text.indexOf(name) > -1) hits[name] = true;
+      // R168: true ではなく **出現回数** を返す(engine.js が強さに応じて配点する)。
+      // 数えるのは単純な部分文字列の重なりなし走査。正規表現を使わないのは、
+      // 名前に正規表現のメタ文字(括弧・ドット)が入る候補があるため。
+      var count = 0;
+      var at = text.indexOf(name);
+      while (at > -1) {
+        count++;
+        at = text.indexOf(name, at + name.length);
+      }
+      if (count > 0) hits[name] = count;
     });
     return hits;
   }
