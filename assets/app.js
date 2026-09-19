@@ -1001,13 +1001,11 @@
   // 母集団は state.cards(理由が付く候補は present() が上位プールに絞った上でここに入るため、
   // 「もっと見る」側の束(card.reason が null のカード)には触れない=行が増えることはない)。
   //
-  // ★R227 で見つかった未修正の不具合(別タスクで対応する。ここでは直さない):
-  //   cardHtml() は「もっと見る」で開く state.more のカードにも同じ reasonText() を使うのに、
-  //   母集団は初期5件の state.cards のままなので、5件の中だけで数えた「唯一/最大」を
-  //   20枚以上に対して名乗ってしまう(草津で「このあたりでは珍しい神社・寺院」が
-  //   光泉寺・白根神社・草津聖バルナバ教会の3枚に同時に出る)。
-  //   母集団を state.cards.concat(state.more) に広げると数え方は正しくなるが、
-  //   「唯一」でなくなるカードの理由行が10枚ほど消えるため、R227(表示順のみ)の範囲を越える。
+  // ★R231: 「このあたりでは珍しい◯◯」だけは、母集団 state.cards(初期5枚)で数えた
+  //   「唯一」を、画面に出ている20枚以上に対して名乗っていた(別府で
+  //   「このあたりでは珍しい共同浴場」が竹瓦温泉・浜脇温泉の2枚に同時に出た。
+  //   5エリアの実測ではこの1組2枚だけが該当し、他4エリアは重複0枚だった)。
+  //   直し方は rareReason() を参照。母集団そのものは state.cards のままにしてある。
   var REASON_BACKLINKS_MIN = 30; // 10-7: 光泉寺9/白根神社4/城崎美術館14/四所神社15を弾く下限
   function walkableReason(card) {
     var d = card && card._debug;
@@ -1030,14 +1028,51 @@
     });
     return isMax ? 'このあたりの代表的な' + label : null;
   }
-  function rareReason(card, cardsInView) {
+  /** 同じカテゴリ(ラベルと category の両方が一致)のカードだけを取り出す。 */
+  function sameCategoryIn(pool, card, label) {
+    var d = card && card._debug;
+    return (Array.isArray(pool) ? pool : []).filter(function (c) {
+      return c && c.categoryLabel === label && c._debug && c._debug.category === (d && d.category);
+    });
+  }
+  /**
+   * R231: 「珍しい」は**画面に出ている全カードの中で唯一**のときだけ名乗る。
+   *
+   * 行が出るか出ないかを決める母集団は今までどおり cardsInView(= state.cards の初期5枚)で、
+   * ここは変えていない(変えると「唯一でなくなった」カードの理由行が5エリアで6枚消える)。
+   * 変えたのは**名乗る資格の判定に使う母集団**だけで、shownPool(展開後は cards+more)に
+   * 同カテゴリが他にもあれば「珍しい」とは言わず、同じ材料(宿からの距離)で必ず真になる
+   * 「この◯◯の中では宿から一番近い」/「宿からN番目に近い◯◯」へ差し替える。
+   * これで嘘(同じ文言が同じ画面に2枚以上)が消え、理由行が消えるカードは0枚になる。
+   *
+   * ★受け皿に「珍しい」「代表的な」といった評価の語を使わないのは R227 の教訓。
+   *   距離の順位は fixtures の座標から一意に決まる事実で、何枚並んでも嘘にならない。
+   */
+  function rareReason(card, cardsInView, shownPool) {
     var d = card && card._debug;
     if (!d || d.category === 'other' || !d.category) return null;
     var label = card.categoryLabel || 'スポット';
-    var sameCat = (Array.isArray(cardsInView) ? cardsInView : []).filter(function (c) {
-      return c && c.categoryLabel === label && c._debug && c._debug.category === d.category;
+    if (sameCategoryIn(cardsInView, card, label).length !== 1) return null;
+
+    var shown = sameCategoryIn(
+      Array.isArray(shownPool) && shownPool.length ? shownPool : cardsInView, card, label);
+    if (shown.length <= 1) return 'このあたりでは珍しい' + label;
+
+    // 画面に同カテゴリが複数ある=「珍しい」は嘘。距離順の位置に言い換える。
+    var sorted = shown.slice().sort(function (a, b) {
+      return distanceOf(a) - distanceOf(b);
     });
-    return sameCat.length === 1 ? 'このあたりでは珍しい' + label : null;
+    var idx = sorted.indexOf(card);
+    if (idx < 0) return null; // 自分が見つからない(想定外)ときは黙る
+    return idx === 0
+      ? 'この' + label + 'の中では宿から一番近い'
+      : '宿から' + (idx + 1) + '番目に近い' + label;
+  }
+  /** 距離の取り出し。_debug 優先・欠けていればカード本体・それも無ければ最後尾に回す。 */
+  function distanceOf(card) {
+    var d = card && card._debug;
+    var m = d && isFinite(d.distanceM) ? d.distanceM : (card && card.distanceM);
+    return isFinite(m) ? m : Infinity;
   }
   // R227: 優先順を「代表的な◯◯ → 歩いて行ける → 珍しい◯◯」に変えた(表示のみ・順位は不変)。
   // 理由: 温泉街は宿の徒歩圏に見どころが集まるため、旧順(歩いて行ける が先頭)だと上位5枚の
@@ -1062,9 +1097,15 @@
   function reasonText(card) {
     if (!card || !card.reason) return null; // engine.js が理由なしと判定したカードは行ごと出さない
     var cardsInView = Array.isArray(state.cards) ? state.cards : [];
+    // R231: 「珍しい」の真偽だけは cards+more(=「もっと見る」で開ける全カード)で確かめる。
+    // state.moreOpen で切り替えないのは、展開の前後で同じカードの文言が変わるのを避けるため。
+    // 畳んだ状態で「珍しい」と言い、開いたら同種が隣に並ぶ、では結局その1行が嘘になる。
+    var shownPool = Array.isArray(state.more) && state.more.length
+      ? cardsInView.concat(state.more)
+      : cardsInView;
     return representativeReason(card, cardsInView) ||
       walkableReason(card) ||
-      rareReason(card, cardsInView) ||
+      rareReason(card, cardsInView, shownPool) ||
       null;
   }
 
