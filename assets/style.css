@@ -520,6 +520,16 @@ body {
 /* 「徒歩10分 · 車2分」は1つの塊。途中で改行させない */
 .feedcard__times { font-weight: 600; white-space: nowrap; }
 
+/* R224: 知名度バッジ。ui.css の .badge の型をそのまま使い、色だけ控えめに寄せる。
+   距離(.feedcard__times)より目立たせない = 主役は「宿からの近さ」のままにする。
+   375px幅でも途中で折れないよう1つの塊として扱い、メタ行の flex-wrap で行送りさせる。 */
+.feedcard__fame {
+  white-space: nowrap;
+  background: var(--c-surface-2);
+  color: var(--c-text-sub);
+  font-weight: 600;
+}
+
 .feedcard__summary {
   margin: 0;
   font-size: var(--fs-sm);

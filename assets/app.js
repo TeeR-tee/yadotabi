@@ -1040,6 +1040,45 @@
       null;
   }
 
+  // R224: 「どれだけ知られている場所か」を短い言葉でメタ行に足す(設計思想の3本目)。
+  // 材料は engine.js が既に _debug.backlinks として載せている被リンク数(日本語版Wikipedia内で
+  // 何件の記事から参照されているか)。読むだけで、順位(rank)には一切触れない。
+  //
+  // なぜ生の数値を出さないか: 「284」は単位が無く利用者に意味が伝わらない。加えて
+  // Wikipedia記事が無い場所は 0 になるため、数値をそのまま出すと「人気0」という
+  // 存在しない評価を表示してしまう(草津の more 側の多くがこれ)。
+  //
+  // しきい値の根拠(固定データ5エリア・背景に出ている全81枚の実測分布から決めた):
+  //   最大 315(愛媛県美術館) / 200以上 11枚 / 150以上 17枚 / 100以上 25枚 / 0 は37枚。
+  //   150 以上には松山城・小田原城天守閣・彫刻の森美術館・別府地獄めぐり等、
+  //   その県外の人でも名前を知っている施設が並ぶため、ここを「全国的に知られた」の線にした。
+  //   60〜149 には大涌谷・玄武洞・道後公園など「地元では有名だが全国区とは言い切れない」層が
+  //   入るため、ここを「この地方でよく知られた」の線にした。60 未満は温泉寺本堂(28)や
+  //   湯神社(17)のように、知名度を語るだけの裏付けが無いので何も出さない。
+  //   既存の REASON_BACKLINKS_MIN = 30 は「代表的な◯◯」を選ぶための下限であって
+  //   知名度の強弱を分ける線ではない(30 だと5エリアで44枚=過半数に出てしまい、
+  //   「全カードに同じ文言」に近づき情報量が落ちる)ため、流用しなかった。
+  var FAME_NATIONAL_MIN = 150; // ここ以上は全国的に名前が知られている層
+  var FAME_LOCAL_MIN = 60;     // ここ以上はその地方でよく知られている層
+  /**
+   * @param {object} card カード
+   * @param {?string} reasonMsg 同じカードに既に出ている💡理由行の文言(無ければ null)
+   * @returns {?string} 出す文言。出さないときは null(空文字も返さない)
+   */
+  function fameText(card, reasonMsg) {
+    var d = card && card._debug;
+    if (!d) return null;
+    // 0 と欠落は「知名度が低い」ではなく「測れていない」。何も出さない(空欄も出さない)。
+    var backlinks = isFinite(d.backlinks) && d.backlinks > 0 ? d.backlinks : 0;
+    if (backlinks >= FAME_NATIONAL_MIN) return '全国的によく知られた場所';
+    if (backlinks < FAME_LOCAL_MIN) return null;
+    // 「このあたりの代表的な◯◯」は既に“この土地の中での位置づけ”を言っている。
+    // そこへ「この地方でよく知られた場所」を並べると同じ範囲の話を2回することになるため出さない
+    // (5エリアで10枚が該当した)。全国級はその土地の外まで名が通っている=別の情報なので残す。
+    if (reasonMsg && reasonMsg.indexOf('このあたりの代表的な') === 0) return null;
+    return 'この地方でよく知られた場所';
+  }
+
   function cardHtml(card, index, withNo) {
     var emoji = emojiFor(card.categoryLabel);
     var isPortraitDemo = demoPortrait && index < 3;
@@ -1112,6 +1151,14 @@
     var reasonMsg = reasonText(card);
     var reason = reasonMsg ? '<p class="feedcard__reason">💡 ' + escapeHtml(reasonMsg) + '</p>' : '';
 
+    // R224: 知名度のバッジ。理由行(💡)とは別の行=メタ行の末尾に置く。
+    // 理由行は「なぜこの宿から出したか(距離・カテゴリ内の位置づけ)」、こちらは
+    // 「世の中でどれだけ知られている場所か」で、答えている問いが違うため重複しない。
+    var fameMsg = fameText(card, reasonMsg);
+    var fame = fameMsg
+      ? '<span class="badge feedcard__fame">★ ' + escapeHtml(fameMsg) + '</span>'
+      : '';
+
     return '<article class="card feedcard' + (isBare ? ' feedcard--bare' : '') + '" data-index="' + index + '">' +
       mediaBlock +
       '<div class="feedcard__body">' +
@@ -1121,6 +1168,7 @@
         '<p class="feedcard__meta">' +
           '<span class="feedcard__cat">' + escapeHtml(emoji) + ' ' + escapeHtml(card.categoryLabel || '') + '</span>' +
           '<span class="feedcard__times">' + timesText(card) + '</span>' +
+          fame +
         '</p>' +
         hours +
         summary +
