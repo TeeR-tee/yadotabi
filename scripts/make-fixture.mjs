@@ -134,8 +134,11 @@ async function fetchWiki() {
       generator: 'geosearch',
       ggscoord: LAT + '|' + LON,
       ggsradius: String(WIKI_RADIUS_M),
-      ggslimit: '50',
+      ggslimit: '500',
       prop: 'coordinates|pageimages|extracts',
+      // geo.js の baseParams と同じ。max にしないと coordinates が1回10件で頭打ちになる。
+      colimit: 'max',
+      pilimit: 'max',
       exintro: '1',
       explaintext: '1',
       exsentences: '2',

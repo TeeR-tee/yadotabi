@@ -17,7 +17,7 @@
 //   5. コンソールエラー0件
 //   6. R123: 記事が実在する8枚(10位松山城 等)は HAS_ARTICLE_NO_SUMMARY_TEXT を含み、
 //      真に記事が無い12枚は NO_SUMMARY_TEXT ちょうどに一致すること(誤爆0件を1枚ずつ確認)
-//   7. R124: wikipediaTitle が無く wikidataId しか無い候補(?fixture=beppu 18位「うみたまご」)でも
+//   7. R124: wikipediaTitle が無く wikidataId しか無い候補(?fixture=beppu「別府市美術館」)でも
 //      要約行にリンクが出ること(Wikidata転送URL経由。行き止まり修正の不変条件)
 //   8. R124/R149: 5エリア全カードで、HAS_ARTICLE_NO_SUMMARY_TEXT を含む .feedcard__summary--none には
 //      必ず a[href] が1本以上あること(「記事はあります」と言っておいてリンクが無い行き止まりが無い)
@@ -43,15 +43,14 @@ let BASE;
 const NO_SUMMARY_TEXT = 'Wikipediaに記事がありません。地図の情報だけで表示しています。';
 const HAS_ARTICLE_NO_SUMMARY_TEXT = 'Wikipediaに記事はありますが、要約をここに出せていません。';
 // R123: dogo で記事が実在するのに要約が無い8枚(wikipedia/wikidataタグの裏付けあり)
+// R154(colimit=max)後の実測。Wikipedia記事は実在するが要約(extract)が
+// 取得上限で届かなかったカード = HAS_ARTICLE_NO_SUMMARY_TEXT 側になる名前。
 const DOGO_HAS_ARTICLE_NAMES = [
-  '愛媛大学ミュージアム',
-  '松山城',
-  '勝山',
-  '城山公園',
+  '伊佐爾波神社',
   '坂の上の雲ミュージアム',
-  '媛彦温泉',
-  '勝岡山',
   '萬翠荘',
+  '宝厳寺',
+  '子規記念博物館',
 ];
 
 let pass = 0;
@@ -102,12 +101,12 @@ async function main() {
 
     const totalCardCount = await page.locator('.feedcard').count();
     const summaryCount = await page.locator('.feedcard__summary').count();
-    // R155実測: dogo 展開後28件、全カードに.feedcard__summaryが1本ずつ付く。
-    ok(summaryCount === totalCardCount && totalCardCount === 28, '3. .feedcard__summary の総数が展開後の全件数(28)と一致', summaryCount);
+    // R154実測: dogo 展開後15件、全カードに.feedcard__summaryが1本ずつ付く。
+    ok(summaryCount === totalCardCount && totalCardCount === 15, '3. .feedcard__summary の総数が展開後の全件数(15)と一致', summaryCount);
 
     const noneCount = await page.locator('.feedcard__summary--none').count();
-    // R155実測: dogo 展開後28件のうち19件が--none(記事ありHAS_ARTICLE 7 + 記事なし12)。
-    ok(noneCount === 19, '2. .feedcard__summary--none の件数が19(7+12)', noneCount);
+    // R154実測: dogo 展開後15件のうち8件が--none(記事ありHAS_ARTICLE 5 + 記事なし3)。
+    ok(noneCount === 8, '2. .feedcard__summary--none の件数が8(5+3)', noneCount);
 
     // R123: カードごとに名前と--none本文を突き合わせ、記事あり8枚/記事なし12枚の文言を確認
     const cardRows = await page.locator('.feedcard').evaluateAll((cards) =>
@@ -120,15 +119,15 @@ async function main() {
     const hasArticleRows = noneRows.filter((r) => DOGO_HAS_ARTICLE_NAMES.includes(r.name));
     const noArticleRows = noneRows.filter((r) => !DOGO_HAS_ARTICLE_NAMES.includes(r.name));
 
-    // R155実測(展開後28件が母数): 記事が実在するもの7枚、真に記事が無いもの12枚。
+    // R154実測(展開後15件が母数): 記事が実在するもの5枚、真に記事が無いもの3枚。
     ok(
-      hasArticleRows.length === 7 && hasArticleRows.every((r) => r.noneText.indexOf(HAS_ARTICLE_NO_SUMMARY_TEXT) === 0),
-      '6a. 記事が実在する7枚がHAS_ARTICLE_NO_SUMMARY_TEXTになっている',
+      hasArticleRows.length === 5 && hasArticleRows.every((r) => r.noneText.indexOf(HAS_ARTICLE_NO_SUMMARY_TEXT) === 0),
+      '6a. 記事が実在する5枚がHAS_ARTICLE_NO_SUMMARY_TEXTになっている',
       hasArticleRows
     );
     ok(
-      noArticleRows.length === 12 && noArticleRows.every((r) => r.noneText === NO_SUMMARY_TEXT),
-      '6b. 真に記事が無い12枚がNO_SUMMARY_TEXTちょうどのまま(誤爆0件)',
+      noArticleRows.length === 3 && noArticleRows.every((r) => r.noneText === NO_SUMMARY_TEXT),
+      '6b. 真に記事が無い3枚がNO_SUMMARY_TEXTちょうどのまま(誤爆0件)',
       noArticleRows
     );
 
@@ -152,7 +151,9 @@ async function main() {
 
     ok(consoleErrors.length === 0, '5. コンソールエラー0件', consoleErrors);
 
-    // R124: wikidataId しか無い候補でもリンクが出ること(?fixture=beppu 18位「うみたまご」)
+    // R124: wikidataId しか無い候補でもリンクが出ること(?fixture=beppu)
+    // R154: 「うみたまご」は colimit=max で要約が付き --none から外れたため、
+    // wikidata タグのみ(wikipedia タグ無し)で要約が届いていない「別府市美術館」に差し替える。
     const beppuPage = await context.newPage();
     const beppuConsoleErrors = [];
     beppuPage.on('console', (msg) => { if (msg.type() === 'error') beppuConsoleErrors.push(msg.text()); });
@@ -164,7 +165,7 @@ async function main() {
     const umitamagoRow = await beppuPage.locator('.feedcard').evaluateAll((cards) => {
       const card = cards.find((c) => {
         const nameEl = c.querySelector('.feedcard__name');
-        return nameEl && nameEl.textContent.indexOf('うみたまご') !== -1;
+        return nameEl && nameEl.textContent.indexOf('別府市美術館') !== -1;
       });
       if (!card) return null;
       const noneEl = card.querySelector('.feedcard__summary--none');
@@ -180,7 +181,7 @@ async function main() {
     ok(
       !!umitamagoRow && !!umitamagoRow.href && /^https:\/\/www\.wikidata\.org\/wiki\/Special:GoToLinkedPage\/jawiki\/Q[1-9][0-9]*$/.test(umitamagoRow.href) &&
         umitamagoRow.target === '_blank' && umitamagoRow.rel === 'noopener',
-      '7. wikidataId のみの候補(うみたまご)にWikidata転送リンクが出る',
+      '7. wikidataId のみの候補(別府市美術館)にWikidata転送リンクが出る',
       umitamagoRow
     );
 
@@ -220,10 +221,12 @@ async function main() {
     );
     // R152: 椿の湯(旧#27)は15枚打ち切りの外に出たので a1 は廃止。
     // 営業時間が出ることは下の a3(伊佐爾波神社)で引き続き見ている。
-    const univMuseum = dogoHours.find((r) => r.name === '愛媛大学ミュージアム');
+    // R154: 愛媛大学ミュージアム(旧#9)は15枚打ち切りの外に出た。曜日レンジ付きの
+    // 営業時間を持つカードとして萬翠荘で同じ性質(.feedcard__hours が出ること)を見る。
+    const univMuseum = dogoHours.find((r) => r.name === '萬翠荘');
     ok(
-      !!univMuseum && univMuseum.hoursText === '⏰ 10:00-16:30',
-      '(r136) a2. 愛媛大学ミュージアムに営業時間が出る',
+      !!univMuseum && univMuseum.hoursText === '⏰ 火〜日 9:00-18:00',
+      '(r136) a2. 萬翠荘に営業時間が出る',
       univMuseum
     );
     const matsuyamajo = dogoHours.find((r) => r.name === '松山城');
@@ -286,12 +289,11 @@ async function main() {
     const dogoHoursCount = await page.locator('.feedcard__hours').count();
     const kinosakiHoursCount = await kinosakiPage.locator('.feedcard__hours').count();
     const total = kusatsuHoursCount + hakoneHoursCount + dogoHoursCount + beppuHoursCount + kinosakiHoursCount;
-    // 2026-09-19 R155 実測(展開後は理由付き候補の全件が母数): kusatsu 5 / hakone 4 / dogo 3 / beppu 5 / kinosaki 3 = 合計20枚。
-    // 打ち切りを緩めたぶん、営業時間を持つカードも増えている。
+    // 2026-09-19 R154 実測(colimit=max で候補が入れ替わった後): kusatsu 5 / hakone 5 / dogo 2 / beppu 5 / kinosaki 2 = 合計19枚。
     ok(
-      kusatsuHoursCount === 5 && hakoneHoursCount === 4 && dogoHoursCount === 3 && beppuHoursCount === 5 &&
-        kinosakiHoursCount === 3 && total === 20,
-      '(r136) c. 5エリアの .feedcard__hours 件数が実測(5/4/3/5/3=20)と一致',
+      kusatsuHoursCount === 5 && hakoneHoursCount === 5 && dogoHoursCount === 2 && beppuHoursCount === 5 &&
+        kinosakiHoursCount === 2 && total === 19,
+      '(r136) c. 5エリアの .feedcard__hours 件数が実測(5/5/2/5/2=19)と一致',
       { kusatsuHoursCount, hakoneHoursCount, dogoHoursCount, beppuHoursCount, kinosakiHoursCount, total }
     );
 
@@ -325,7 +327,7 @@ async function main() {
     // 定義文1文目のみに限定した結果、「長興山のシダレザクラ」が神社・寺院→スポットに
     // 変わって神社・寺院カテゴリの減点枠が1つ空き、公式サイトを持つ「阿弥陀寺」が
     // top30 に繰り上がったことによる正しい副作用(作業役実測)。
-    // 2026-09-19 R155 実測(展開後は理由付き候補の全件が母数): kusatsu 9 / hakone 6 / dogo 4 / beppu 11 / kinosaki 3 = 合計33枚。
+    // 2026-09-19 R154 実測(colimit=max で候補が入れ替わった後): kusatsu 7 / hakone 10 / dogo 5 / beppu 9 / kinosaki 3 = 合計34枚。
     // 打ち切りを緩めたぶん、公式サイトを持つカードも増えている。
     const officialCountKusatsu = await kusatsuPage.locator('.feedcard__official').count();
     const officialCountHakone = await hakonePage.locator('.feedcard__official').count();
@@ -334,16 +336,18 @@ async function main() {
     const officialCountKinosaki = await kinosakiPage.locator('.feedcard__official').count();
     const officialTotal = officialCountKusatsu + officialCountHakone + officialCountDogo + officialCountBeppu + officialCountKinosaki;
     ok(
-      officialCountKusatsu === 9 && officialCountHakone === 6 && officialCountDogo === 4 &&
-        officialCountBeppu === 11 && officialCountKinosaki === 3 && officialTotal === 33,
-      '(r137) c. 5エリアの .feedcard__official 件数が実測(9/6/4/11/3=33)と一致',
+      officialCountKusatsu === 7 && officialCountHakone === 10 && officialCountDogo === 5 &&
+        officialCountBeppu === 9 && officialCountKinosaki === 3 && officialTotal === 34,
+      '(r137) c. 5エリアの .feedcard__official 件数が実測(7/10/5/9/3=34)と一致',
       { officialCountKusatsu, officialCountHakone, officialCountDogo, officialCountBeppu, officialCountKinosaki, officialTotal }
     );
 
     // (r139) 情報ゼロカードの空箱(196px)を低い帯に詰めた検査。
     // 写真・要約・営業時間・公式サイトが1つも無いカードだけ feedcard--bare が付き、
     // .feedcard__media の高さが下がる。他のカードは1pxも変えない。
-    const bareRows = await page.locator('.feedcard').evaluateAll((cards) =>
+    // R154(colimit=max): dogo は全カードに写真が付き bare カードが消滅したため、
+    // bare カードが残る kusatsu(湯畑)で同じ性質を見る。検査の意図は不変。
+    const bareRows = await kusatsuPage.locator('.feedcard').evaluateAll((cards) =>
       cards.map((c) => {
         const media = c.querySelector('.feedcard__media');
         const rect = media ? media.getBoundingClientRect() : null;
@@ -354,28 +358,27 @@ async function main() {
         };
       })
     );
-    // R142(2026-09-18): dogo #16「商店街」は一般名詞そのものの名前のため候補から除外され、
-    // #16「愛媛道後足湯カフェ 坊っちゃん」に繰り上がった(要約×画像×公式×でbare条件は同じ)。
-    // 参照名をこれに差し替える(検査の意図=bareカードの帯が畳まれていること、は不変)。
-    const shotengai = bareRows.find((r) => r.name === '愛媛道後足湯カフェ 坊っちゃん');
+    // R154: 参照先を kusatsu の「湯畑」に差し替える(要約×画像×営業時間×公式×で
+    // bare 条件は同じ。検査の意図=bareカードの帯が畳まれていること、は不変)。
+    const shotengai = bareRows.find((r) => r.name === '湯畑');
     // R140 で帯(.feedcard__media)そのものを畳んだため mediaHeight は null になる(要素が存在しない)。
     // これは R139 の「情報ゼロのカードの帯を圧縮する」という目的をさらに徹底した結果であり、
     // 検査の意図(bare カードに肥大した帯が残っていないこと)はこの条件で引き続き満たされる。
     ok(
       !!shotengai && shotengai.bare === true && shotengai.mediaHeight === null,
-      '(r139) a. 情報ゼロのカード(愛媛道後足湯カフェ 坊っちゃん)が feedcard--bare になり .feedcard__media の帯が無い(R140で畳んだ・R142で商店街から繰り上がり)',
+      '(r139) a. 情報ゼロのカード(kusatsu 湯畑)が feedcard--bare になり .feedcard__media の帯が無い(R140で畳んだ・R154でdogoから移動)',
       shotengai
     );
-    const isaniwaBare = bareRows.find((r) => r.name === '伊佐爾波神社');
+    const isaniwaBare = bareRows.find((r) => r.name === '大滝乃湯');
     ok(
       !!isaniwaBare && isaniwaBare.bare === false && isaniwaBare.mediaHeight === 196,
-      '(r139) b. 写真がある伊佐爾波神社には feedcard--bare が付かず .feedcard__media が従来の196pxのまま',
+      '(r139) b. 情報のある大滝乃湯には feedcard--bare が付かず .feedcard__media が従来の196pxのまま',
       isaniwaBare
     );
 
     // (r140) 同じ絵文字を2回言うだけの帯(旧R139の64px)を畳み、番号バッジを
     // .feedcard__body 側へ移した検査。DOM上のバッジの data-no / aria-label / クラス名は不変。
-    const bareDetailRows = await page.locator('.feedcard').evaluateAll((cards) =>
+    const bareDetailRows = await kusatsuPage.locator('.feedcard').evaluateAll((cards) =>
       cards.map((c) => {
         const noBtn = c.querySelector('.feedcard__no');
         return {
@@ -389,19 +392,19 @@ async function main() {
         };
       })
     );
-    // R142: こちらも「商店街」→「愛媛道後足湯カフェ 坊っちゃん」に参照先を差し替える。
-    const shotengaiR140 = bareDetailRows.find((r) => r.name === '愛媛道後足湯カフェ 坊っちゃん');
+    // R154: こちらも kusatsu の「湯畑」に参照先を差し替える。
+    const shotengaiR140 = bareDetailRows.find((r) => r.name === '湯畑');
     ok(
       !!shotengaiR140 && shotengaiR140.bare === true && shotengaiR140.hasMedia === false && shotengaiR140.hasPh === false,
-      '(r140) a. bare カード(愛媛道後足湯カフェ 坊っちゃん)に .feedcard__media / .feedcard__ph が存在しない(帯を畳んだ)',
+      '(r140) a. bare カード(kusatsu 湯畑)に .feedcard__media / .feedcard__ph が存在しない(帯を畳んだ)',
       shotengaiR140
     );
-    // 伊佐爾波神社は写真あり(.feedcard__img)のため .feedcard__ph は元々存在しない。
     // 「写真は無いが情報はある(isBare=false)」カードで .feedcard__ph が維持されることを確認する。
-    const univMuseumR140 = bareDetailRows.find((r) => r.name === '愛媛大学ミュージアム');
+    // R154: kusatsu の大滝乃湯(写真なし・営業時間あり)で同じ性質を見る。
+    const univMuseumR140 = bareDetailRows.find((r) => r.name === '大滝乃湯');
     ok(
       !!univMuseumR140 && univMuseumR140.bare === false && univMuseumR140.hasPh === true && univMuseumR140.phFontSize === '44px',
-      '(r140) b. 非bare カード(愛媛大学ミュージアム=写真なし情報あり)には .feedcard__ph が引き続き存在しフォントサイズ44pxのまま',
+      '(r140) b. 非bare カード(大滝乃湯=写真なし情報あり)には .feedcard__ph が引き続き存在しフォントサイズ44pxのまま',
       univMuseumR140
     );
     // R159: 地図にピンが無い6件目以降(index>=5)は押しても何も起きない死んだボタンになるため

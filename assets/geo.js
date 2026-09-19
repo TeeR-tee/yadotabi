@@ -56,14 +56,20 @@
   // Wikipedia の extracts は1リクエストにつき20ページ分までしか返らないので continue を追う
   var WIKI_NEARBY_MAX_CONTINUE = 3;
   var WIKI_NEARBY_MAX_RADIUS_M = 10000;
-  // geosearch は ggslimit=50 が上限で、記事の密な土地では半径10kmを指定しても
-  // 近い順に50件(箱根なら約3.7km)で打ち切られる。そこで同じ中心で半径を変えて
-  // 3回引き、pageid で重複排除して「遠いが有名な記事」を取りこぼさないようにする。
-  var WIKI_NEARBY_RING_RADII_M = [3000, 6000, 10000];
+  // geosearch は「半径内の全件」ではなく「近い順に ggslimit 件」を返す。ggslimit の
+  // 上限は一般ユーザーで 500(以前ここに書いていた「50 が上限」は誤り)。
+  // ただし件数を左右するのは ggslimit だけではない: prop 側にも1リクエストあたりの
+  // 上限があり、baseParams で colimit/pilimit を max にしないと coordinates は
+  // 10件・画像は50件しか返らない。geo.js は座標の無い記事を候補にできないため、
+  // 以前は ggslimit を上げても「使える記事」が40件(=continue4回x10)で頭打ちだった。
+  // colimit=max と合わせることで、10km を1周引くだけで遠い記事まで座標付きで入る。
+  var WIKI_NEARBY_RING_RADII_M = [10000];
   // 1回の fetchWikiNearby が発行する外部リクエストの総上限(無料APIのマナー)。
-  // 半径3段(1周目)+ continue 最大3回(2周目)。continue もこの数に含めて数える。
-  // 4 にすると continue が1回しか追えず、要約(extract)の付かないカードが増えるため 6。
-  var WIKI_NEARBY_MAX_CALLS = 6;
+  // 半径1段(1周目)+ continue 最大3回(2周目)。continue もこの数に含めて数える。
+  // extracts だけは1リクエスト20件の制限が外せない(exlimit は 1..20 しか受け付けず、
+  // exsentences を外しても20件のまま。exintro まで外すと逆に1件へ落ちる)。
+  // そのため continue の残り回数は要約(extract)の穴埋めに使う。
+  var WIKI_NEARBY_MAX_CALLS = 4;
 
   // ---------------------------------------------------------------------------
   // 固定データモード (fixture)
@@ -924,8 +930,12 @@
         generator: 'geosearch',
         ggscoord: lat + '|' + lon,
         ggsradius: String(r),
-        ggslimit: '50',
+        ggslimit: '500',
         prop: 'coordinates|pageimages|extracts',
+        // colimit/pilimit を max にしないと coordinates は1回10件・画像は1回50件しか
+        // 返らず、ggslimit をいくら上げても「座標付きの使える記事」が増えない(実測)。
+        colimit: 'max',
+        pilimit: 'max',
         exintro: '1',
         explaintext: '1',
         exsentences: '2',
