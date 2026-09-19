@@ -164,6 +164,11 @@
 
 ## サイクル記録
 
+### 2026-09-19 R160 カテゴリ減点の母数を上位40件に絞る
+- やったこと: `assets/engine.js` に `PENALTY_SCOPE = 40` を新設し、カテゴリ減点ループの母数を `scored.slice(0, PENALTY_SCOPE)` に限定した(重み `CATEGORY_PENALTY:18` と `CATEGORY_FREE_SLOTS:2` は不変)。全候補を数えていたせいで箱根の神社1162件目が -20898点・箱根神社の位置で -774点という「候補を消し去る減点」になっていたのが原因。実測では別府の地獄めぐりが全件上昇(海地獄 #145→#69 / かまど地獄 #127→#63 / 龍巻地獄 #84→#44)、城崎の外湯も 一の湯 #62→#26 ほか4湯が上昇、箱根ガラスの森美術館 #232→#31。**初期5件は5エリアとも完全に不変**で、彫刻の森#5・伊佐爾波神社#3・別府タワー#1・石手寺#9 の前サイクル成果も無傷。
+- 見た目の確認結果: `?fixture=hakone` mobile/PC と `?fixture=dogo` mobile を撮影して目視、崩れ・コンソールエラーともに0件。`node --check assets/engine.js` OK。`node scripts/check-all.mjs` は **31本中29本PASS**で `check-nosummary.mjs` の固定値検査2本(`.feedcard__hours`=19→17 / `.feedcard__official`=34→33)が FAIL —— 上位30枚の顔ぶれが変われば必ず動く数で、検査本は無編集の原則のため触らず司令塔に報告した。
+- 次: 境界の崖(母数の内側で減点されたまま外側の無減点候補に抜かれる。箱根神社 #200→#2608 ほか4件)の後始末と、`check-nosummary` の期待値更新について司令塔の判断待ち。スコープ値の掃引実測では 12 が平均順位37・100位超3件で最良、40 は平均236。
+
 ### 2026-09-16 R100 カード見出しの折り返し方針統一
 - やったこと: `dump-rank.mjs` を4エリアで回して cards+more(上位30〜60件)の最長名を実測(dogo 62字「友情のシンボル ゴールドマイナー像の説明」/hakone 54字「わんぱくらんど 小田原こどもの森公園」/kusatsu 62字「湯けむりに ふすぼりもせぬ 月の貌 小林一茶」/beppu 59字「大分マリーンパレス水族館「うみたまご」」で、いずれも日本語。NEXT.md想定の`MinatoyamaJouato`級ラテン連続は上位に無かった)。予防目的として `assets/style.css:450` の `.feedcard__name` に `overflow-wrap: anywhere` を1行追加(コメント込み3行)。`.suggest__name`/`.topbar__title` は省略方針のままで触っていない(カード見出しは情報を隠さない方針なので折り返しで統一)。
 - 見た目の確認結果: 変更前後とも Playwright で `.feedcard__name` の `scrollWidth > clientWidth` は0件(dogo)。変更前の `Matsuyama Castle` 等の英語見出しも枠内に収まっていた。変更後 `?fixture=dogo` mobile/desktop・`?fixture=hakone` mobile を撮影し目視で見出し欠け無し。`?fixture=kusatsu` mobile のデグレ確認でも日本語見出しの折り返し位置に不自然さなし。
