@@ -382,12 +382,16 @@ async function fetchWikiByTitles(titles) {
 /**
  * R164: 親記事(AREA_LABEL = fixture の meta.label)の本文を取る。
  * ★ assets/geo.js の fetchParentMentions と同条件にすること
- *   (prop=extracts&explaintext=1&redirects=1、1リクエスト1記事)。
+ *   (prop=extracts|pageimages&explaintext=1&redirects=1、1リクエスト1記事)。
  *
  * `explaintext=1` は titles を並べても1リクエスト1記事しか返らないが、
  * 親記事は1エリア1本なので追加は **+1リクエスト** で済む。
  * 照合条件(2文字以上・汎用語ブロック)は geo.js の matchParentMentions が持っており、
  * こちらでは本文をそのまま保存するだけ(条件を二重実装しない)。
+ *
+ * R173: 返す値に代表画像(pageimage)を足した。**`prop` に `pageimages` を書き足すだけ**なので
+ * リクエスト数は増えない。配るかどうかの判断は geo.js の pickParentImageTarget が持ち、
+ * ここでは取れたものをそのまま保存するだけ(条件を二重実装しない)。
  */
 async function fetchParentExtract() {
   console.log('親記事の本文を取得中(' + AREA_LABEL + ')…');
@@ -395,9 +399,10 @@ async function fetchParentExtract() {
     action: 'query',
     format: 'json',
     formatversion: '2',
-    prop: 'extracts',
+    prop: 'extracts|pageimages',
     explaintext: '1',
     redirects: '1',
+    pithumbsize: '480',
     titles: AREA_LABEL,
     origin: '*'
   });
@@ -416,8 +421,14 @@ async function fetchParentExtract() {
   const pages = (data && data.query && data.query.pages) || [];
   const page = pages.find((p) => p && typeof p.extract === 'string');
   const text = page ? page.extract : '';
+  // R173: geo.js の parentImageFromPage と同じ形 {url, file} を作ること。
+  const thumb = (page && page.thumbnail && page.thumbnail.source) || '';
+  const image = thumb
+    ? { url: thumb, file: (page && typeof page.pageimage === 'string') ? page.pageimage : '' }
+    : null;
   console.log('  本文: ' + text.length + '字' + (text ? '' : '(記事が見つかりませんでした)'));
-  return text;
+  console.log('  代表画像: ' + (image ? image.file : '(なし)'));
+  return { text, image };
 }
 
 async function fetchBacklinks(titles) {
@@ -532,7 +543,8 @@ async function main() {
   const wikidataTitles = await fetchWikidataTitles(elements);
 
   // R164: 親記事の本文(geo.js の fetchParentMentions が fixture モードで読む)。
-  const parentExtract = await fetchParentExtract();
+  // R173: 同じ1リクエストで代表画像も返る(prop に pageimages を足しただけ)。
+  const parent = await fetchParentExtract();
 
   const fixture = {
     meta: {
@@ -549,7 +561,10 @@ async function main() {
     // R162: geo.js の resolveWikipediaTitles が fixture モードで読む対応表
     wikidataTitles: wikidataTitles,
     // R164: geo.js の fetchParentMentions が fixture モードで読む親記事の本文
-    parentExtract: parentExtract,
+    parentExtract: parent.text,
+    // R173: 親記事の代表画像。geo.js の pickParentImageTarget が
+    // 「最多言及かつ明確に突出し、まだ写真を持たない候補」1件にだけ配る。
+    parentImage: parent.image,
     // R166: geo.js の fetchWikiByTitles が fixture モードで読む「記事名→素材」の表。
     // 中身は下の2周目で埋める(engine.js にどの記事名が要るかを決めさせるため)。
     wikiByTitle: null

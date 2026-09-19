@@ -123,6 +123,38 @@
     '河原公園', '地蔵堂'
   ];
 
+  // R173: 親記事の代表画像(pageimage)を「最多言及の候補」に配るときの条件。
+  //
+  // **何をする仕組みか**: 親記事(草津温泉)の pageimage は、Wikipedia の編集者が
+  // 「この土地といえばこれ」と選んだ1枚である。実照会では草津温泉の pageimage が
+  // `Yubatake_(Kusatsu_Onsen).jpg` ＝ **湯畑の写真そのもの** だった(市場調査 第11回 11-1)。
+  // 湯畑は自分の記事を持たないので素材点0のまま #3 に沈んでいたが、この1枚を配れば
+  // 配点を1つも触らずに写真25点が入る。**取りに行くのに追加リクエストは要らない**
+  // (親記事の本文を取る既存の1リクエストの `prop` に `pageimages` を足すだけ)。
+  //
+  // **★誤爆を防ぐのがこの定数群の役目**(市場調査 第11回 11-7 の「厳しく絞り、
+  // 当たらないエリアでは何もしない」)。実測で別府の pageimage は `Beppu_Tower…jpg`
+  // ＝ **別府タワーの写真** であり、最多言及の明礬温泉に配ると明確な誤爆になる。
+  // 下の4条件を全部通ったときだけ配り、1つでも外れたエリアでは **何もしない**。
+  var PARENT_IMAGE_MIN_MENTION = 5;
+  // 1. 言及回数の下限。城崎(最多3回)・道後(4回)・箱根(3回)はここで落ちる。
+  var PARENT_IMAGE_LEAD_RATIO = 2;
+  // 2. 2位に対する倍率。突出していない横並びのエリアには配らない
+  //    (城崎の外湯は 一の湯3・さとの湯3 で同点、道後は 椿の湯/湯築城/愛媛県 が4回で三つ巴)。
+  // 3. その候補が既に写真を持っているなら配らない(上書きしない)。← コード側で判定
+  // 4. ファイル名が **別の候補** を名指ししていないこと。← isParentImageClaimedByOther
+  //
+  // ファイル名からエリア名と一般語を落とすと「その画像が何を写しているか」の固有語だけが残る。
+  // 実測: 草津 `Yubatake_(Kusatsu_Onsen).jpg` → [yubatake](他候補と衝突なし=配ってよい)/
+  //       別府 `Beppu_Tower02s4s3200.jpg` → [tower](別府タワーの pageimage と衝突=配らない)/
+  //       箱根 `Hakone-Yumoto_Station_square…` → [yumoto](箱根湯本駅ほかと衝突=配らない)。
+  // **ローマ字化の表は持たない**(候補名→ローマ字の変換は当てにならない)。
+  // やるのは「固有語が他候補の画像名にも出るか」という **否定方向の照合だけ**。
+  var PARENT_IMAGE_GENERIC_TOKENS = [
+    'onsen', 'station', 'japan', 'pref', 'city', 'town', 'square', 'park',
+    'hot', 'spring', 'springs', 'view', 'panorama', 'the'
+  ];
+
   // R166: タグで記事名が分かっている候補の要約・写真を取りに行く(fetchWikiByTitles)の設定。
   //
   // **何をする仕組みか**: geosearch(座標から探す)で写真・要約が埋まらなかった候補のうち、
@@ -1216,9 +1248,14 @@
    *
    * 失敗しても致命的ではない(誰も加点されない = 変更前と同じ並び)ので例外は握りつぶす。
    *
+   * R173: 返す値に `_image`(親記事の代表画像)を同梱するようになった。取得は
+   * **同じ1リクエストの `prop` に `pageimages` を足すだけ**で、リクエスト数は増えない。
+   * 配るかどうかの判断は engine.js 側(pickParentImageTarget)が持つ。
+   *
    * @param {Object} hotel 宿。fixture モードでは使われない
    * @param {string[]} names 候補の名前(OSM/Wikipedia 由来の表示名)
-   * @returns {Promise<Object>} 本文に出た名前をキーに true を持つ表。失敗時は空
+   * @returns {Promise<Object>} 本文に出た名前をキーに出現回数を持つ表。
+   *          R173: 親記事に代表画像があれば `_image` に {url, file} を添える。失敗時は空
    */
   async function fetchParentMentions(hotel, names) {
     var hits = Object.create(null);
@@ -1228,13 +1265,19 @@
     if (!title) return hits;
 
     var text = '';
+    var image = null;
     if (fixtureData) {
       // 固定データモードでは外部APIを叩かない。make-fixture.mjs が保存した本文を使う。
       text = typeof fixtureData.parentExtract === 'string' ? fixtureData.parentExtract : '';
+      image = fixtureData.parentImage || null;
     } else {
       var cacheKey = 'parent:' + title;
       var cached = cacheGet(cacheKey);
-      if (typeof cached === 'string') {
+      // R173 より前のキャッシュは文字列で入っているので、両方の形を受ける。
+      if (cached && typeof cached === 'object' && typeof cached.text === 'string') {
+        text = cached.text;
+        image = cached.image || null;
+      } else if (typeof cached === 'string') {
         text = cached;
       } else {
         try {
@@ -1242,9 +1285,12 @@
             action: 'query',
             format: 'json',
             formatversion: '2',
-            prop: 'extracts',
+            // R173: pageimages を足しても **リクエストは1本のまま**。親記事の代表画像
+            // (草津温泉なら湯畑の写真)を、同じ応答で受け取るためのパラメータ追加。
+            prop: 'extracts|pageimages',
             explaintext: '1',   // HTML ではなく素のテキストで受け取る(後処理が要らない)
             redirects: '1',     // 箱根湯本→湯本 (箱根町) のような転送を吸収する
+            pithumbsize: '480', // カードの写真と同じ幅(fetchWikiNearby に合わせる)
             titles: title,
             origin: '*'
           });
@@ -1261,11 +1307,12 @@
           for (var i = 0; i < pages.length; i++) {
             if (pages[i] && typeof pages[i].extract === 'string') {
               text = pages[i].extract;
+              image = parentImageFromPage(pages[i]);
               break;
             }
           }
-          // 記事が無かった場合も空文字で覚える(同じ宿で毎回引き直さない)。
-          cacheSet(cacheKey, text, TTL_FAME_MS);
+          // 記事が無かった場合も空で覚える(同じ宿で毎回引き直さない)。
+          cacheSet(cacheKey, { text: text, image: image }, TTL_FAME_MS);
         } catch (e) {
           return hits; // 誰も加点されない = 変更前と同じ並び
         }
@@ -1273,7 +1320,190 @@
     }
 
     if (!text) return hits;
-    return matchParentMentions(text, names);
+    var matched = matchParentMentions(text, names);
+    if (image && image.url) matched._image = image;
+    return matched;
+  }
+
+  /**
+   * R173: Wikipedia の1ページ分の応答から代表画像を取り出す(純粋関数)。
+   * `thumbnail.source` が表示用URL、`pageimage` が Commons のファイル名。
+   * ファイル名は誤爆判定(isParentImageClaimedByOther)にしか使わないが、
+   * **判定に使う以上 URL から切り出すのではなく API が返した値をそのまま持つ**。
+   *
+   * ★ assets/geo.js と scripts/make-fixture.mjs で同じ形を作ること。
+   *
+   * @returns {{url:string,file:string}|null} 画像が無ければ null
+   */
+  function parentImageFromPage(page) {
+    if (!page) return null;
+    var url = page.thumbnail && typeof page.thumbnail.source === 'string'
+      ? page.thumbnail.source : '';
+    if (!url) return null;
+    var file = typeof page.pageimage === 'string' ? page.pageimage : '';
+    return { url: url, file: file };
+  }
+
+  /**
+   * R173: 親記事の代表画像のファイル名を「何を写しているかの固有語」に分解する(純粋関数)。
+   *
+   * エリア名(kusatsu / beppu)と一般語(onsen / station)を落とすと、
+   * その画像の被写体を表す語だけが残る:
+   *   `Yubatake_(Kusatsu_Onsen).jpg`          → ['yubatake']
+   *   `Beppu_Tower02s4s3200.jpg`              → ['tower']
+   *   `Hakone-Yumoto_Station_square_2011…jpg` → ['yumoto']
+   * 数字で始まる後ろ(Tower02s4s3200 の 02s4s3200)は撮影IDなので切り落とす。
+   *
+   * @param {string} file Commons のファイル名
+   * @param {string} areaKey fixture の meta.area / 宿の土地を表すローマ字(小文字)
+   * @returns {string[]} 固有語(3文字以上)。無ければ空配列
+   */
+  function parentImageTokens(file, areaKey) {
+    if (typeof file !== 'string' || !file) return [];
+    var area = typeof areaKey === 'string' ? areaKey.toLowerCase() : '';
+    return file
+      .replace(/\.[a-z0-9]+$/i, '')        // 拡張子
+      .replace(/[_()\-.]/g, ' ')
+      .split(/\s+/)
+      .map(function (s) { return s.replace(/[0-9]+.*$/, '').toLowerCase(); })
+      .filter(function (s) {
+        if (s.length < 3) return false;
+        if (PARENT_IMAGE_GENERIC_TOKENS.indexOf(s) > -1) return false;
+        // エリア名そのもの(kusatsu/kinosaki)は被写体を表さないので落とす
+        if (area && (s.indexOf(area) > -1 || area.indexOf(s) > -1)) return false;
+        return true;
+      });
+  }
+
+  /**
+   * R173: 親記事の代表画像が **自分以外の候補** を名指ししていないかを見る(純粋関数)。
+   *
+   * **これが誤爆を止める最後の砦**。実測(市場調査 第11回の未検証部分を本回で埋めた):
+   *   - 別府の親記事の代表画像は `Beppu_Tower02s4s3200.jpg` で、固有語は [tower]。
+   *     一方で **別府タワー** が自分の代表画像 `Beppu_Tower_20230212.jpg` を持っており、
+   *     固有語が [tower] で一致する。→ **この画像は別府タワーのものであって、
+   *     最多言及の明礬温泉のものではない。配ってはいけない。**
+   *   - 草津の `Yubatake_(Kusatsu_Onsen).jpg` の固有語 [yubatake] は、
+   *     他のどの候補の画像名にも出てこない。→ 配ってよい。
+   *
+   * **候補名をローマ字化して「合っているか」を確かめる方向は採らない**(変換表が当てにならず、
+   * 過信すると誤爆する)。やるのは「他の誰かのものだと分かる場合に降りる」という否定判定だけ。
+   *
+   * @param {string[]} tokens 親記事の代表画像の固有語
+   * @param {Array} items 全候補(写真を持つものだけが判定に効く)
+   * @param {Object} target 配ろうとしている候補(自分自身は衝突とみなさない)
+   * @param {string} areaKey エリア名のローマ字
+   * @returns {boolean} true なら「別の候補のもの」= 配らない
+   */
+  function isParentImageClaimedByOther(tokens, items, target, areaKey) {
+    if (!tokens || !tokens.length) return true; // 固有語が無い=何を写しているか分からない
+    for (var i = 0; i < (items || []).length; i++) {
+      var it = items[i];
+      if (!it || it === target || !it.imageUrl) continue;
+      var other = parentImageTokens(commonsFileFromUrl(it.imageUrl), areaKey);
+      for (var j = 0; j < other.length; j++) {
+        if (tokens.indexOf(other[j]) > -1) return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * R173: Wikipedia のサムネイルURLから Commons のファイル名を切り出す(純粋関数)。
+   * `…/commons/thumb/3/38/Beppu_Tower_20230212.jpg/500px-….jpg` の中ほどが元ファイル名。
+   * 候補側の imageUrl はこの形でしか持っていないので、誤爆判定のためにここで戻す。
+   *
+   * @returns {string} 取り出せなければ空文字
+   */
+  function commonsFileFromUrl(url) {
+    if (typeof url !== 'string' || !url) return '';
+    var m = /\/([^/]+)\/\d+px-/.exec(url);
+    if (!m) return '';
+    try { return decodeURIComponent(m[1]); } catch (e) { return m[1]; }
+  }
+
+  /**
+   * R173: 親記事の代表画像を配る相手を1件だけ選ぶ(純粋関数)。**該当が無ければ null**。
+   *
+   * 市場調査 第11回 11-7 の答え「**厳しく絞り、当たらないエリアでは何もしない**」を
+   * そのまま条件にしてある。4つ全部を通った候補にだけ配る:
+   *
+   *   1. 親記事での言及回数が **最多** であること
+   *   2. その回数が PARENT_IMAGE_MIN_MENTION(5)以上で、2位の PARENT_IMAGE_LEAD_RATIO(2)倍以上
+   *      ＝ **明確に突出している**こと。横並びのエリアでは誰も選ばれない
+   *   3. その候補が **まだ写真を持っていない**こと(既存の写真を上書きしない)
+   *   4. 画像のファイル名が **別の候補を名指ししていない**こと(isParentImageClaimedByOther)
+   *
+   * 5エリアの実測(2026-09-19):
+   *   草津  湯畑35回 vs 万代鉱源泉10回・写真なし・固有語[yubatake]衝突なし → **配る**
+   *   城崎  一の湯3回 vs さとの湯3回(同点)                                  → 配らない(条件2)
+   *   別府  明礬温泉20回 vs 浜脇温泉9回だが固有語[tower]が別府タワーと衝突    → 配らない(条件4)
+   *   道後  椿の湯4回 vs 湯築城4回(同点)・固有語[dōgo]も道後温泉本館と衝突   → 配らない(条件2,4)
+   *   箱根  小田急箱根3回(5回未満)・既に写真あり                            → 配らない(条件2,3)
+   *
+   * @param {Array} items 全候補(parentMention / imageUrl を見る)
+   * @param {{url:string,file:string}} image 親記事の代表画像
+   * @param {string} areaKey エリア名のローマ字(fixture の meta.area / 本番は空でよい)
+   * @returns {Object|null} 配る相手の候補。該当が無ければ null
+   */
+  function pickParentImageTarget(items, image, areaKey) {
+    if (!image || !image.url || !Array.isArray(items) || !items.length) return null;
+
+    // 条件1: 言及回数の1位と2位を出す
+    var ranked = items
+      .filter(function (it) { return it && it.parentMention > 0; })
+      .sort(function (a, b) { return b.parentMention - a.parentMention; });
+    if (!ranked.length) return null;
+
+    var top = ranked[0];
+    var second = ranked[1] ? ranked[1].parentMention : 0;
+
+    // 条件2: 回数が下限以上で、かつ2位に対して明確に突出していること
+    if (top.parentMention < PARENT_IMAGE_MIN_MENTION) return null;
+    if (top.parentMention < second * PARENT_IMAGE_LEAD_RATIO) return null;
+
+    // 条件3: 既に写真を持っているなら何もしない(上書きしない)
+    if (top.imageUrl) return null;
+
+    // 条件4: その画像が別の候補のものだと分かるなら降りる
+    var tokens = parentImageTokens(image.file || commonsFileFromUrl(image.url), areaKey);
+    if (isParentImageClaimedByOther(tokens, items, top, areaKey)) return null;
+
+    return top;
+  }
+
+  /**
+   * R173: エリア名のローマ字(kusatsu / beppu)を求める。
+   *
+   * 固定データモードでは `meta.area` がそのものなので、それを使う。
+   * 本番にはそれが無いので、**候補の画像ファイル名に何度も出てくる語**を
+   * 土地の名前とみなす(草津の候補は Kusatsu_Onsen_Bus_Terminal・Kusatsu-Onsen-Sta と
+   * 揃って `kusatsu` を含む)。**この語を落とさないと、土地の名前が入っただけの
+   * 無関係な画像同士が「衝突」と判定され、配れるはずの草津まで落ちてしまう。**
+   *
+   * @param {Array} items 全候補
+   * @returns {string} エリア名のローマ字。決められなければ空文字
+   */
+  function parentAreaKey(items) {
+    var area = fixtureData && fixtureData.meta && fixtureData.meta.area;
+    if (typeof area === 'string' && area) return area.toLowerCase();
+
+    // 本番: 3件以上の候補の画像名に共通して出る語を土地の名前とみなす。
+    var tally = Object.create(null);
+    (items || []).forEach(function (it) {
+      if (!it || !it.imageUrl) return;
+      var seen = Object.create(null);
+      parentImageTokens(commonsFileFromUrl(it.imageUrl), '').forEach(function (t) {
+        if (seen[t]) return;
+        seen[t] = 1;
+        tally[t] = (tally[t] || 0) + 1;
+      });
+    });
+    var best = '';
+    Object.keys(tally).forEach(function (t) {
+      if (tally[t] >= 3 && (!best || tally[t] > tally[best])) best = t;
+    });
+    return best;
   }
 
   /**
@@ -1963,6 +2193,12 @@
     fetchParentMentions: fetchParentMentions,
     // R164: 照合条件を make-fixture.mjs と共有するために公開する(本体はこちらが正)。
     matchParentMentions: matchParentMentions,
+    // R173: 親記事の代表画像を「最多言及かつ明確に突出した候補」1件だけに配る。
+    // 判定の本体はこちらが正で、engine.js の attachParentMentions から呼ぶ。
+    pickParentImageTarget: pickParentImageTarget,
+    parentAreaKey: parentAreaKey,
+    // R173: make-fixture.mjs が geo.js と同じ形で parentImage を保存するために公開する。
+    parentImageFromPage: parentImageFromPage,
     enrichFame: enrichFame,
     // 固定データモード(?fixture=kusatsu)の差し込み口
     setFixture: setFixture,

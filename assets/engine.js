@@ -1621,9 +1621,44 @@
 
     // R168: true ではなく出現回数を持たせる(配点は parentMentionBonus が決める)。
     Object.keys(hits).forEach(function (n) {
-      if (!hits[n] || !byName[n]) return;
+      if (n === '_image' || !hits[n] || !byName[n]) return;
       byName[n].forEach(function (item) { item.parentMention = hits[n]; });
     });
+
+    attachParentImage(items, hits._image, geo);
+  }
+
+  /**
+   * R173: 親記事の代表画像(pageimage)を、その土地の主役1件にだけ配る。
+   *
+   * **これが解こうとしている問題**: 草津の湯畑は親記事に35回も書かれている
+   * その土地の主役なのに、自分のWikipedia記事が無いので写真も要約も持てず、
+   * 素材点0のまま #3 に沈んでいた。一方で **草津温泉の親記事の代表画像そのものが
+   * `Yubatake_(Kusatsu_Onsen).jpg` ＝ 湯畑の写真** である(市場調査 第11回 11-1)。
+   * 「素材が揃っているもの vs その土地の中心」という対立は、取得漏れが作った
+   * 偽の二択だった。**配点を1つも触らずに、湯畑に写真25点を与えられる。**
+   *
+   * **★ここで配るのは写真1枚だけ**。要約も被リンクも配らない。R164 が
+   * 「親記事から素材を配ってはいけない」と決めた理由(城崎の一の湯に箱根の旅館の
+   * 写真が付く・別府の地獄8件に同じ要約が付く)は **名前から記事を引くと起きる事故**で、
+   * ここで配るのは **親記事自身が持つ1枚を、親記事が最も多く語った1件に**渡すだけ。
+   * 配る相手を決める条件(厳しさ)は geo.js の pickParentImageTarget が持つ。
+   *
+   * 効かないエリアでは何も起きない(= 変更前と同じ並び)。実測では5エリア中
+   * **草津だけが条件を通り**、別府は代表画像が別府タワーの写真だったため配っていない。
+   */
+  function attachParentImage(items, image, geo) {
+    if (!image || !image.url) return;
+    if (typeof geo.pickParentImageTarget !== 'function') return;
+
+    var areaKey = typeof geo.parentAreaKey === 'function' ? geo.parentAreaKey(items) : '';
+    var target = geo.pickParentImageTarget(items, image, areaKey);
+    if (!target) return;
+
+    target.imageUrl = image.url;
+    // R173: 写真の出どころを残す。画面側が「どこから来た写真か」を必要にしたときの手掛かりで、
+    // 配点(scoreBreakdown)は imageUrl の有無しか見ないので順位には影響しない。
+    target.imageFromParent = true;
   }
 
   /**
