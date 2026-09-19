@@ -79,55 +79,66 @@
 
 ## 3. ★次のサイクルでやる1件(計画役が選定・判断待ちに依存しません)
 
-### R208: デモページ2枚のリンクプレビュー(OGカード)を整える
+### R212: `docs/CHECKS.md` を実態(32本)に合わせて直し、検査の一覧表を完成させる
 
-**なぜこれを選んだか**: R85(英語デモ作成)→ R207(READMEに導線追加)で「営業相手に URL を渡せる」状態までは来ました。
-しかし**今その URL を Slack・X・メールに貼ると、プレビューが真っ白**になります。`index.html` には og:title/og:image 一式が
-入っているのに、`demo/hotel-page.html` と `demo/hotel-page-en.html` には**1つも入っていない**ことを確認済みです
-(grep で検証、両ファイルとも og:/twitter: が0件)。せっかく作った営業素材が、貼った瞬間に一番みすぼらしく見える状態で、
-R207 で作った導線の価値を直接目減りさせています。他の候補(R209 検査一覧表・R210 embed-check の説明書き・R211 dump-rank の
-日時出力・R102 撮影枚数一覧)は**すべて自分用の開発内部ツール**で外向きの価値がないため、外に見える R208 を優先します。
-判断不要・本体コード不変・新規画像を作らないのでコスト0円。
+**なぜこれを選んだか**: 最新スクリーンショット2枚(草津・モバイル)を目視した結果、**アプリの見た目に不具合は
+見つかりませんでした**(1位=湯畑・地図のピン1〜5・カードの写真と理由行、すべて崩れなし)。外向きの営業素材も
+R85→R207→R208 で一区切りです。そこで**足元のドキュメントの整合性**を実測したところ、**明確な食い違いを発見しました**。
 
-- **タスクID**: R208
-- **目的**: デモページ2枚の URL を貼ったとき、タイトル・説明・画像入りのリンクカードが出るようにする。
+- `scripts/check-*.mjs` は実際には **32本**(+`docs/check.mjs`)あるのに、`docs/CHECKS.md` は
+  **1行目の見出しからして「30本の一覧」**のまま。節見出しも「サーバを立てる**26**本」「不要な**4**本」=30本。
+- 表に**載っていない検査が2本**あります(実測): **`check-bundle`**(R157/R158 のテーマ束見出し)と
+  **`check-osmfallback`**(R181 の「Overpass が落ちても主役が消えない」検証)。どちらも**今夜の議論の中心だった
+  主役の消失問題を守っている重要な検査**なのに、一覧に存在しません。
+- `grep -c "^| check" docs/CHECKS.md` は **29**(表の行数)で、総数とも節見出しとも一致していません。皮肉なことに
+  CHECKS.md 自身の末尾(R106/R135 の節)に「本数が一致しなければ表に反映せよ」と書いてあり、R135 で同じ事故が起きています。
+
+これは ROADMAP の **R209(検査32本の一覧表)を、新規ファイルではなく既存文書の修正という形で実現するもの**でもあります。
+検査が落ちたとき何が壊れたのかを一覧から引けるようになります。判断不要・本体コード不変・外部API 0回・0円。
+
+- **タスクID**: R212(ROADMAP の R209 を包含して消化する)
+- **目的**: `docs/CHECKS.md` の本数・表・節見出しを実測値(32本+`docs/check.mjs`)に一致させ、
+  抜けている `check-bundle` / `check-osmfallback` の2行を表に足す。
 - **変える対象ファイル(絶対パス)**:
-  - `C:\workspace\claude\旅行先用サイト\yadotabi\demo\hotel-page.html`(`<head>` 内にメタタグを追記するのみ)
-  - `C:\workspace\claude\旅行先用サイト\yadotabi\demo\hotel-page-en.html`(同上)
-  - `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md`(R208 を `[x] 2026-09-19` で記録)
-  - `C:\workspace\claude\旅行先用サイト\yadotabi\docs\NIGHTLOG.md`(末尾の「## サイクル記録」に `### 2026-09-19 R208 …` 見出し+3行)
+  - `C:\workspace\claude\旅行先用サイト\yadotabi\docs\CHECKS.md`(本体)
+  - `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md`(R209 を `[x] 2026-09-20 R212 で消化` と記録)
+  - `C:\workspace\claude\旅行先用サイト\yadotabi\docs\NIGHTLOG.md`(末尾「## サイクル記録」に `### 2026-09-20 R212 …` 見出し+3行)
 - **作り方**:
-  1. `index.html` の 8〜20行目のメタタグ群を**お手本にして**、各デモページの `<title>` の直後に同じ形で追記する。
-  2. 画像は**既存の `https://teer-tee.github.io/yadotabi/docs/og.jpg` を使い回す**(実在確認済み・76KB)。新規に画像を作らない。
-  3. `og:url` は各ページ自身の絶対URL(`.../demo/hotel-page.html` と `.../demo/hotel-page-en.html`)にする。**2枚で同じ URL にしない**。
-  4. 文言は各ページの言語に合わせる。日本語版は「宿の予約ページに埋め込んだ例(サンプル)」、英語版は英語で同趣旨。
-     `og:locale` は日本語版 `ja_JP` / 英語版 `en_US`。
-  5. **`index.html` は1バイトも触らない**。CSS・本文・iframe・ヘッダーのリンクも触らない(追記するのは `<head>` 内のメタタグだけ)。
+  1. まず実測する。`ls scripts/check-*.mjs | wc -l`、`sed -n '33,66p' scripts/check-all.mjs`(`SCRIPTS` 配列)、
+     `grep -l ensureServer scripts/check-*.mjs | wc -l`、`grep -l playwright scripts/check-*.mjs | wc -l` を流し、
+     **出た数字だけを文書に書く**(推測で書かない)。`check-all.mjs` 自身は `SCRIPTS` の対象外なので数に入れない。
+  2. 1行目の見出し「30本の一覧」と「## 対象範囲」の本数、節見出し「サーバを立てる◯本」「不要な◯本」を実測値に直す。
+  3. 表に `| check-bundle | …(R157/R158: カードを束ねた見出し .feedbundle の検査)|` と
+     `| check-osmfallback | …(R181: Overpass が落ちた回でも主役が消えないこと)|` の2行を、
+     **既存の並び(check-all.mjs の `SCRIPTS` 配列と同じ順序)の正しい位置に**挿入する。説明文は各ファイルの
+     **冒頭コメントから拾う**(自分で創作しない)。
+  4. 「所要目安(現在値)」の行にある「**30本**の合計は 322.5s」を、NIGHTLOG に実測記録のある
+     **32本・343.4秒(Windows)/ 342.5秒(CI)・最遅 `check-reason.mjs`** に更新する(R205 の実測値)。
+  5. 末尾の R106/R135 の節は**残す**(今回まさにこれで見つかったので、有効性の実例として R212 を1行追記してよい)。
 - **完了条件(検証可能な形)**:
-  1. 両ファイルが `og:type` / `og:title` / `og:description` / `og:url` / `og:image` / `twitter:card` の**6タグすべて**を持つ
-     (各ファイルで `grep -c` して6以上、かつ6種類すべてが1回以上出現)。
-  2. `og:url` が2ファイルで**異なり**、それぞれ自分自身の絶対URLになっている(grep で目視確認)。
-  3. `og:image` が両方とも `https://teer-tee.github.io/yadotabi/docs/og.jpg`(絶対URL。相対パスは不可)。
-  4. `node scripts/check-all.mjs` が **32本全PASS**(本数は増やさない・検査スクリプトは変更しない)。
-  5. `git diff --stat` の変更ファイルが上記4ファイルのみで、`index.html` が含まれない。
-  6. `git push` 後、本番の両ページが HTTP 200 のまま。
-- **検証手順(撮影)**: `scripts/lib/server.mjs` を起動し、
-  `http://127.0.0.1:3000/demo/hotel-page.html` と `http://127.0.0.1:3000/demo/hotel-page-en.html` を
-  `node C:\workspace\tools\shot\shot.mjs <URL> --mobile`(375px)と PC幅(既定)で各1枚ずつ計4枚、ラベルは `r208-og`。
-  **撮った画像を必ず Read で開いて目視**し、**メタタグ追記で見た目が1ミリも変わっていないこと**(ヘッダー・注意書き・iframe の
-  位置が従来どおり)を確認する。メタタグは表示に影響しないはずなので、**変化があれば追記ミス**。
-  iframe は固定データのままなので**外部API消費は0回**。
-- **変更禁止範囲(絶対に触らない)**: `assets/engine.js` / `assets/geo.js` / `assets/rank*` / `fixtures/*.json` /
-  `WEIGHT` 定数 / `index.html` / `.github/workflows/*` / `.gitignore` / `scripts/check-*.mjs` / `docs/check.mjs`。
-  デモページも `<head>` 内のメタタグ追記だけで、`<body>` と `<style>` には触らないこと。
-- **所要目安**: 20〜35分(メタタグ追記10分・撮影と目視10分・記録とコミット10分)。
+  1. `grep -c "^| check" docs/CHECKS.md` の結果が、`ls scripts/check-*.mjs | wc -l` の結果と一致する(32)。
+  2. `docs/check.mjs` の行を含めた表の総行数が 33 で、`scripts/check-all.mjs` の `SCRIPTS` 配列の要素数と一致する。
+  3. `grep -n "30本" docs/CHECKS.md` が **0件**(古い本数が1つも残っていない)。
+  4. `check-bundle` と `check-osmfallback` が表に1回ずつ出現する(`grep -c` で各1)。
+  5. **`SCRIPTS` 配列の全名称が表に存在すること**をループで確認し、MISSING が0件。
+  6. `node scripts/check-all.mjs` が **32本全PASS**(検査本体は1バイトも変更していないので、落ちたら何か触っている)。
+  7. `git diff --stat` の変更ファイルが上記3ファイルのみ。`scripts/` と `assets/` が**1ファイルも含まれない**。
+- **検証手順(撮影)**: **今回は撮影不要**(Markdown 文書のみの変更で、本番の見た目は1ピクセルも変わらないため)。
+  代わりに上記の `grep` / `wc` の出力を NIGHTLOG に**数字のまま残す**こと。
+  ただし `node scripts/check-all.mjs` の32本全PASS は**必ず実行して確認**する(6分ほどかかる)。
+  外部API消費は0回(fixture 経由のみ)。
+- **変更禁止範囲(絶対に触らない)**: `assets/engine.js` / `assets/geo.js` / `assets/rank*` / `WEIGHT` 定数 /
+  `fixtures/*.json` / `index.html` / `demo/*` / `.github/workflows/*` / `.gitignore` /
+  **`scripts/check-*.mjs` の全32本と `scripts/check-all.mjs` と `docs/check.mjs`**(今回は読むだけ。
+  冒頭コメントすら直さない — 表の説明文を拾う対象であって、書き換える対象ではない)。
+- **所要目安**: 25〜40分(実測10分・表の修正10分・`check-all.mjs` 6分・記録とコミット10分)。
 
 ### 積み残し(判断待ちが解けてから)
 - R177 と「箱根神社が圏外」— 判断待ち(1)が決まり次第。
 - R138(座標欠落40件・`geo.js` 変更が要る)— みのるんの判断待ち。
 - R64 の残り — CI を `schedule` で1日1回回すかの判断のみ(本体は完了)。
-- R209(検査32本の一覧表)・R210(embed-check に説明書き)・R211(dump-rank に日時とコミットID)・
-  R102(`scripts/list-shots.mjs`)— いずれも判断不要。R208 の次の候補。
+- R210(embed-check に説明書き)・R211(dump-rank に日時とコミットID)・R102(`scripts/list-shots.mjs`)—
+  いずれも判断不要。R212 の次の候補。**R209 は R212 が消化する**。
 
 ## 4. ★次のサイクルで必ず守ること(今日の教訓)
 
