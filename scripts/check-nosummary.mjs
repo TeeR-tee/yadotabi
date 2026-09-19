@@ -28,12 +28,10 @@
 //         出ない(null に倒す)こと。opening_hours を持たない通常カード(dogo #1)にも出ないこと
 //      c. .feedcard__hours の総数が「5エリアで openingHoursText が読める枚数」ちょうどと一致
 //         (engine.js が openingHours を捨てずカードまで運んでいることの確認)
-//   (r137) 公式サイトのドメイン(.feedcard__official)の表示。推測せず、解析できた分だけ出す検査:
-//      a. 公式サイトを持つカード(dogo 萬翠荘 https://www.bansuisou.org/)に .feedcard__official が
-//         出て、www. を剥がしたホスト名(bansuisou.org)ちょうどになる
-//      b. 公式サイトを持たないカード(dogo 光泉寺は公式リンクがない = .feedcard__links に「公式」チップ無し)
-//         には .feedcard__official が出ない
-//      c. 5エリアの .feedcard__official 総数が実測(kusatsu 9 / hakone 7 / dogo 5 / beppu 11 / kinosaki 4 = 36枚)と一致
+//   (r167) 公式サイトのドメイン名の行(.feedcard__official)は市場調査(10_市場調査.md第9回)の
+//      指摘で削除した。[公式]リンクとの重複表示だったため。5エリア全カードで0件であることを検査する。
+//      同時に削除した TikTok/YouTube のリンクチップも、5エリア全カードで0件であることを検査する
+//      (外部SNSリンクを5種類も出しているのは競合に例が無いとの指摘のため)。
 
 import { chromium } from 'file:///C:/workspace/tools/shot/node_modules/playwright/index.mjs';
 import { ensureServer } from './lib/server.mjs';
@@ -341,61 +339,43 @@ async function main() {
       { kusatsuHoursCount, hakoneHoursCount, dogoHoursCount, beppuHoursCount, kinosakiHoursCount, total }
     );
 
-    // (r137) 公式サイトのドメイン(.feedcard__official)。推測せず、解析できた分だけ出す検査。
-    const officialRows = await page.locator('.feedcard').evaluateAll((cards) =>
-      cards.map((c) => ({
-        name: c.querySelector('.feedcard__name') ? c.querySelector('.feedcard__name').textContent : '',
-        officialText: c.querySelector('.feedcard__official') ? c.querySelector('.feedcard__official').textContent : null,
-      }))
-    );
-    // R152: 萬翠荘(旧#24)は15枚打ち切りの外に出た。表示されるカードのうち
-    // www. 付きの公式サイトを持つ「坂の上の雲ミュージアム」で同じ性質を見る。
-    const sakanoue = officialRows.find((r) => r.name === '坂の上の雲ミュージアム');
-    ok(
-      !!sakanoue && sakanoue.officialText === '⧉ sakanouenokumomuseum.jp',
-      '(r137) a. 坂の上の雲ミュージアム(公式サイトあり)に www. を剥がしたホスト名が出る',
-      sakanoue
-    );
-    // 2026-09-19 R163: 湯神社は被リンク加点で表示候補が入れ替わり15枚の外に出た。
-    // 見たい性質は「公式サイトを持たないカードに .feedcard__official を出さない
-    //(推測でドメインを作らない)」ことなので、表示内で公式サイトを持たない
-    // 「湯築城」に差し替える。
-    const yuzukiJo = officialRows.find((r) => r.name === '湯築城');
-    ok(
-      !!yuzukiJo && yuzukiJo.officialText === null,
-      '(r137) b. 湯築城(公式サイトなし)には .feedcard__official が出ない',
-      yuzukiJo
-    );
-
-    // (r137) c. 5エリア合計の .feedcard__official 件数が実測どおりであることの確認
-    // 2026-09-18 R137 作業役実測: kusatsu 9 / hakone 6 / dogo 5 / beppu 11 = 合計31枚。
-    // NEXT.md の計画時想定(dogo 6枚・合計32枚)とは dogo が1枚ズレる。fixtures/dogo.json を
-    // 直接数えても website/contact:website 付き要素は上位30枚中5件しかなく、作業役の実測を採用する。
-    // 2026-09-18 R147 で hakone が 6→7 に変化(合計31→32)。R147 でカテゴリ判定を
-    // 定義文1文目のみに限定した結果、「長興山のシダレザクラ」が神社・寺院→スポットに
-    // 変わって神社・寺院カテゴリの減点枠が1つ空き、公式サイトを持つ「阿弥陀寺」が
-    // top30 に繰り上がったことによる正しい副作用(作業役実測)。
-    // 2026-09-19 R154 実測(colimit=max で候補が入れ替わった後): kusatsu 7 / hakone 10 / dogo 5 / beppu 9 / kinosaki 3 = 合計34枚。
-    // 打ち切りを緩めたぶん、公式サイトを持つカードも増えている。
+    // R167: 公式サイトのドメイン名の行(.feedcard__official)は削除した。
+    // 市場調査(10_市場調査.md 第9回)で「[公式]リンクと情報が重複している」と
+    // 指摘されたため、要素自体を出さない仕様に変更。旧r137のa/b/cは
+    // 「ドメイン名の行がどのカードにも一切出ない」ことを確認する検査に置き換える
+    // (isBare の判定材料としての domainText 自体はapp.js内に残るが、画面表示はしない)。
     const officialCountKusatsu = await kusatsuPage.locator('.feedcard__official').count();
     const officialCountHakone = await hakonePage.locator('.feedcard__official').count();
     const officialCountDogo = await page.locator('.feedcard__official').count();
     const officialCountBeppu = await beppuPage.locator('.feedcard__official').count();
     const officialCountKinosaki = await kinosakiPage.locator('.feedcard__official').count();
     const officialTotal = officialCountKusatsu + officialCountHakone + officialCountDogo + officialCountBeppu + officialCountKinosaki;
-    // 2026-09-19 R163 実測(被リンク加点で候補が入れ替わった後): kusatsu 6 / hakone 9 / dogo 5 / beppu 9 / kinosaki 3 = 合計32枚。
-    // 公式サイトを持つ候補が減ったのではなく、表示に入る顔ぶれが変わっただけ
-    // (草津で御座之湯が万座温泉に、箱根で小田原市郷土文化館ほかがポーラ美術館等に入れ替わった)。
-    // 2026-09-19 R164 実測(親記事の本文照合で候補が入れ替わった後):
-    //   kusatsu 8 / hakone 9 / dogo 5 / beppu 10 / kinosaki 3 = 合計35枚。
-    // 増えたのは外湯・地獄(御座之湯・熱乃湯・龍巻地獄 など)が表示圏に入ったため。
-    // これらは記事を持たないが OSM に website タグを持つ現役の観光施設で、
-    // 「公式サイトの裏付けはあるのに記事が無いから沈んでいた」候補にあたる。hakone・dogo は不変。
     ok(
-      officialCountKusatsu === 8 && officialCountHakone === 9 && officialCountDogo === 5 &&
-        officialCountBeppu === 10 && officialCountKinosaki === 3 && officialTotal === 35,
-      '(r137) c. 5エリアの .feedcard__official 件数が実測(8/9/5/10/3=35)と一致',
+      officialTotal === 0,
+      '(r167) 5エリア全カードで .feedcard__official(ドメイン名の行)が0件(R167で削除)',
       { officialCountKusatsu, officialCountHakone, officialCountDogo, officialCountBeppu, officialCountKinosaki, officialTotal }
+    );
+
+    // (r167) TikTok/YouTube のリンクチップも同時に削除した。5エリア全カードで
+    // ラベル「TikTok」「YouTube」の .feedcard__link が1件も出ないことを確認する。
+    async function countLabel(pg, label) {
+      return pg.locator('.feedcard__link', { hasText: label }).evaluateAll(
+        (els, l) => els.filter((el) => el.textContent.trim() === l).length,
+        label
+      );
+    }
+    const tiktokCounts = await Promise.all(
+      [kusatsuPage, hakonePage, page, beppuPage, kinosakiPage].map((pg) => countLabel(pg, 'TikTok'))
+    );
+    const youtubeCounts = await Promise.all(
+      [kusatsuPage, hakonePage, page, beppuPage, kinosakiPage].map((pg) => countLabel(pg, 'YouTube'))
+    );
+    const tiktokTotal = tiktokCounts.reduce((a, b) => a + b, 0);
+    const youtubeTotal = youtubeCounts.reduce((a, b) => a + b, 0);
+    ok(
+      tiktokTotal === 0 && youtubeTotal === 0,
+      '(r167) 5エリア全カードで TikTok/YouTube の .feedcard__link が0件(R167で削除)',
+      { tiktokCounts, youtubeCounts }
     );
 
     // (r139) 情報ゼロカードの空箱(196px)を低い帯に詰めた検査。

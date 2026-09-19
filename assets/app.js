@@ -838,14 +838,16 @@
     if (official) rows.push({ url: official, label: '公式' });
     var ig = safeUrl(links.instagram);
     if (ig) rows.push({ url: ig, label: 'Instagram' });
-    var tt = safeUrl(links.tiktok);
-    if (tt) rows.push({ url: tt, label: 'TikTok' });
-    var yt = safeUrl(links.youtube);
-    if (yt) rows.push({ url: yt, label: 'YouTube' });
+    // R167: TikTok/YouTubeリンクは削除。市場調査(10_市場調査.md 第9回)により、
+    // じゃらん・Trip.com・TripAdvisorは外部SNSリンクを一切出しておらず、
+    // やどたびだけ5種類も並べていたことが情報過多の主因と指摘されたため。
 
     if (!rows.length) return '';
-    return '<div class="feedcard__links">' + rows.map(function (r) {
-      return '<a class="feedcard__link" href="' + escapeHtml(r.url) + '" target="_blank" rel="noopener">' +
+    return '<div class="feedcard__links">' + rows.map(function (r, i) {
+      // R167: [行き方]を視覚的に主役にする(先頭固定+専用クラスでボタン風に強調)。
+      // 旅行者が最も使うのは経路検索であり、他リンクに埋もれさせない。
+      var cls = 'feedcard__link' + (r.label === '行き方' ? ' feedcard__link--primary' : '');
+      return '<a class="' + cls + '" href="' + escapeHtml(r.url) + '" target="_blank" rel="noopener">' +
         escapeHtml(r.label) + '</a>';
     }).join('') + '</div>';
   }
@@ -1031,10 +1033,12 @@
     // R136: 営業中/閉店の判定はしない。取得した表記を読める形にするだけ。無ければ何も出さない。
     var hoursText = openingHoursText(card.openingHours);
     var hours = hoursText ? '<p class="feedcard__hours">⏰ ' + escapeHtml(hoursText) + '</p>' : '';
-    // R137: 公式サイトのURLからホスト名だけを出す。無ければ何も出さない(推測しない)。
+    // R137/R167: 公式サイトのドメイン名の行は削除(市場調査で[公式]リンクと情報が
+    // 重複していると指摘されたため)。isBare判定(情報が少ないカードの帯を畳む条件)は
+    // domainText の有無をそのまま使い続けるため、判定用の値自体は残し表示だけ止める。
     var officialUrl = safeUrl(card.links && card.links.official);
     var domainText = officialUrl ? officialDomainText(officialUrl) : null;
-    var official = domainText ? '<p class="feedcard__official">⧉ ' + escapeHtml(domainText) + '</p>' : '';
+    var official = '';
 
     // R139: 写真も要約(記事ありリンクも含む)も営業時間も公式サイトも1つも無いカードだけ、
     // .feedcard__media の空箱(196px)を低い帯に詰める。85枚(写真あり/情報あり)は一切変えない。

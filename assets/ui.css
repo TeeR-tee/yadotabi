@@ -367,6 +367,23 @@ code {
   color: var(--c-text-faint);
 }
 
+/* R167: [行き方]を視覚的に主役にする。市場調査(10_市場調査.md 第9回)で
+   「旅行者が最も使うのは行き方(経路検索)なのに他リンクに埋もれている」と
+   指摘されたため、他のリンクチップより濃い色・太枠で強調する。
+   セレクタを .feedcard__link.feedcard__link--primary にして詳細度を上げ、
+   style.css 側の .feedcard__link 定義(読み込み順で後)より確実に勝たせる。 */
+.feedcard__link.feedcard__link--primary {
+  border-color: var(--c-primary);
+  background: var(--c-primary);
+  color: #fff;
+  font-weight: 700;
+}
+.feedcard__link.feedcard__link--primary:hover {
+  background: var(--c-primary);
+  color: #fff;
+  opacity: 0.9;
+}
+
 /* ---------- 区切り・ユーティリティ ---------- */
 .divider { border: none; border-top: 1px solid var(--c-border); margin: var(--sp-5) 0; }
 .text-sub   { color: var(--c-text-sub); }
