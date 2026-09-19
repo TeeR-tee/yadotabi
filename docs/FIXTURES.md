@@ -73,7 +73,7 @@ node scripts/make-fixture.mjs <area>
 
 半年未満でも再取得してよい例外が1つあります。**`assets/geo.js` の `buildOverpassQuery()` を変更したとき**は、fixture と本番で候補が食い違うため、期間に関わらずすぐに対象エリアを取り直してください(上の「[`buildOverpassQuery` の同期注意](#buildoverpassquery-の同期注意)」参照)。
 
-現在の4 fixture の `generatedAt` はいずれも 2026-09-15〜16 生成(全エリア同一日、実測済み)なので、**次の見直し目安は 2027-03 頃**です。
+現在の5 fixture の `generatedAt` はいずれも 2026-09-19 生成(全エリア同一日、実測済み)なので、**次の見直し目安は 2027-03 頃**です。
 
 ### (b) 再取得のマナー
 
@@ -83,7 +83,7 @@ node scripts/make-fixture.mjs <area>
 
 1. `node scripts/dump-rank.mjs <area>` を**再取得の前後**で取り、カード枚数・上位の並びの差分を全件目視する(差分が出ること自体は正常。消えた観光スポットが無いかを見る)
 2. `?fixture=<area>` を mobile で撮影して目視(カード30枚・番号ピン判読可)
-3. `node scripts/check-all.mjs` が**29本全緑**
+3. `node scripts/check-all.mjs` が**35本全緑**
 4. 差分の要点を `docs/NIGHTLOG.md` に記録する
 
 ### (d) keep-list は手動実行不要
@@ -92,7 +92,7 @@ node scripts/make-fixture.mjs <area>
 
 ## 既存 fixture は原則再生成しない方針
 
-既存3エリアを取り直すと元データが変わり、カードの並び・枚数・写真が変わります。過去の撮影・検査(`scripts/check-*.mjs` の期待値、09研究ノートの順位記録)との比較ができなくなるため、**再生成は「上流のクエリを変えた」「データが明らかに古い」など理由があるときだけ**行います。実施する場合は前後で `node scripts/dump-rank.mjs <area>` を取ってカード枚数と上位の並びを差分比較し、NIGHTLOG に記録してください。
+既存5エリアを取り直すと元データが変わり、カードの並び・枚数・写真が変わります。過去の撮影・検査(`scripts/check-*.mjs` の期待値、09研究ノートの順位記録)との比較ができなくなるため、**再生成は「上流のクエリを変えた」「データが明らかに古い」など理由があるときだけ**行います。実施する場合は前後で `node scripts/dump-rank.mjs <area>` を取ってカード枚数と上位の並びを差分比較し、NIGHTLOG に記録してください。
 
 ## `buildOverpassQuery` の同期注意
 
