@@ -393,6 +393,12 @@ async function fetchWikiByTitles(titles) {
  *
  * `explaintext=1` は titles を並べても1リクエスト1記事しか返らないが、
  * 親記事は1エリア1本なので追加は **+1リクエスト** で済む。
+ *
+ * R188: 記事名の作り方を住所ベースで改善したが、**ここは無関係**。固定データは
+ * AREAS[].label(草津温泉・箱根湯本 …)をそのまま記事名にしており、住所から名前を
+ * 作る geo.js の parentArticleCandidates は fixture モードでは呼ばれない
+ * (geo.js の parentArticleTitle は fixtureData があれば meta.label を返して終わる)。
+ * したがって geo.js と make-fixture.mjs の条件は R188 の前後で揃ったままである。
  * 照合条件(2文字以上・汎用語ブロック)は geo.js の matchParentMentions が持っており、
  * こちらでは本文をそのまま保存するだけ(条件を二重実装しない)。
  *
