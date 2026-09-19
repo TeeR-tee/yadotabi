@@ -14,6 +14,9 @@
 //   (d) getBoundingClientRect() が #feed-map 内の全 .pin の rect と1つも交差しない
 //       (R118: 点の近似ではなく矩形 vs 矩形で判定する)
 //   (e) 全ピンが #feed-map の矩形からはみ出していない
+//   (e2) R233: (d)(e) とその並べ替え版の母集団 info.pinRects が空でないこと。
+//        ピンが1本も描かれないと (d)(e) は「0本中0本OK」で緑になるため、
+//        本数の下限(PIN_MIN)と番号ピン 1..5 の中身を別項目として検査する。
 //   (f) コンソールエラー0件
 //   (g) R118: 提案順位に依存しないこと。state.cards の**並びだけ**を入れ替えて
 //       renderFeedMap() をやり直し(正順/逆順/ランダム3通りの計5パターン)、
@@ -28,6 +31,30 @@ const { chromium } = await import(PLAYWRIGHT_IMPORT);
 import { ensureServer } from './lib/server.mjs';
 
 let BASE;
+
+// R233: 「母数が0でも緑」を防ぐための下限。この本の4つの判定
+// (重なり2件・地図内2件)はすべて `info.pinRects` を母集団にした
+// `filter(...).length === 0` なので、**ピンが1本も描かれなければ4項目とも緑**になる。
+// ?fixture=kusatsu / 375x812 の実測(2026-09-21)は 6本
+// = 宿ピン(♨)1本 + 番号ピン 1..5 の5本。5エリア + embed の6URLすべてで同じ6本。
+// fixture の微増減で赤くならないよう、実測6本に対し下限は2本(宿+スポット最低1本)に置く。
+const PIN_MIN = 2;
+// ★数字だけ見る検査では素通りする壊し方への備え:
+// 本数が同じままでも、番号ピンのラベルが 1..5 から崩れていたら落とす。
+// (ピンを1本消して代わりに1本足す・番号を振り直す・宿ピンが消えてスポットが増える、
+//  といった「本数は変わらない壊れ方」を本数の検査は1つも捕まえられない)
+const SPOT_LABELS = ['1', '2', '3', '4', '5'];
+
+// info.pinRects の母数そのものを検査項目に格上げする(R233)。
+// 「重ならない」「地図に収まっている」は母数が空なら無条件に真になるため、
+// それらの判定の**直前に必ず**この関数を呼んでピンの母数を確かめる。
+function okPinPopulation(info, label) {
+  const pins = (info && info.pinRects) || [];
+  ok(pins.length >= PIN_MIN, `[${label}] 地図のピンが${PIN_MIN}本以上ある(母数が0ではない)`, pins.length);
+  const spots = pins.map((p) => p.label).filter((t) => /^\d+$/.test(t)).sort();
+  ok(JSON.stringify(spots) === JSON.stringify(SPOT_LABELS),
+    `[${label}] 番号ピンが1〜5の5本そろっている(本数だけでなく中身も)`, spots);
+}
 
 let pass = 0;
 let fail = 0;
@@ -124,6 +151,9 @@ async function checkOrderIndependence(page, label) {
     if (!applied) continue;
     await waitFor(400);
     const info = await page.evaluate(MEASURE);
+    // R233: 以下2つの判定はどちらも info.pinRects を母集団にしているので、
+    // 並べ替え後にピンが1本も残らなければ母数0のまま緑になる。母数を先に検査する。
+    okPinPopulation(info, `${label}/${name}`);
     const hits = info.pinRects
       .filter((p) => overlapArea(info.rect, p) > 0)
       .map((p) => ({ pin: p.label, area: Math.round(overlapArea(info.rect, p) * 10) / 10 }));
@@ -155,6 +185,12 @@ async function checkUrl(browser, url, label) {
     ok(info.display !== 'none', `[${label}] display!=='none'`, info.display);
     ok(info.visibility !== 'hidden', `[${label}] visibility!=='hidden'`, info.visibility);
     ok(info.opacity > 0.5, `[${label}] opacity>0.5`, info.opacity);
+
+    // R233: 「帰属表示がピンと重ならない」「全ピンが地図の中」も母集団は info.pinRects。
+    // ピンの描画が止まると両方とも空集合で緑になるため、母数を検査項目に格上げする。
+    // (カード枚数の母数は checkOrderIndependence の ok(count > 0, …) が持っているが、
+    //  ピンの母数とは別物なので別項目にする)
+    okPinPopulation(info, label);
 
     const overlaps = info.pinRects.filter((p) => rectsIntersect(info.rect, p));
     ok(overlaps.length === 0, `[${label}] 帰属表示がピンと重ならない`, { attribRect: info.rect, overlaps });

@@ -9,6 +9,11 @@
 // 確認項目:
 //   1. 展開前(初期5件)は .feedbundle が0本 = 見た目の現状維持
 //   2. 「もっと見る」展開後は .feedbundle が1本以上出る
+//   2b. R233: 3〜9 の判定の母集団(heads・cards)が空でないこと。カードが0枚でも
+//       filter(...).length === 0 は真になり6件中5件が緑で通るため、
+//       カード枚数(CARD_MIN)と見出し本数(HEAD_MIN)を別項目として検査する。
+//   2c. R233: 束見出しが名乗るテーマ名が engine.js 由来の表にある名前だけであること
+//       (本数も枚数も変わらない「テーマ名の書き換え」を捕まえる)
 //   3. 見出し1本に中身1件の束が1つも無い
 //   4. **見出しの下のカードが全てその束のテーマである**(1枚も混ざらない)
 //   5. 番号バッジ・data-index が 1..N / 0..N-1 の**過不足の無い集合**(欠落・重複が無い)
@@ -161,6 +166,24 @@ function buildLabelToTheme() {
   return { labelToTheme, fallback };
 }
 
+// R233: 「母数が0でも緑」を防ぐための下限。この本の6つの判定
+// (thin / mismatched / countBad / idx / restWithNo / noIdxBad)は
+// heads と cards を母集団にした `filter(...).length === 0` なので、
+// **展開後にカードが1枚も無くても6件中5件が緑**になる
+// (`heads.length >= 1` は見出しの母数しか見ていない)。
+// ?fixture=kusatsu / 390x844・展開後の実測(2026-09-21)はカード24枚・見出し6本。
+// 5エリアの実測は kusatsu 24 / hakone 22 / dogo 18 / beppu 17 / kinosaki 23 枚、
+// 見出しは 6 / 6 / 6 / 5 / 6 本。fixture の微増減で赤くならないよう、
+// 最小(17枚・5本)よりさらに下げた値を下限に置く。
+const CARD_MIN = 8;
+const HEAD_MIN = 2;
+// ★数字だけ見る検査では素通りする壊し方への備え:
+// 束見出しのテーマ名だけを書き換えても、見出し本数もカード枚数も1つも変わらない。
+// テーマ名は engine.js の THEME_OF / FALLBACK_THEME から作った表(labelToTheme)の
+// 値の集合に入っているはずなので、名乗っているテーマ名が表に無ければ落とす。
+// (「そのほか」だけはテーマを名乗らない端数置き場なので別扱い)
+const REST_HEAD = 'そのほか';
+
 let pass = 0;
 let fail = 0;
 function ok(cond, label, extra) {
@@ -233,6 +256,24 @@ async function main() {
 
       // 2. 見出しが1本以上
       ok(heads.length >= 1, '展開後に .feedbundle が1本以上', heads.length);
+
+      // 2b. R233: 以下6つの判定(thin / mismatched / countBad / idx / restWithNo / noIdxBad)は
+      //     すべて heads・cards を母集団にした filter(...).length === 0 なので、
+      //     展開後にカードが1枚も出なくなると6件中5件が緑のまま通る。
+      //     カードの母数は見出しの母数とは別物なので、別項目として検査する。
+      ok(cards.length >= CARD_MIN, `展開後のカードが${CARD_MIN}枚以上ある(母数が0ではない)`, cards.length);
+      ok(heads.length >= HEAD_MIN, `展開後の束見出しが${HEAD_MIN}本以上ある(母数が0ではない)`, heads.length);
+
+      // 2c. ★本数も枚数も変わらない壊し方(テーマ名の書き換え)を捕まえる。
+      //     見出しが名乗るテーマ名は engine.js 由来の labelToTheme の値のどれかであるはず。
+      //     表に無い名前を名乗る見出しがあれば、束の分け方そのものが壊れている。
+      const knownThemes = new Set(Object.values(labelToTheme).concat([fallback]));
+      const unknownHeads = heads
+        .map((h) => h.text.replace(/\s*\d+件$/, '').trim())
+        .filter((name) => name !== REST_HEAD && !knownThemes.has(name));
+      ok(unknownHeads.length === 0,
+        '束見出しのテーマ名が engine.js の THEME_OF にある名前だけ(名前の書き換えを検知)',
+        { unknown: unknownHeads, known: Array.from(knownThemes) });
 
       // 3. テーマを名乗る見出しで中身1件のものが無い
       //    (「そのほか」はテーマを名乗らない端数置き場なので1件でもよい)
