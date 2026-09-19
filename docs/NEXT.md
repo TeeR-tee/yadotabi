@@ -79,66 +79,66 @@
 
 ## 3. ★次のサイクルでやる1件(計画役が選定・判断待ちに依存しません)
 
-### R212: `docs/CHECKS.md` を実態(32本)に合わせて直し、検査の一覧表を完成させる
+### R213: `demo/embed-check.html` に説明書きを入れ、README の営業デモ記述を実態に合わせる
 
-**なぜこれを選んだか**: 最新スクリーンショット2枚(草津・モバイル)を目視した結果、**アプリの見た目に不具合は
-見つかりませんでした**(1位=湯畑・地図のピン1〜5・カードの写真と理由行、すべて崩れなし)。外向きの営業素材も
-R85→R207→R208 で一区切りです。そこで**足元のドキュメントの整合性**を実測したところ、**明確な食い違いを発見しました**。
+**なぜこれを選んだか**: R212 と同じ「文書と実態のズレ」を他の場所でも探したところ、**デモまわりで2件見つかりました**。
+最新スクリーンショット2枚(草津モバイル / ライトボックスPC)は目視済みで、**アプリ本体の見た目に不具合はありません**
+(1位=湯畑・地図のピン1〜5・カードの写真と理由行・ライトボックスの暗転と×ボタン、すべて崩れなし)。
 
-- `scripts/check-*.mjs` は実際には **32本**(+`docs/check.mjs`)あるのに、`docs/CHECKS.md` は
-  **1行目の見出しからして「30本の一覧」**のまま。節見出しも「サーバを立てる**26**本」「不要な**4**本」=30本。
-- 表に**載っていない検査が2本**あります(実測): **`check-bundle`**(R157/R158 のテーマ束見出し)と
-  **`check-osmfallback`**(R181 の「Overpass が落ちても主役が消えない」検証)。どちらも**今夜の議論の中心だった
-  主役の消失問題を守っている重要な検査**なのに、一覧に存在しません。
-- `grep -c "^| check" docs/CHECKS.md` は **29**(表の行数)で、総数とも節見出しとも一致していません。皮肉なことに
-  CHECKS.md 自身の末尾(R106/R135 の節)に「本数が一致しなければ表に反映せよ」と書いてあり、R135 で同じ事故が起きています。
+1. **README のズレ(新発見)**: R207 で README **冒頭の英語段落**には英語/日本語デモの2本リンクを足しましたが、
+   本文(日本語)側の **README.md:53 行目「営業用デモ: `demo/hotel-page.html`…」は日本語版1枚しか挙げていないまま**です。
+   日本語で読み進めたみのるん自身が英語版の存在に気づけません。R207 の「入口を作る」が**半分しか届いていない**状態です。
+2. **R210(既存起票)**: `demo/embed-check.html` は中身が `<h1>埋め込み確認用(ローカル)</h1>` と iframe だけで、
+   **何を見るページなのかがページ上に一言も書かれていません**。`docs/check.mjs` の `HTML_PAGES` には入っており本番にも出ています。
 
-これは ROADMAP の **R209(検査32本の一覧表)を、新規ファイルではなく既存文書の修正という形で実現するもの**でもあります。
-検査が落ちたとき何が壊れたのかを一覧から引けるようになります。判断不要・本体コード不変・外部API 0回・0円。
+どちらもコード不変・判断不要・外部API 0回・0円で、**ユーザー入口を毎スライスで整備する**方針にも合致します。
 
-- **タスクID**: R212(ROADMAP の R209 を包含して消化する)
-- **目的**: `docs/CHECKS.md` の本数・表・節見出しを実測値(32本+`docs/check.mjs`)に一致させ、
-  抜けている `check-bundle` / `check-osmfallback` の2行を表に足す。
-- **変える対象ファイル(絶対パス)**:
-  - `C:\workspace\claude\旅行先用サイト\yadotabi\docs\CHECKS.md`(本体)
-  - `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md`(R209 を `[x] 2026-09-20 R212 で消化` と記録)
-  - `C:\workspace\claude\旅行先用サイト\yadotabi\docs\NIGHTLOG.md`(末尾「## サイクル記録」に `### 2026-09-20 R212 …` 見出し+3行)
+- **タスクID**: R213(ROADMAP の **R210 を包含して消化する**)
+- **目的**: (a) `demo/embed-check.html` の冒頭に「このページが何で、何を見ればよいか」を2〜3行で表示する。
+  (b) README の日本語側の営業デモ記述に英語版デモの行を足し、冒頭の英語段落と食い違わないようにする。
+- **変える対象ファイル(絶対パス・この3+1件のみ)**:
+  - `C:\workspace\claude\旅行先用サイト\yadotabi\demo\embed-check.html`(説明文の追加のみ)
+  - `C:\workspace\claude\旅行先用サイト\yadotabi\README.md`(53行目付近の1行を2行に)
+  - `C:\workspace\claude\旅行先用サイト\yadotabi\docs\ROADMAP.md`(R210 を `[x] 2026-09-20 R213 で消化` に。R213 の行も追記)
+  - `C:\workspace\claude\旅行先用サイト\yadotabi\docs\NIGHTLOG.md`(末尾「## サイクル記録」に `### 2026-09-20 R213 …` 見出し+3行)
 - **作り方**:
-  1. まず実測する。`ls scripts/check-*.mjs | wc -l`、`sed -n '33,66p' scripts/check-all.mjs`(`SCRIPTS` 配列)、
-     `grep -l ensureServer scripts/check-*.mjs | wc -l`、`grep -l playwright scripts/check-*.mjs | wc -l` を流し、
-     **出た数字だけを文書に書く**(推測で書かない)。`check-all.mjs` 自身は `SCRIPTS` の対象外なので数に入れない。
-  2. 1行目の見出し「30本の一覧」と「## 対象範囲」の本数、節見出し「サーバを立てる◯本」「不要な◯本」を実測値に直す。
-  3. 表に `| check-bundle | …(R157/R158: カードを束ねた見出し .feedbundle の検査)|` と
-     `| check-osmfallback | …(R181: Overpass が落ちた回でも主役が消えないこと)|` の2行を、
-     **既存の並び(check-all.mjs の `SCRIPTS` 配列と同じ順序)の正しい位置に**挿入する。説明文は各ファイルの
-     **冒頭コメントから拾う**(自分で創作しない)。
-  4. 「所要目安(現在値)」の行にある「**30本**の合計は 322.5s」を、NIGHTLOG に実測記録のある
-     **32本・343.4秒(Windows)/ 342.5秒(CI)・最遅 `check-reason.mjs`** に更新する(R205 の実測値)。
-  5. 末尾の R106/R135 の節は**残す**(今回まさにこれで見つかったので、有効性の実例として R212 を1行追記してよい)。
+  1. `embed-check.html` の `<h1>` の直後に `<p>` を1〜2個入れる。書く内容は
+     **「これは `?embed=1`(埋め込み表示)をローカルで目視確認するためのページです」「iframe の高さが中身に合わせて
+     伸びるか、検索欄・エリアチップ・戻るボタンが消えているかを見ます」「本番の営業用デモは `hotel-page.html` です」**の3点。
+     CSS は既存の `<style>` に `p { font-size: 14px; color: #444; line-height: 1.6; max-width: 640px; }` 程度を足すに留める。
+  2. `README.md:53` の「営業用デモ: `demo/hotel-page.html`(本番URL …)」の行に、
+     **英語版 `demo/hotel-page-en.html`(本番URL https://teer-tee.github.io/yadotabi/demo/hotel-page-en.html )も併記**する。
+     冒頭5行目の英語リンク行は**既に正しいので触らない**。
 - **完了条件(検証可能な形)**:
-  1. `grep -c "^| check" docs/CHECKS.md` の結果が、`ls scripts/check-*.mjs | wc -l` の結果と一致する(32)。
-  2. `docs/check.mjs` の行を含めた表の総行数が 33 で、`scripts/check-all.mjs` の `SCRIPTS` 配列の要素数と一致する。
-  3. `grep -n "30本" docs/CHECKS.md` が **0件**(古い本数が1つも残っていない)。
-  4. `check-bundle` と `check-osmfallback` が表に1回ずつ出現する(`grep -c` で各1)。
-  5. **`SCRIPTS` 配列の全名称が表に存在すること**をループで確認し、MISSING が0件。
-  6. `node scripts/check-all.mjs` が **32本全PASS**(検査本体は1バイトも変更していないので、落ちたら何か触っている)。
-  7. `git diff --stat` の変更ファイルが上記3ファイルのみ。`scripts/` と `assets/` が**1ファイルも含まれない**。
-- **検証手順(撮影)**: **今回は撮影不要**(Markdown 文書のみの変更で、本番の見た目は1ピクセルも変わらないため)。
-  代わりに上記の `grep` / `wc` の出力を NIGHTLOG に**数字のまま残す**こと。
-  ただし `node scripts/check-all.mjs` の32本全PASS は**必ず実行して確認**する(6分ほどかかる)。
-  外部API消費は0回(fixture 経由のみ)。
+  1. `grep -c "hotel-page-en" README.md` が **2以上**(冒頭の英語行+日本語側の新しい行)。
+  2. `grep -n "hotel-page-en" demo/embed-check.html` は **0件**(embed-check からは本番デモの日本語版だけ案内すれば十分。増やさない)。
+  3. `demo/embed-check.html` に `<p>` が1つ以上あり、`iframe` の `src` が
+     **`../index.html?embed=1&fixture=kusatsu` のままバイト一致**である(`git diff` で iframe 行に差分が出ないこと)。
+  4. `node docs/check.mjs` が **exit 0**(`HTML_PAGES` に embed-check が入っているのでリンク切れを検知できる)。
+  5. `node scripts/check-all.mjs` が **32本全PASS**。
+  6. `git diff --stat` の変更が上記4ファイルのみで、**`assets/` と `scripts/` と `index.html` と `fixtures/` が1ファイルも含まれない**。
+- **検証手順(撮影)**:
+  - `node C:\workspace\tools\shot\shot.mjs http://127.0.0.1:3000/demo/embed-check.html --mobile`(375px)と
+    **PC幅(オプション無し)の2枚**を撮り、**画像を Read で開いて目視**する。見るのは
+    「説明文が読める大きさか」「iframe に重なっていないか」「モバイルで横にはみ出していないか」の3点。
+  - README は Markdown なので撮影不要。`git diff README.md` で1行増だけを確認する。
+  - 外部API消費は **0回**(embed-check の iframe は `fixture=kusatsu` 固定のため)。
 - **変更禁止範囲(絶対に触らない)**: `assets/engine.js` / `assets/geo.js` / `assets/rank*` / `WEIGHT` 定数 /
-  `fixtures/*.json` / `index.html` / `demo/*` / `.github/workflows/*` / `.gitignore` /
-  **`scripts/check-*.mjs` の全32本と `scripts/check-all.mjs` と `docs/check.mjs`**(今回は読むだけ。
-  冒頭コメントすら直さない — 表の説明文を拾う対象であって、書き換える対象ではない)。
-- **所要目安**: 25〜40分(実測10分・表の修正10分・`check-all.mjs` 6分・記録とコミット10分)。
+  `assets/app.js` / `assets/style.css` / `index.html` / `fixtures/*.json` /
+  `demo/hotel-page.html` / `demo/hotel-page-en.html` / `scripts/check-*.mjs` 全32本 / `scripts/check-all.mjs` /
+  `docs/check.mjs`(`HTML_PAGES` 行を含め**読むだけ**) / `.github/workflows/*` / `.gitignore` /
+  `demo/embed-check.html` の **iframe 要素そのもの**(src・width・height・style・sandbox の有無すべて)。
+- **所要目安**: 20〜35分(HTML編集5分・README 3分・撮影と目視5分・`check-all.mjs` 6分・記録とコミット10分)。
+
+### (参考)前サイクル完了: R212 — CHECKS.md が「30本」のままで `check-bundle`(R157/R158)と
+`check-osmfallback`(R181)の2本が表から抜けていた件を是正済み。R209 も同時消化(b5db866)。
 
 ### 積み残し(判断待ちが解けてから)
 - R177 と「箱根神社が圏外」— 判断待ち(1)が決まり次第。
 - R138(座標欠落40件・`geo.js` 変更が要る)— みのるんの判断待ち。
 - R64 の残り — CI を `schedule` で1日1回回すかの判断のみ(本体は完了)。
-- R210(embed-check に説明書き)・R211(dump-rank に日時とコミットID)・R102(`scripts/list-shots.mjs`)—
-  いずれも判断不要。R212 の次の候補。**R209 は R212 が消化する**。
+- R211(dump-rank に日時とコミットID)・R102(`scripts/list-shots.mjs`)— いずれも判断不要で、R213 の次の候補。
+  **R209 は R212 が、R210 は R213 が消化する**。
 
 ## 4. ★次のサイクルで必ず守ること(今日の教訓)
 
