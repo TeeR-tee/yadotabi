@@ -45,6 +45,8 @@ let BASE;
 
 const NO_SUMMARY_TEXT = 'Wikipediaに記事がありません。地図の情報だけで表示しています。';
 const HAS_ARTICLE_NO_SUMMARY_TEXT = 'Wikipediaに記事はありますが、要約をここに出せていません。';
+// R234: 写真はあるが Wikipedia 記事が紐づかないカード用(app.js の PHOTO_NO_ARTICLE_TEXT と同じ文言)
+const PHOTO_NO_ARTICLE_TEXT = 'Wikipediaに記事がありません。写真と地図の情報で表示しています。';
 // R123: dogo で記事が実在するのに要約が無いカード(wikipedia/wikidataタグの裏付けあり)。
 // Wikipedia記事は実在するが要約(extract)が取得上限で届かなかったカード
 // = HAS_ARTICLE_NO_SUMMARY_TEXT 側になる名前。
@@ -253,6 +255,120 @@ async function main() {
       if (area !== 'beppu' && area !== 'dogo') await areaPage.close();
     }
     ok(deadEnds.length === 0, '8. 5エリアで「記事はあります」文言なのにリンクが0本のカードが無い', deadEnds);
+
+    // ===== R234: 「写真はあるが Wikipedia 記事が無い」カードの説明行を2軸で守る =====
+    // R174 以降、このカードだけが summary の三項分岐のどこにも当たらず空文字に落ち、
+    // 説明の行が1本も出ないまま空白になっていた(5エリアで1件=草津1位の湯畑)。
+    // 【軸の名前】(a) 有無軸 = 対象カードに説明の行が1本存在すること。
+    //            (b) 中身軸 = その文言が定数と完全一致し、評価の語を1つも含まないこと。
+    // R226 の教訓に従い本数の下限だけにしない。R232・R233 の教訓に従い
+    // 「母数が0件だと必ず緑になる書き方」にしない(母数そのものを先に照合する)。
+    //
+    // 対象の見分け方: 写真(.feedcard__img)があり、かつ説明の行が
+    // 「記事はあります」文言でも通常の要約でもないカード。実装(app.js)の分岐を読まず
+    // 画面に出ているものだけで判定するので、分岐の書き換えにも追従する。
+    const photoNoArticleRows = [];
+    let summaryMissingTotal = 0;
+    let allCardTotal = 0;
+    for (const area of AREAS) {
+      const areaPage = area === 'beppu' ? beppuPage : (area === 'dogo' ? page : await context.newPage());
+      if (area !== 'beppu' && area !== 'dogo') {
+        await areaPage.goto(`${BASE}/?fixture=${area}`, { waitUntil: 'load' });
+        await waitFor(1500);
+        await expandAll(areaPage);
+      }
+      const rows = await areaPage.locator('.feedcard').evaluateAll((cards) =>
+        cards.map((c) => {
+          const sum = c.querySelector('.feedcard__summary');
+          return {
+            name: c.querySelector('.feedcard__name') ? c.querySelector('.feedcard__name').textContent : '',
+            hasImg: !!c.querySelector('.feedcard__img'),
+            hasSummary: !!sum,
+            isNone: !!c.querySelector('.feedcard__summary--none'),
+            text: sum ? sum.textContent : null,
+          };
+        })
+      );
+      allCardTotal += rows.length;
+      // (a) 有無軸: 写真の有無によらず、全カードに説明の行が1本ある(空白のカードが0枚)
+      summaryMissingTotal += rows.filter((r) => !r.hasSummary).length;
+      rows.forEach((r) => {
+        if (r.hasImg && r.isNone && r.text.indexOf(HAS_ARTICLE_NO_SUMMARY_TEXT) !== 0) {
+          photoNoArticleRows.push({ area, name: r.name, text: r.text });
+        }
+      });
+      if (area !== 'beppu' && area !== 'dogo') await areaPage.close();
+    }
+    // (a) 有無軸その1: 説明の行が1本も無いカードが5エリアで0枚。
+    // 母数(全カード数=104)も同時に照合するので、カードが読めていないときは緑にならない。
+    // 2026-09-24 R234 実測: kusatsu 24 / hakone 22 / dogo 18 / beppu 17 / kinosaki 23 = 104枚。
+    ok(
+      allCardTotal === 104 && summaryMissingTotal === 0,
+      '(r234) a1. 有無軸: 5エリア全104カードに説明の行(.feedcard__summary)が1本ずつあり、空白のカードが0枚',
+      { allCardTotal, summaryMissingTotal }
+    );
+    // (a) 有無軸その2: 「写真あり・記事なし」に該当するカードが実在すること(母数の照合)。
+    // ここが0件になったら検査の題材が消えた合図で、下の中身軸が素通りしてしまうため
+    // **0件を緑にしない**。2026-09-24 R234 実測: 草津1位「湯畑」の1枚。
+    ok(
+      photoNoArticleRows.length === 1 && photoNoArticleRows[0].name === '湯畑' && photoNoArticleRows[0].area === 'kusatsu',
+      '(r234) a2. 有無軸: 「写真あり・Wikipedia記事なし」のカードが5エリアで1枚(草津1位 湯畑)実在する',
+      photoNoArticleRows
+    );
+    // (b) 中身軸その1: その1枚の文言が PHOTO_NO_ARTICLE_TEXT と完全一致すること。
+    // 枚数が変わらないまま文言だけ差し替えられた場合、有無軸は全緑のままここだけが赤くなる
+    // (R216 で実証された「リンク軸は全緑のまま中身軸だけが検知した」のと同じ形)。
+    const photoNoArticleTexts = photoNoArticleRows.map((r) => r.text);
+    ok(
+      photoNoArticleTexts.length > 0 && photoNoArticleTexts.every((t) => t === PHOTO_NO_ARTICLE_TEXT),
+      '(r234) b1. 中身軸: 「写真あり・記事なし」の文言が PHOTO_NO_ARTICLE_TEXT と完全一致する',
+      photoNoArticleTexts
+    );
+    // (b) 中身軸その2: 5エリア全カードの説明行に評価の語が1つも無いこと。
+    // R227・R231 で「代表格に『珍しい』」と書いて嘘になった失敗を繰り返さないための歯止め。
+    // 対象は --none の行だけでなく **全カードの説明行**(Wikipedia 由来の要約は
+    // 事実の記述なので通常これらの語を含まない。含んだら人が書いた文言が紛れた合図)。
+    const BANNED_WORDS = ['有名', '人気', 'おすすめ', '残念', '申し訳'];
+    const bannedHits = [];
+    for (const area of AREAS) {
+      const areaPage = area === 'beppu' ? beppuPage : (area === 'dogo' ? page : await context.newPage());
+      if (area !== 'beppu' && area !== 'dogo') {
+        await areaPage.goto(`${BASE}/?fixture=${area}`, { waitUntil: 'load' });
+        await waitFor(1500);
+        await expandAll(areaPage);
+      }
+      const noneTextsArea = await areaPage.locator('.feedcard__summary--none').evaluateAll((els) =>
+        els.map((el) => el.textContent)
+      );
+      noneTextsArea.forEach((t) => {
+        BANNED_WORDS.forEach((w) => {
+          if (t.indexOf(w) !== -1) bannedHits.push({ area, word: w, text: t });
+        });
+      });
+      if (area !== 'beppu' && area !== 'dogo') await areaPage.close();
+    }
+    // 母数(5エリアの --none 総数)も照合する。--none が0件になれば禁止語も必ず0件になり
+    // 素通りするため、実測値と突き合わせて「数えられていること」まで確認する。
+    // 2026-09-24 R234 実測: kusatsu 14 / hakone 1 / dogo 2 / beppu 1 / kinosaki 5 = 23件。
+    const noneTotalAll = await (async () => {
+      let n = 0;
+      for (const area of AREAS) {
+        const areaPage = area === 'beppu' ? beppuPage : (area === 'dogo' ? page : await context.newPage());
+        if (area !== 'beppu' && area !== 'dogo') {
+          await areaPage.goto(`${BASE}/?fixture=${area}`, { waitUntil: 'load' });
+          await waitFor(1500);
+          await expandAll(areaPage);
+        }
+        n += await areaPage.locator('.feedcard__summary--none').count();
+        if (area !== 'beppu' && area !== 'dogo') await areaPage.close();
+      }
+      return n;
+    })();
+    ok(
+      noneTotalAll === 23 && bannedHits.length === 0,
+      '(r234) b2. 中身軸: 5エリアの断り書き23件に評価の語(有名/人気/おすすめ/残念/申し訳)が1つも無い',
+      { noneTotalAll, bannedHits }
+    );
 
     // (r136) 営業時間表示。dogo は page(既に開いている)を再利用する。
     const dogoHours = await page.locator('.feedcard').evaluateAll((cards) =>

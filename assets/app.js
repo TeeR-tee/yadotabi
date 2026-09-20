@@ -906,6 +906,12 @@
   var NO_SUMMARY_TEXT = 'Wikipediaに記事がありません。地図の情報だけで表示しています。';
   // R123: 記事の存在(wikipedia/wikidataタグ)は確認できるが本文を取得できていないカード用
   var HAS_ARTICLE_NO_SUMMARY_TEXT = 'Wikipediaに記事はありますが、要約をここに出せていません。';
+  // R234: 写真はあるが Wikipedia 記事が紐づかないカード用(現状5エリアで1件=草津1位の湯畑)。
+  // NO_SUMMARY_TEXT は「地図の情報だけ」と言うが、このカードには写真が出ているので
+  // そのまま流用すると事実と食い違う。HAS_ARTICLE_NO_SUMMARY_TEXT は記事がある前提なので
+  // やはり使えない。書いてよいのは「記事が無い」ことと「何を元に表示しているか」だけで、
+  // 場所そのものを評価する語は入れない(R227・R231 の教訓)。
+  var PHOTO_NO_ARTICLE_TEXT = 'Wikipediaに記事がありません。写真と地図の情報で表示しています。';
   // R226: 「写真も解説も無い」カードを寄せた最後の束の見出し。
   // 書いてよいのは「いま手元に写真と解説が無い」という事実だけで、
   // 場所そのものを評価する語(つまらない・情報が薄い等)は入れない(R227・R231 の教訓)。
@@ -1220,7 +1226,11 @@
         '</p>'
       : isPlaceholderMedia
       ? '<p class="feedcard__summary feedcard__summary--none">' + escapeHtml(NO_SUMMARY_TEXT) + '</p>'
-      : '';
+      // R234: 「写真はあるが記事が無い」カードは R174 以降どの案内文にも当たらず、
+      // 説明の行が1本も出ないまま空白になっていた(5エリアで1件=草津1位の湯畑)。
+      // 写真がある以上「地図の情報だけ」とは言えないので専用の文言を出す。
+      // 既存クラス(.feedcard__summary--none)をそのまま使い、新しい色もクラスも足さない。
+      : '<p class="feedcard__summary feedcard__summary--none">' + escapeHtml(PHOTO_NO_ARTICLE_TEXT) + '</p>';
     // R136: 営業中/閉店の判定はしない。取得した表記を読める形にするだけ。無ければ何も出さない。
     var hoursText = openingHoursText(card.openingHours);
     var hours = hoursText ? '<p class="feedcard__hours">⏰ ' + escapeHtml(hoursText) + '</p>' : '';
