@@ -440,6 +440,65 @@ function decodeHtmlEntities(str) {
 }
 // --- ここまで R109 ---
 
+// --- R247: README の rank() の説明が、実際に順位を決めている要素と食い違わないことの検査 ---
+// 画面末尾の注記(app.js の noteHtml)は R246 で「宿からの距離 / 種類の多様性 / 百科事典でどれだけ
+// 語られ触れられているか / 写真や説明が揃っているか」の4種類を名乗るよう直した。しかしその注記から
+// 飛べる README の「正直な注意点」は「Wikipediaに記事や写真がある場所、公式サイトがある場所を優先
+// するから偏る」としか書いておらず、**最大の重みである親記事の言及(PARENT_MENTION 80)に一言も
+// 触れていなかった**。リンクの手前と先で別のことを言う状態を機械で止める。
+//
+// R240 の教訓に従い、**母数は engine.js の定数を import せず README.md の本文から取る**。
+// 定数を import すると、定数を書き換えたときに検査も一緒にずれて何も守らない死んだ軸になる。
+{
+  const readmeBody = readFileSync(join(REPO_ROOT, 'README.md'), 'utf8');
+  const noteLine = readmeBody
+    .split('\n')
+    .find((line) => line.includes('正直な注意点') && line.includes('rank()'));
+
+  report('README.md rank() の「正直な注意点」が存在する', Boolean(noteLine));
+
+  if (noteLine) {
+    // (a) 欠落軸: 最大の重み(親記事の言及 = PARENT_MENTION)に相当する記述があること。
+    //     書き方の揺れを許すため、定数名・日本語のどちらでも通す。
+    const mentionsParent =
+      /PARENT_MENTION/.test(noteLine) || (noteLine.includes('親記事') && noteLine.includes('言及'));
+    report(
+      'README.md rank() の説明が最大の重み(親記事の言及/PARENT_MENTION)に触れている',
+      mentionsParent,
+      mentionsParent ? undefined : '画面の注記は「どれだけ語られ触れられているか」を名乗っているのに、READMEが最大の重みに触れていない'
+    );
+
+    // (b) 矛盾軸: 画面の注記が名乗る4種類を README 側も同じ4種類で説明していること。
+    //     同じ概念を別の言葉で呼ばないよう、画面と揃えた語で照合する。
+    const SCREEN_AXES = [
+      { label: '宿からの距離', re: /宿からの距離|DISTANCE_PER_KM/ },
+      { label: '種類の多様性', re: /種類の多様性|カテゴリ|CATEGORY_PENALTY/ },
+      { label: 'どれだけ語られ触れられているか', re: /語られ|触れられ|被リンク|BACKLINK_MAX/ },
+      { label: '写真や説明が揃っているか', re: /写真|要約|説明|WIKI_IMAGE|WIKI_SUMMARY/ }
+    ];
+    const missingAxes = SCREEN_AXES.filter((axis) => !axis.re.test(noteLine)).map((a) => a.label);
+    report(
+      'README.md rank() の説明が画面の注記の4種類をすべて名乗っている',
+      missingAxes.length === 0,
+      missingAxes.length === 0 ? undefined : `画面の注記にあるのにREADMEに無い: ${missingAxes.join(' / ')}`
+    );
+
+    // (c) 矛盾軸: 「有名さを順位に使っていない」と読める書き方を含まないこと。
+    //     PARENT_MENTION と BACKLINK_MAX が効いている以上、それは嘘になる。
+    const CONTRADICTIONS = [
+      /有名[^。]{0,20}(使っていない|使わない|考慮していない|関係ありません|無関係)/,
+      /知られ[^。]{0,20}(使っていない|使わない|考慮していない)/
+    ];
+    const contradiction = CONTRADICTIONS.find((re) => re.test(noteLine));
+    report(
+      'README.md rank() の説明が「有名さを順位に使っていない」と読める書き方を含まない',
+      !contradiction,
+      contradiction ? `実際は PARENT_MENTION と BACKLINK_MAX が効いているため嘘になる: ${contradiction.source}` : undefined
+    );
+  }
+}
+// --- ここまで R247 ---
+
 // --- R33: 集計行 ---
 if (timings.length > 0) {
   const total = timings.reduce((sum, t) => sum + t.ms, 0);
