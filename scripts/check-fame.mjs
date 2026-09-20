@@ -14,11 +14,18 @@
 //   3. backlinks が 0・欠落・非有限 → **何も出さない**。
 //      0 は「知名度が低い」ではなく「測れていない」。数値をそのまま信じると
 //      「人気0」という存在しない評価を画面に出すことになる(R224 で一番避けたかった事故)。
-//   4. 理由行(💡)が「このあたりの代表的な」で始まるカードには **地方級を出さない**。
-//      どちらも“この土地の中での位置づけ”を言っており、同じ範囲の話を2回することになる
-//      (R224 実測で5エリア10枚が該当した)。全国級はその土地の外まで名が通っている
-//      =別の情報なので、重複していても出す。
+//   4. 理由行(💡)が「このあたりの代表的な」で始まり、**かつ初期5枚に同じカテゴリが
+//      2枚以上あるとき**は地方級を出さない(★R241 で条件を狭めた)。
+//      同カテゴリが2枚以上あると理由行は実際に他と比べて上だと言っているので、そこへ
+//      知名度を足すと同じ順位の話を2回することになる。同カテゴリが自分1枚だけのときは
+//      理由行が「この画面で唯一の◯◯」と言っているだけで知名度を1文字も言っていないため
+//      重なりにならず、地方級を出す。全国級は元から抑制の対象外。
+//      R224 は一律で抑制しており、5エリアの**初期5枚で 8/25枚**しかバッジが出ず
+//      (草津 0/5)、看板エリアが空だった。R241 の条件で **10/25枚**になる。
 //   5. 表示は1カードにつき .badge.feedcard__fame が最大1個・文言は上の2種類のみ・頭は「★ 」。
+//   6. ★R241: **初期5枚(「もっと見る」を押す前)** の枚数とバッジ枚数をエリアごとに
+//      固定値で守る。R229 の検査は展開後しか見ておらず、みのるんが最初に見る画面の
+//      出現率が静かに減っても緑のままだった。母数は必ず DOM から数える(R240 の教訓)。
 //
 // ■ しきい値は検査側にも定数で持ち、app.js から読んだ実際の値と一致するかも見る。
 //   片方だけ動いたら落ちる(app.js の 150/60 を書き換えただけで検査が黙って追従すると、
@@ -65,13 +72,18 @@ function waitFor(ms) {
  * R233-2: 1枚のカードに「出るべきバッジの文言」を **材料(backlinks と理由行)だけから** 決める。
  * 画面に出ているバッジ(badgeCount / badgeText)は一切見ない。
  * これを使うと「画面を見る軸」と「材料から組み直す軸」の2本を別々に数えられる。
+ *
+ * R241: 抑制規則(規則4)を「同じ範囲の話が本当に重なるときだけ」に狭めたので、
+ * 材料に **初期5枚の中に同じカテゴリが何枚あるか**(sameCatInInitial)を足した。
+ * 2枚以上 = 理由行が実際に他と比べて上だと言っている → 地方級は出さない。
+ * 1枚だけ = 比べる相手がおらず知名度を1文字も言っていない → 地方級を出す。
  */
 function expectedBadge(card) {
   const b = isFinite(card.backlinks) && card.backlinks > 0 ? card.backlinks : 0;
   const reasonMsg = card.reason.replace(/^💡\s*/, '');
   if (b >= EXPECT_NATIONAL_MIN) return '★ ' + TEXT_NATIONAL;
   if (b < EXPECT_LOCAL_MIN) return '';
-  if (reasonMsg.indexOf(REPRESENTATIVE_PREFIX) === 0) return '';
+  if (reasonMsg.indexOf(REPRESENTATIVE_PREFIX) === 0 && card.sameCatInInitial >= 2) return '';
   return '★ ' + TEXT_LOCAL;
 }
 
@@ -149,13 +161,42 @@ function readThresholds() {
 }
 
 /**
+ * R241: 画面から1枚ずつ読む共通部。**engine を一度も呼ばない**(母数は必ず画面から数える。
+ * R240 で engine の再計算値を母数に使った軸が「壊しても常に同じ値」の死んだ軸になった)。
+ */
+const READ_CARDS_IN_DOM = () => {
+  return Array.from(document.querySelectorAll('.feedcard')).map((el) => {
+    const nameEl = el.querySelector('.feedcard__name');
+    const reasonEl = el.querySelector('.feedcard__reason');
+    const catEl = el.querySelector('.feedcard__cat');
+    const badges = Array.from(el.querySelectorAll('.feedcard__fame'));
+    return {
+      name: nameEl ? nameEl.textContent.trim() : '',
+      reason: reasonEl ? reasonEl.textContent.trim() : '',
+      // 絵文字が先頭に付くので、カテゴリ名だけを取り出す(同カテゴリの枚数を数えるのに使う)。
+      cat: catEl ? catEl.textContent.trim().replace(/^\S+\s*/, '') : '',
+      badgeCount: badges.length,
+      badgeText: badges.length ? badges[0].textContent.trim() : '',
+      badgeIsBadgeClass: badges.length ? badges[0].classList.contains('badge') : true,
+    };
+  });
+};
+
+/**
  * 1エリア分のカードを DOM から読む。
  * バッジは画面に出ているものを、backlinks は ?debug=1 のスコア内訳から取るのではなく、
  * engine を直接叩いて名前で突き合わせる(画面の見た目と材料の両方を1枚ずつ対応付ける)。
+ *
+ * R241: 「もっと見る」を押す **前** の初期5枚も一緒に返す(initial)。
+ * みのるんが最初に見るのはこの画面なのに、R229 の検査は展開後しか見ておらず
+ * 初期画面のバッジ出現率を1つも守っていなかった。
  */
 async function readArea(page, base, area) {
   await page.goto(`${base}/?fixture=${area}`, { waitUntil: 'load' });
   await waitFor(2000);
+
+  // ★R241 (a) 母数軸: 展開する前の画面をそのまま読む。engine は通さない。
+  const initial = await page.evaluate(READ_CARDS_IN_DOM);
 
   // 「もっと見る」を展開して、表示されうるカードを全部俎上に載せる。
   const moreBtn = page.locator('#more-btn');
@@ -165,20 +206,7 @@ async function readArea(page, base, area) {
   }
 
   // 画面から: カード名・理由行・バッジ(枚数と文言)
-  const dom = await page.evaluate(() => {
-    return Array.from(document.querySelectorAll('.feedcard')).map((el) => {
-      const nameEl = el.querySelector('.feedcard__name');
-      const reasonEl = el.querySelector('.feedcard__reason');
-      const badges = Array.from(el.querySelectorAll('.feedcard__fame'));
-      return {
-        name: nameEl ? nameEl.textContent.trim() : '',
-        reason: reasonEl ? reasonEl.textContent.trim() : '',
-        badgeCount: badges.length,
-        badgeText: badges.length ? badges[0].textContent.trim() : '',
-        badgeIsBadgeClass: badges.length ? badges[0].classList.contains('badge') : true,
-      };
-    });
-  });
+  const dom = await page.evaluate(READ_CARDS_IN_DOM);
 
   // 材料から: 名前 -> _debug.backlinks
   const backlinksByName = await page.evaluate(async (area) => {
@@ -199,10 +227,16 @@ async function readArea(page, base, area) {
     return map;
   }, area);
 
-  return dom.map((c) => ({
+  // R241: 抑制規則が見る母集団は app.js の representativeReason() と同じ「初期5枚」。
+  // 画面(initial)から数えるので、初期画面のカードが減る/カテゴリ表示が壊れれば追従して動く。
+  const sameCatCount = (cat) => initial.filter((c) => c.cat === cat).length;
+  const attach = (c) => ({
     ...c,
     backlinks: Object.prototype.hasOwnProperty.call(backlinksByName, c.name) ? backlinksByName[c.name] : null,
-  }));
+    sameCatInInitial: sameCatCount(c.cat),
+  });
+
+  return { initial: initial.map(attach), expanded: dom.map(attach) };
 }
 
 async function main() {
@@ -222,7 +256,15 @@ async function main() {
   // backlinks と理由行という材料だけから組み立てた期待枚数。
   // 画面側の合計(national / local)と突き合わせることで、
   // 「バッジが全部消える」壊し方も「2種類の文言を入れ替える」壊し方も捕まえる別軸になる。
-  const totals = { cards: 0, badged: 0, national: 0, local: 0, dup: 0, expectNational: 0, expectLocal: 0 };
+  const totals = { cards: 0, badged: 0, national: 0, local: 0, dup: 0, expectNational: 0, expectLocal: 0,
+    initCards: 0, initBadged: 0, initExpect: 0 };
+
+  // ★R241 (a) 母数軸の期待値。初期5枚(= 「もっと見る」を押す前)でバッジが出る枚数を
+  // エリアごとに固定値で持つ。R241 の実測で 8枚 → **10枚**(草津 0→1・別府 2→3)になった。
+  // ここを固定値にするのは、R229 の検査が「全体で1枚以上」のような緩い下限しか持たず、
+  // 初期画面のバッジが静かに減っても緑のままだったため(R224 が守りたかったのはこの画面)。
+  const EXPECT_INITIAL_BADGED = { kusatsu: 1, hakone: 3, dogo: 2, beppu: 3, kinosaki: 1 };
+  const EXPECT_INITIAL_CARDS = 5; // present() が初期に出すカード枚数(全エリア共通)
   try {
     const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
     const page = await context.newPage();
@@ -232,14 +274,59 @@ async function main() {
 
     console.log('\n--- エリア別の内訳(バッジ枚数/全枚数) ---');
     for (const area of AREAS) {
-      const cards = await readArea(page, base, area);
+      const { initial, expanded: cards } = await readArea(page, base, area);
+
+      // ===== ★R241 ここから: 初期5枚(「もっと見る」を押す前)だけを見る2軸 =====
+      // (a) 母数軸: 画面のカード枚数と、そのうちバッジが出ている枚数。
+      //     枚数は engine の再計算値ではなく **DOM から数える**(R240 の死んだ軸の教訓)。
+      const initBadged = initial.filter((c) => c.badgeCount > 0);
+      totals.initCards += initial.length;
+      totals.initBadged += initBadged.length;
+      ok(initial.length === EXPECT_INITIAL_CARDS,
+        `${area}: 初期画面(押す前)のカードが ${EXPECT_INITIAL_CARDS} 枚`, initial.length);
+      ok(initBadged.length === EXPECT_INITIAL_BADGED[area],
+        `${area}: 初期5枚でバッジが出ているのが ${EXPECT_INITIAL_BADGED[area]} 枚`,
+        { actual: initBadged.length, expect: EXPECT_INITIAL_BADGED[area],
+          names: initBadged.map((c) => c.name + '=' + c.badgeText) });
+
+      // (b) 中身軸: 初期5枚のバッジ付きカードの backlinks が必ずしきい値以上であること。
+      //     特に **backlinks が無い/0 のカードに1枚も付いていない**こと(湯畑型。R224 の中心判断)。
+      //     枚数(a)を保ったまま中身だけを入れ替える壊し方は、この軸だけが捕まえる。
+      const initExpects = initial.map((c) => expectedBadge(c));
+      totals.initExpect += initExpects.filter((e) => e).length;
+      const initNoData = initial.filter(
+        (c) => c.badgeCount > 0 && !(isFinite(c.backlinks) && c.backlinks > 0));
+      ok(initial.length >= 1 && initNoData.length === 0,
+        `${area}: 初期5枚で backlinks が無い/0 のカードにバッジが付いていない(カード1枚以上)`,
+        { cards: initial.length, names: initNoData.map((c) => c.name) });
+      const initLow = initBadged.filter((c) => !(isFinite(c.backlinks) && c.backlinks >= EXPECT_LOCAL_MIN));
+      ok(initBadged.length >= 1 && initLow.length === 0,
+        `${area}: 初期5枚のバッジ付きが全て backlinks ${EXPECT_LOCAL_MIN} 以上(バッジ1枚以上)`,
+        { badged: initBadged.length, low: initLow.map((c) => ({ name: c.name, backlinks: c.backlinks })) });
+      const initMismatch = [];
+      initial.forEach((c, i) => {
+        if (initExpects[i] !== c.badgeText) {
+          initMismatch.push({ name: c.name, backlinks: c.backlinks, cat: c.cat,
+            sameCat: c.sameCatInInitial, expect: initExpects[i], actual: c.badgeText });
+        }
+      });
+      ok(initial.length >= 1 && initMismatch.length === 0,
+        `${area}: 初期5枚のバッジの有無と文言が材料どおり(カード1枚以上)`,
+        { cards: initial.length, mismatch: initMismatch });
+      // ===== ★R241 ここまで =====
+
       const badged = cards.filter((c) => c.badgeCount > 0);
       const national = badged.filter((c) => c.badgeText === '★ ' + TEXT_NATIONAL);
       const local = badged.filter((c) => c.badgeText === '★ ' + TEXT_LOCAL);
-      // 規則4の違反: 「このあたりの代表的な」で始まる理由行 + 地方級バッジ の同居
+      // 規則4の違反: 「このあたりの代表的な」で始まる理由行 + 地方級バッジ の同居。
+      // ★R241: 同居そのものではなく **同じ範囲の話が重なる同居** だけを違反とする。
+      // 初期5枚に同カテゴリが2枚以上あるとき、理由行は実際に他と比べて上だと言っている
+      // (道後4位 石手寺 vs 伊佐爾波神社)。そこへ地方級を足すと同じ順位の話を2回になる。
+      // 同カテゴリが自分1枚だけのとき(草津2位 草津熱帯圏・別府5位 別府地獄めぐり)は
+      // 理由行が知名度を1文字も言っていないので、重なりではない。
       const dup = cards.filter(
         (c) => c.reason.replace(/^💡\s*/, '').indexOf(REPRESENTATIVE_PREFIX) === 0 &&
-          c.badgeText === '★ ' + TEXT_LOCAL
+          c.badgeText === '★ ' + TEXT_LOCAL && c.sameCatInInitial >= 2
       );
       // R233-2: 材料だけから組み直した期待枚数(画面を通らない別軸)。
       const expects = cards.map((c) => expectedBadge(c));
@@ -314,6 +401,22 @@ async function main() {
     ok(totals.national >= 1, '合計: 全国級バッジが1枚以上実在する', totals.national);
     ok(totals.local >= 1, '合計: 地方級バッジが1枚以上実在する', totals.local);
     ok(totals.dup === 0, '合計: 理由行と地方級バッジの重複が0件', totals.dup);
+
+    // ★R241 合計の母数軸/中身軸(エリア単位とは別軸。全エリアが同時に減っても落ちる)
+    console.log(
+      `  初期5枚の合計: バッジ ${totals.initBadged}/${totals.initCards}枚` +
+      ` / 材料からの期待 ${totals.initExpect}枚\n`
+    );
+    const EXPECT_INIT_CARDS_TOTAL = AREAS.length * EXPECT_INITIAL_CARDS; // 25
+    const EXPECT_INIT_BADGED_TOTAL = AREAS.reduce((s, a) => s + EXPECT_INITIAL_BADGED[a], 0); // 10
+    ok(totals.initCards === EXPECT_INIT_CARDS_TOTAL,
+      `合計: 初期画面のカードが5エリアで ${EXPECT_INIT_CARDS_TOTAL} 枚`, totals.initCards);
+    ok(totals.initBadged === EXPECT_INIT_BADGED_TOTAL,
+      `合計: 初期5枚でバッジが出るのが5エリアで ${EXPECT_INIT_BADGED_TOTAL} 枚(R241 で 8→10)`,
+      { actual: totals.initBadged, expect: EXPECT_INIT_BADGED_TOTAL });
+    ok(totals.initExpect >= 1 && totals.initBadged === totals.initExpect,
+      '合計: 初期5枚のバッジ枚数が材料からの期待枚数と一致する',
+      { actual: totals.initBadged, expect: totals.initExpect });
 
     // R233-2 ★別軸(画面の badged を通らない): 材料(backlinks と理由行)から組み直した
     // 期待枚数と、画面に出ている枚数を **種類ごとに** 5エリア合計で突き合わせる。
