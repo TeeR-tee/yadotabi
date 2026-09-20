@@ -15,6 +15,24 @@
 //   6. ?fixture=kusatsu&embed=1 でも #feed-note が表示される(hidden でない)
 //   7. ?fixture=kusatsu&simulate=empty では #feed-note が hidden(0件時は出さない)
 //   8. コンソールエラー0件
+//
+// R246 で足した軸(注記が名乗る「順位の作り方」が実態と合っているかを見る):
+//   9.  整合軸 … 注記の文に「有名さは順位に使っていない」と読める表現が無いこと。
+//       engine.js の WEIGHT で順位に最も効いているのは PARENT_MENTION(80・親記事で
+//       どれだけ語られているか)で、次点タイに BACKLINK_MAX(18・他の記事からどれだけ
+//       触れられているか)がある。どちらも「どれだけ知られているか」を順位に効かせる
+//       重みなので、「有名な場所が下に来る」と書くのは画面の嘘になる。
+//   10. 名乗り軸 … 実際に効いている要素のうち、旧文が名乗っていなかった
+//       「語られ/触れられている」という観点が注記に出ていること(R236・R245 と逆向きの
+//       型崩れ = 効いているのに名乗らない、を捕まえる)。
+//   11. 禁止語軸 … 注記に数字・評価の語・専門用語(被リンク/スコア/重み 等)が
+//       出ていないこと(R242・R245 と同じ制約。しきい値や点数を画面に出さない)。
+//   12. 用語統一軸 … ★の説明(#feed-origin)と注記が、同じ概念を2通りの言葉で
+//       呼んでいないこと(どちらも「触れられている」で揃える)。
+//
+// ★R246 の重要な設計: 母数は必ず画面(DOM)の #feed-note の textContent から取る。
+// app.js の定数を import して突き合わせると、定数を書き換えたときに検査も一緒に
+// ずれて死んだ軸になる(R240 の教訓)。
 
 // R205: CI(ubuntu-latest)でも動かせるよう、Playwright の読み込み先を環境変数で差し替え可能にした。
 // 環境変数 PLAYWRIGHT_IMPORT が無ければ従来どおり Windows の絶対パスを使うので、
@@ -69,6 +87,53 @@ async function main() {
 
       const href = await note.locator('a').getAttribute('href');
       ok(typeof href === 'string' && href.startsWith('https://github.com/TeeR-tee/yadotabi#'), '#feed-note a の href が正しい', href);
+
+      // --- R246: 注記が名乗る「順位の作り方」が実態と合っているか ---
+      // 母数はここまでで取った noteText(= DOM の textContent)だけ。app.js は読まない。
+      // リンク文言「くわしい仕組み」は注記の本文ではないので、判定から外す。
+      const noteBody = noteText.replace('くわしい仕組み', '');
+
+      // 9. 整合軸: 「有名さは順位に反映されない」と読める表現が残っていないこと。
+      //    PARENT_MENTION(80)と BACKLINK_MAX(18)が現に効いている以上、これは嘘になる。
+      const DENY_FAME_PATTERNS = [
+        '有名な場所が下に来る',
+        '有名な場所が下に',
+        '有名さは使',
+        '有名さは見',
+        '知名度は使',
+        '知られた場所が下に'
+      ];
+      const hitDeny = DENY_FAME_PATTERNS.filter((w) => noteBody.includes(w));
+      ok(hitDeny.length === 0,
+        '注記に「有名さを順位に使っていない」と読める表現が無い', { hitDeny, noteBody });
+
+      // 10. 名乗り軸: 実際に効いている「どれだけ語られ/触れられているか」を名乗っていること。
+      //     PARENT_MENTION が WEIGHT 最大なのに、旧文はこの観点を1文字も出していなかった。
+      const FAME_CLAIM_WORDS = ['語られ', '触れられ'];
+      const missingClaim = FAME_CLAIM_WORDS.filter((w) => !noteBody.includes(w));
+      ok(missingClaim.length === 0,
+        '注記が「どれだけ語られ触れられているか」を名乗っている', { missingClaim, noteBody });
+
+      // 11. 禁止語軸: 数字・評価の語・専門用語を画面に出さない(R242・R245 と同じ制約)。
+      //     数字は半角・全角の両方を見る。固有名詞の OpenStreetMap / Wikipedia は数字を
+      //     含まないのでそのまま通る。
+      const BANNED_WORDS = ['被リンク', 'スコア', '重み', '加点', '減点', '点数', 'しきい値', 'ランキング', '評価'];
+      const hitBanned = BANNED_WORDS.filter((w) => noteBody.includes(w));
+      ok(hitBanned.length === 0, '注記に専門用語・評価の語が出ていない', { hitBanned, noteBody });
+
+      const hitDigits = noteBody.match(/[0-9０-９]/g) || [];
+      ok(hitDigits.length === 0, '注記に数字が出ていない', { hitDigits, noteBody });
+
+      // 12. 用語統一軸: ★の説明(#feed-origin)と注記が同じ概念を同じ言葉で呼んでいること。
+      //     #feed-origin 側も画面(DOM)から取る。★が0枚だと R245 の仕様でこの行は
+      //     出ないため、出ているときだけ突き合わせる(kusatsu は★1枚以上が出る想定)。
+      const originText = await page.locator('#feed-origin').textContent();
+      if (originText && originText.includes('★は、')) {
+        ok(originText.includes('触れられている') && noteBody.includes('触れられ'),
+          '★の説明と注記が同じ言葉(触れられている)で揃っている', { originText, noteBody });
+      } else {
+        ok(false, '#feed-origin に★の説明が出ている(用語統一軸の前提)', originText);
+      }
 
       // 4. もっと見るで60枚に展開後も最下部にある
       const moreBtn = page.locator('#more-btn');
