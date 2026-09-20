@@ -1394,7 +1394,53 @@
   function moreHtml(more, open) {
     if (!more.length) return '';
     if (open) return '';
-    return '<button type="button" class="morebtn" id="more-btn">もっと見る</button>';
+    // R236: 押す前は「もっと見る」の5文字しか無く、その先に何があるか分からなかった。
+    // 展開後に出る束の見出し(h3.feedbundle)と同じラベルを、押す前に1行で先に見せる。
+    //
+    // 文言の制約(みのるんの設計思想・#feed-origin と同じ):
+    //   - 件数・数字を出さない(「あと19件」は「何をもって19件なのか」が答えられない。R152)。
+    //     展開後の見出しには既に「◯件」が付いているが、そちらは1バイトも変えていない。
+    //   - テーマ名を作らない・言い換えない。bundle() が返すラベルをそのまま並べるだけで、
+    //     束分け・順位・カードの枚数には一切触らない。
+    //   - 評価の語(おすすめ/人気/必見 等)は使わない(R227・R231・R226)。
+    //   - ボタンの中には入れない。#more-btn の文言は「もっと見る」だけという
+    //     既存の取り決め(check-more.mjs)を壊さないよう、兄弟要素として上に置く。
+    // ラベルが1つも取れなければ行ごと出さない(ボタンだけ = 従来の表示に戻る)。
+    return moreThemesHtml(more) +
+      '<button type="button" class="morebtn" id="more-btn">もっと見る</button>';
+  }
+
+  /**
+   * R236: 「もっと見る」の上に出す、その先にあるテーマ名の行。
+   *
+   * ★画面に無いテーマ名を名乗らないこと。bundle() の結果をそのまま並べると嘘になる。
+   * moreBundledHtml() は bundle() の後にさらに2段の寄せをしていて、その過程で
+   * 消えるテーマ名があるため(実測: 草津は bundle() が5本返すが、画面に出る見出しは
+   * 「歴史を歩く / 景色を見にいく / そのほか / 写真と解説がまだ無い場所」の4本で、
+   * 「緑をゆっくり」「湯を楽しむ」「屋内でじっくり」の3本は画面に出ない):
+   *   (1) isBareCard のカードを束から抜いて最後の1束に寄せる(R226)
+   *   (2) 抜いた結果1件だけになったテーマの束は「そのほか」へ送る(R158)
+   * ここでも同じ2段を通してから残ったラベルだけを並べる。
+   * 見出しを名乗らない束(label が null = 「そのほか」「写真と解説がまだ無い場所」)は
+   * テーマではないので並べない。
+   */
+  function moreThemesHtml(more) {
+    var bundles = [];
+    try {
+      bundles = window.YadoEngine.bundle(more) || [];
+    } catch (e) {
+      bundles = [];
+    }
+    var labels = [];
+    bundles.forEach(function (b) {
+      if (!b || !b.label) return;
+      var stay = b.indices.filter(function (i) { return !isBareCard(more[i]); });
+      if (stay.length < 2) return;   // 0件は消え、1件は「そのほか」へ送られる
+      if (labels.indexOf(b.label) === -1) labels.push(b.label);
+    });
+    if (!labels.length) return '';
+    return '<p class="feedorigin" id="more-themes">この先にあるのは' +
+      escapeHtml(labels.join('、')) + 'です</p>';
   }
 
   function farHtml(far) {

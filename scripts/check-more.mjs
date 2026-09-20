@@ -17,6 +17,13 @@
 //   「◯番以降は地図に表示していません」の .morenote 自体が不要になった。
 //   展開前後どちらも .morenote は存在しないことを確認する(R60の逆)。
 //   R152: #more-btn の文言に件数の数字が出ていない
+//   R236: 「もっと見る」を押す前に、その先にあるテーマ名が #more-themes に出ている。
+//     (a) 有無軸  = 5エリアすべてで展開前に #more-themes があり、テーマ名を1つ以上含む。
+//                   more が0件のとき・展開後・宿未選択のトップでは出ない。
+//     (b) 中身軸  = #more-themes が名乗るテーマ名が、展開後に実際に画面へ出る
+//                   h3.feedbundle の文言の部分集合である(画面に無いテーマ名を名乗らない)。
+//                   数字を1文字も含まない。評価の語を1つも含まない。
+//     母数はどちらも画面(DOM)から取る。engine の再計算値とは突き合わせない(R240 の教訓)。
 
 // R205: CI(ubuntu-latest)でも動かせるよう、Playwright の読み込み先を環境変数で差し替え可能にした。
 // 環境変数 PLAYWRIGHT_IMPORT が無ければ従来どおり Windows の絶対パスを使うので、
@@ -28,6 +35,24 @@ import path from 'node:path';
 import { ensureServer, PROJECT_ROOT } from './lib/server.mjs';
 
 let BASE;
+
+// R236: 押す前のテーマ名の行(#more-themes)を5エリアで確かめる。
+const THEME_AREAS = ['kusatsu', 'hakone', 'dogo', 'beppu', 'kinosaki'];
+// R227・R231・R226: 表示の文言に評価の語を使うと、対象によっては嘘になる。
+// check-fame.mjs:73 の BANNED_WORDS と同じ並び(あちらは #feed-origin 用なので流用せず同じ基準を持つ)。
+const THEME_BANNED_WORDS = ['おすすめ', 'お勧め', '人気', '必見', '最高', 'ベスト', 'No.1',
+  'ランキング', '話題', '絶対', '一番', '評価', '穴場', '定番'];
+// 行の前後の決まり文句。テーマ名だけを取り出すために剥がす。
+const THEME_HEAD = 'この先にあるのは';
+const THEME_TAIL = 'です';
+
+// 「この先にあるのはA、B、Cです」→ ['A','B','C']
+function splitThemeLine(text) {
+  let body = (text || '').trim();
+  if (body.startsWith(THEME_HEAD)) body = body.slice(THEME_HEAD.length);
+  if (body.endsWith(THEME_TAIL)) body = body.slice(0, -THEME_TAIL.length);
+  return body.split('、').map((s) => s.trim()).filter(Boolean);
+}
 
 let pass = 0;
 let fail = 0;
@@ -103,6 +128,63 @@ async function main() {
 
     // 5. コンソールエラー0件
     ok(consoleErrors.length === 0, 'コンソールエラー0件', consoleErrors);
+
+    // ------------------------------------------------------------------
+    // R236: 押す前に出るテーマ名の行(#more-themes)
+    // ------------------------------------------------------------------
+    // (a-3) 宿未選択のトップ(状態A)では出ない。ボタンが無いのに行だけ浮かないこと。
+    await page.goto(`${BASE}/`, { waitUntil: 'load' });
+    await waitFor(1500);
+    const themesOnTop = await page.locator('#more-themes').count();
+    ok(themesOnTop === 0, 'R236: 宿未選択のトップでは #more-themes が出ない', themesOnTop);
+
+    for (const area of THEME_AREAS) {
+      await page.goto(`${BASE}/?fixture=${area}`, { waitUntil: 'load' });
+      await waitFor(2500);
+
+      // 展開前の画面(DOM)から読む
+      const themesCount = await page.locator('#more-themes').count();
+      const btnCount = await page.locator('#more-btn').count();
+      // (a-2) more が0件ならボタンも行も出ない。どちらか片方だけ出ることは無い。
+      ok(themesCount === btnCount,
+        `R236(${area}): #more-themes は #more-btn と同時にだけ出る`, { themesCount, btnCount });
+      if (!btnCount) continue;   // このエリアに more が無ければここまで
+
+      // (a-1) 有無軸: 行があり、テーマ名を1つ以上名乗っている
+      ok(themesCount === 1, `R236(${area}): 展開前に #more-themes が1つある`, themesCount);
+      const themeText = (await page.locator('#more-themes').textContent()) || '';
+      const shownThemes = splitThemeLine(themeText);
+      ok(shownThemes.length >= 1,
+        `R236(${area}): #more-themes がテーマ名を1つ以上含む`, { themeText, shownThemes });
+
+      // (b-1) 件数の数字が1文字も無い(R152・みのるんの設計思想)
+      ok(!/[0-9０-９]/.test(themeText),
+        `R236(${area}): #more-themes に数字が1文字も無い`, themeText);
+
+      // (b-2) 評価の語を1つも含まない(R227・R231・R226)
+      const hitWords = THEME_BANNED_WORDS.filter((w) => themeText.includes(w));
+      ok(hitWords.length === 0,
+        `R236(${area}): #more-themes に評価の語が無い`, hitWords);
+
+      // 展開して、実際に画面へ出る見出しを DOM から取る(engine の再計算値は使わない)
+      await page.locator('#more-btn').click();
+      await waitFor(400);
+      const headTexts = await page.locator('h3.feedbundle').allTextContents();
+      // 見出しは「歴史を歩く 3件」の形。末尾の件数を落としてテーマ名だけにする
+      const headNames = headTexts.map((t) => (t || '').trim().replace(/\s*\d+件$/, ''));
+      ok(headNames.length >= 1,
+        `R236(${area}): 展開後に h3.feedbundle が1本以上ある(母数がある)`, headNames);
+
+      // (b-3) 中身軸: 名乗ったテーマ名が全部、展開後の見出しに実在する
+      const phantom = shownThemes.filter((t) => !headNames.includes(t));
+      ok(phantom.length === 0,
+        `R236(${area}): #more-themes が画面に無いテーマ名を名乗っていない`,
+        { shownThemes, headNames, phantom });
+
+      // (a-4) 展開後は行ごと消える(ボタンと一緒に)
+      const themesAfter = await page.locator('#more-themes').count();
+      ok(themesAfter === 0, `R236(${area}): 展開後は #more-themes が消えている`, themesAfter);
+    }
 
     await context.close();
   } finally {
