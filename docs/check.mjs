@@ -860,6 +860,81 @@ function decodeHtmlEntities(str) {
 }
 // --- ここまで R235 ---
 
+// --- R250: 地図の番号なしピン(「・」)の説明が、画面に実在するときだけ出ることの検査 ---
+// 発端: 「もっと見る」を押すと地図のピンが数字つきの5本から増え、6番目以降は番号の無い
+// 「・」(class は pin--sub)になるが、それが何なのかは画面に1文字も書かれていなかった。
+// SUBPIN_ORIGIN_TEXT を #feed-origin に足したが、「足しただけ」では2通りに壊れる:
+//   (1) 出す条件を state.more の件数や定数から決めると、地図に「・」が無い場面でも名乗る
+//       (R245「画面に出ていないものを名乗らない」の型)。
+//   (2) 文言に件数の数字や評価の語が混じる(R242・R246 の型)。
+// そこで軸を3本に割る。R240 の教訓に従い、母数は実ファイルから取る(件数の定数を書かない)。
+{
+  // (a) 母数軸: assets/app.js を実ファイルから読めていること。
+  //     ここが 0 行だと、下の (b)(c) は「探す対象が無い」ので素通りして偽の緑になる
+  //     (R235 の破壊実証と同じ形)。件数の定数は持たず、読めた行数をそのまま名乗る。
+  const appLines = (() => {
+    try {
+      return readFileSync(join(REPO_ROOT, 'assets', 'app.js'), 'utf8').split('\n');
+    } catch {
+      return [];
+    }
+  })();
+  report(
+    `「・」ピンの説明: assets/app.js を実ファイルから読めた(${appLines.length}行)`,
+    appLines.length > 0,
+    appLines.length > 0 ? undefined : 'assets/app.js が読めない。下の条件軸・文言軸が母数0で素通りする'
+  );
+
+  // 文言の定数(SUBPIN_ORIGIN_TEXT = '…')を実ファイルから取り出す。ここも定数を書き写さない。
+  const textLine = appLines.find((l) => /^\s*var\s+SUBPIN_ORIGIN_TEXT\s*=/.test(l)) || '';
+  const textMatch = textLine.match(/=\s*'([^']*)'/);
+  const subpinText = textMatch ? textMatch[1] : '';
+
+  // (b) 条件軸: 「・」の行を出すかどうかの判定が、**地図の DOM から .pin--sub を数える形**で
+  //     あること。state.more の件数や数値定数から決めていないこと。
+  //     判定している行(コメント行は数えない)を実ファイルから拾う。
+  const condLines = appLines.filter(
+    (l) => !/^\s*\/\//.test(l) && /\.pin--sub/.test(l) && /querySelectorAll/.test(l)
+  );
+  // 同じ判定が state.more の件数や定数から決められていないこと(両方あれば条件が二重になる)。
+  const badCondLines = appLines.filter(
+    (l) =>
+      !/^\s*\/\//.test(l) &&
+      /subPinsOnScreen\s*=/.test(l) &&
+      /(state\.more|\.length\s*>\s*\d|=\s*\d)/.test(l)
+  );
+  report(
+    `「・」ピンの説明: 出す条件を地図のDOM(.pin--sub)から数えている(${condLines.length}行)`,
+    condLines.length > 0 && badCondLines.length === 0,
+    condLines.length === 0
+      ? '.pin--sub を querySelectorAll で数えている行が assets/app.js に無い。'
+        + '件数や state.more から決めると、地図に「・」が無い場面でも名乗ってしまう'
+      : badCondLines.length > 0
+        ? `出す条件が state.more や数値定数から決められている: ${badCondLines.join(' / ')}`
+        : undefined
+  );
+
+  // (c) 文言軸: 新しい文言に数字と評価の語が1文字も無いこと。
+  //     評価の語の並びは scripts/check-more.mjs の THEME_BANNED_WORDS と同じ基準を持つ
+  //     (向こうは #more-themes 用なので流用せず、同じ基準をここにも置く)。
+  const SUBPIN_BANNED_WORDS = ['おすすめ', 'お勧め', '人気', '必見', '最高', 'ベスト', 'No.1',
+    'ランキング', '話題', '絶対', '一番', '評価', '穴場', '定番', 'サブピン', 'ピン', '件'];
+  const hasDigit = /[0-90-9]/.test(subpinText);
+  const hitWords = SUBPIN_BANNED_WORDS.filter((w) => subpinText.indexOf(w) >= 0);
+  report(
+    `「・」ピンの説明: 文言に数字と評価の語が無い(「${subpinText}」)`,
+    subpinText.length > 0 && !hasDigit && hitWords.length === 0,
+    subpinText.length === 0
+      ? 'SUBPIN_ORIGIN_TEXT が assets/app.js から取り出せない(定義が消えたか形が変わった)'
+      : hasDigit
+        ? `文言に数字が入っている: 「${subpinText}」`
+        : hitWords.length > 0
+          ? `文言に評価の語・専門用語が入っている: ${hitWords.join('・')}`
+          : undefined
+  );
+}
+// --- ここまで R250 ---
+
 // --- R33: 集計行 ---
 if (timings.length > 0) {
   const total = timings.reduce((sum, t) => sum + t.ms, 0);

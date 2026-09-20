@@ -1144,6 +1144,11 @@
   // 数字(件数・しきい値)と評価の語は1文字も入れない。表示は renderFeed() の
   // #feed-origin(距離の凡例と同じ場所)。
   var FAME_ORIGIN_TEXT = '★は、百科事典で他の記事からどれだけ触れられているかで付けています';
+  // ★R250: 地図の番号なしピン(pin--sub)が何なのかを画面で1行だけ説明する文言。
+  // 数字(件数)と評価の語・専門用語(「サブピン」など)は1文字も入れない。
+  // 言い回しは上の2行と同じ「◯◯は、…です」にそろえる。表示は renderFeedOrigin() の
+  // #feed-origin(距離の凡例・★の凡例と同じ場所)で、地図に「・」が実在するときだけ。
+  var SUBPIN_ORIGIN_TEXT = '地図の小さい点は、この下に続けて並んでいる場所です';
   /**
    * @param {object} card カード
    * @param {?string} reasonMsg 同じカードに既に出ている💡理由行の文言(無ければ null)
@@ -1691,23 +1696,6 @@
     // 実カードが入った最初の描画だけ計測する(?perf=1 のとき以外は何もしない)
     perfMarkFirstCard();
 
-    if (els.feedOrigin) {
-      var showOrigin = !!state.cards.length;
-      // 画面に出ている★バッジの枚数。0枚なら★の行だけを落とす(距離の行は残す)。
-      var fameOnScreen = els.feedList.querySelectorAll('.feedcard__fame').length > 0;
-      els.feedOrigin.hidden = !showOrigin;
-      els.feedOrigin.textContent = '';
-      if (showOrigin) {
-        // 宿名を含むのでHTML文字列を組み立てず、テキストノードで足す。
-        els.feedOrigin.appendChild(
-          document.createTextNode('距離は「' + (hotel.name || '') + '」からの目安です'));
-        if (fameOnScreen) {
-          els.feedOrigin.appendChild(document.createElement('br'));
-          els.feedOrigin.appendChild(document.createTextNode(FAME_ORIGIN_TEXT));
-        }
-      }
-    }
-
     // 「もっと見る」は読み込み中は出さない(スケルトンと並ぶと意味が分からないため)
     var more = loading ? '' : moreHtml(state.more, state.moreOpen);
     if (els.feedMore) {
@@ -1744,7 +1732,51 @@
     updatePassiveBox();
 
     renderFeedMap();
+    // 凡例は地図を打ち終わった後に組む。「・」の行を出すかどうかを、実際に地図へ
+    // 入ったピンの数(DOM)から決めるため(R250)。先に組むと1つ前の描画の地図を見てしまう。
+    renderFeedOrigin(hotel);
     postHeightToParent();
+  }
+
+  /**
+   * フィード上部の凡例(#feed-origin)。画面に実在するものだけを名乗る。
+   *
+   * 3行はすべて同じ形(「◯◯は、…です」)にそろえる。数字・評価の語・専門用語は
+   * 1文字も入れない。
+   *   1行目 距離の起点  … カードが1枚でもあるときだけ
+   *   2行目 ★の出どころ … ★バッジが画面に出ているときだけ(FAME_ORIGIN_TEXT)
+   *   3行目 「・」ピン  … 「・」ピンが地図に出ているときだけ(SUBPIN_ORIGIN_TEXT)
+   *
+   * ★R250: 3行目を足した。「もっと見る」を開くと地図のピンが数字つきの5本から
+   * 増え、6番目以降は番号の無い「・」(`pin--sub`)になるが、それが何なのかは画面に
+   * 1文字も書かれていなかった。出す条件は state.more の件数や定数からではなく、
+   * **地図の DOM に .pin--sub が実在するか**から決める(R240 の死んだ軸・R245 の
+   * 「画面に出ていないものを名乗らない」の型)。展開前は .pin--sub が0本なので
+   * 行ごと出ない。「点はありません」のような代わりの文言も出さない。
+   */
+  function renderFeedOrigin(hotel) {
+    if (!els.feedOrigin) return;
+    var showOrigin = !!state.cards.length;
+    // 画面に出ている★バッジの枚数。0枚なら★の行だけを落とす(距離の行は残す)。
+    var fameOnScreen = els.feedList.querySelectorAll('.feedcard__fame').length > 0;
+    // 地図に実際に打たれた番号なしピンの本数。0本なら「・」の行だけを落とす。
+    var subPinsOnScreen = els.feedMap
+      ? els.feedMap.querySelectorAll('.pin--sub').length > 0
+      : false;
+    els.feedOrigin.hidden = !showOrigin;
+    els.feedOrigin.textContent = '';
+    if (!showOrigin) return;
+    // 宿名を含むのでHTML文字列を組み立てず、テキストノードで足す。
+    els.feedOrigin.appendChild(
+      document.createTextNode('距離は「' + ((hotel && hotel.name) || '') + '」からの目安です'));
+    if (fameOnScreen) {
+      els.feedOrigin.appendChild(document.createElement('br'));
+      els.feedOrigin.appendChild(document.createTextNode(FAME_ORIGIN_TEXT));
+    }
+    if (subPinsOnScreen) {
+      els.feedOrigin.appendChild(document.createElement('br'));
+      els.feedOrigin.appendChild(document.createTextNode(SUBPIN_ORIGIN_TEXT));
+    }
   }
 
   /**
