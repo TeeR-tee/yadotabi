@@ -616,6 +616,152 @@ function decodeHtmlEntities(str) {
 }
 // --- ここまで R248 ---
 
+// --- R249: CHECKS.md の `ファイル名:行番号` 引用が、指している先の実際のコードと一致することの検査 ---
+// CHECKS.md は「リンク切れ検査が何を見ているか」を `docs/check.mjs:131` のような行番号つきで
+// 解説している道案内の文書だが、**7種類9箇所の引用が9箇所とも指す先を外していた**
+// (R248 で直した FIXTURES.md と同じ型)。FIXTURES.md との違いは3つ:
+//   (1) 名乗り方が `ファイル名:行番号` 形式、
+//   (2) 指す先が docs/check.mjs / scripts/check-all.mjs / demo/hotel-page.html の3ファイルにまたがる、
+//   (3) 名乗るのが関数名だけでなく**正規表現リテラル・変数名・HTMLの属性やクラス名**も含む。
+//
+// R240 の教訓に従い、**母数も期待値も実ファイルから取る**。件数の定数も期待行番号の表も持たない。
+// R248 申し送りの「拾えない引用を黙って飛ばすと母数が減って軸が死ぬ」に従い、**名乗りが1つも
+// 取れなかった引用は件数を report に出し、想定(=引用の総数)を下回ったら落とす**。
+{
+  const checksBody = readFileSync(join(REPO_ROOT, 'docs', 'CHECKS.md'), 'utf8');
+  const checksLines = checksBody.split('\n');
+
+  // 引用の抽出: `ファイル名:行番号` と、同じ行に続く `:行番号` だけの追随表記(例: `:193`)も拾う。
+  // 追随表記は直前に出たファイル名に属するものとして扱う。
+  const citeRe = /`?((?:[\w.-]+\/)*[\w.-]+\.(?:mjs|js|html)):(\d+)`?|`:(\d+)`/g;
+  const citations = [];
+  checksLines.forEach((line, i) => {
+    let lastFile = null;
+    let m;
+    citeRe.lastIndex = 0;
+    while ((m = citeRe.exec(line))) {
+      if (m[1]) {
+        lastFile = m[1];
+        citations.push({ docLine: i + 1, file: m[1], lineNo: Number(m[2]), text: line });
+      } else if (lastFile) {
+        citations.push({ docLine: i + 1, file: lastFile, lineNo: Number(m[3]), text: line });
+      }
+    }
+  });
+
+  // (a) 存在軸: 母数の確認。引用が1件も無ければ、文書が道案内をやめたか抽出が壊れている。
+  report(
+    `CHECKS.md に ファイル名:行番号 の引用がある(${citations.length}件)`,
+    citations.length > 0,
+    citations.length > 0 ? undefined : '`ファイル名:行番号` の引用が1件も見つからない'
+  );
+
+  // (c) 対象実在軸: 引用されたファイルが実在し、引用行番号がそのファイルの総行数以内であること。
+  const fileCache = new Map();
+  const readTarget = (rel) => {
+    if (!fileCache.has(rel)) {
+      try {
+        fileCache.set(rel, readFileSync(join(REPO_ROOT, rel), 'utf8').split('\n'));
+      } catch {
+        fileCache.set(rel, null);
+      }
+    }
+    return fileCache.get(rel);
+  };
+  // CHECKS.md はファイル名だけ(`check-all.mjs:43`)でも名乗るので、リポジトリ内から場所を探す。
+  const SEARCH_DIRS = ['', 'docs/', 'scripts/', 'demo/', 'assets/'];
+  const resolveTarget = (rel) => {
+    for (const dir of SEARCH_DIRS) {
+      const cand = rel.includes('/') ? rel : dir + rel;
+      const lines = readTarget(cand);
+      if (lines) return { path: cand, lines };
+    }
+    return null;
+  };
+
+  const badTargets = [];
+  for (const c of citations) {
+    const t = resolveTarget(c.file);
+    if (!t) {
+      badTargets.push(`CHECKS.md:${c.docLine} が指す ${c.file} が実在しない`);
+      continue;
+    }
+    c.path = t.path;
+    c.lines = t.lines;
+    if (c.lineNo < 1 || c.lineNo > t.lines.length) {
+      badTargets.push(`CHECKS.md:${c.docLine} の ${c.file}:${c.lineNo} は総行数 ${t.lines.length} を超えている`);
+    }
+  }
+  report(
+    `CHECKS.md の引用先のファイルが実在し行番号が総行数以内(${citations.length}件照合)`,
+    badTargets.length === 0,
+    badTargets.length === 0 ? undefined : badTargets.join(' / ')
+  );
+
+  // (b) 行番号軸: 引用が指す実際の行に、その引用のすぐ近くで名乗っているコード片が含まれること。
+  //     名乗りの候補は同じ行のバッククォート内の文字列から作る。CHECKS.md は
+  //       - 識別子 (`attrRe` `internalPaths` `SCRIPTS` `resolved.pathname` `checkLink`)
+  //       - 正規表現リテラル (`attrRe = /(?:src|href)\s*=\s*"([^"]+)"/g`)
+  //       - HTML の属性・クラス (`<pre class="tag-example">`)
+  //     を名乗るので、バッククォート内から**識別子(ドット区切りを含む)とHTMLのクラス名**を抜く。
+  const NOISE = new Set(['index.html', 'true', 'false', 'null', 'href', 'src', 'new', 'URL', 'Set', 'BASE']);
+  const namesOf = (line) => {
+    const out = new Set();
+    for (const seg of line.match(/`[^`]+`/g) || []) {
+      const body = seg.slice(1, -1);
+      // ファイル名:行番号 の表記そのものは名乗りではない
+      if (/^(?:[\w.-]+\/)*[\w.-]+\.(?:mjs|js|html):\d+$/.test(body) || /^:\d+$/.test(body)) continue;
+      // `<pre class="tag-example">` のようなHTMLのクラス名
+      for (const cm of body.match(/class\s*=\s*"([^"]+)"/g) || []) {
+        out.add(cm.replace(/class\s*=\s*"|"/g, ''));
+      }
+      // 識別子(ドット区切りの `resolved.pathname` も1つとして扱う)
+      for (const id of body.match(/[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*/g) || []) {
+        if (id.length >= 3 && !NOISE.has(id)) out.add(id);
+      }
+    }
+    return [...out];
+  };
+
+  const strayCitations = [];
+  let unverifiable = 0;
+  for (const c of citations) {
+    if (!c.lines || c.lineNo < 1 || c.lineNo > c.lines.length) continue;  // (c) 側で既に赤い
+    const target = c.lines[c.lineNo - 1];
+    const names = namesOf(c.text).filter((n) => c.lines.some((l) => l.includes(n)));
+    if (names.length === 0) { unverifiable++; continue; }
+    if (!names.some((n) => target.includes(n))) {
+      strayCitations.push(
+        `CHECKS.md:${c.docLine} の ${c.file}:${c.lineNo} に ${names.slice(0, 4).join('/')} が無い(実際の行: ${target.trim().slice(0, 50)})`
+      );
+    }
+  }
+  report(
+    `CHECKS.md の行番号引用がすべて名乗ったコードの行を指している(${citations.length - unverifiable}/${citations.length}件照合)`,
+    strayCitations.length === 0,
+    strayCitations.length === 0 ? undefined : strayCitations.join(' / ')
+  );
+  // 照合できなかった引用の件数を必ず出す。母数が減って軸が死ぬのを防ぐため、
+  // **照合できた件数が引用総数を下回ったら落とす**(黙って飛ばさない)。
+  report(
+    `CHECKS.md の引用を1件も飛ばさずに照合できた(照合不能 ${unverifiable}件)`,
+    unverifiable === 0,
+    unverifiable === 0 ? undefined : 'バッククォートでコード片を名乗っていない引用がある。名乗りを足すか抽出側を直すこと'
+  );
+
+  // (d) 一対一軸: 1行目が言う「表と SCRIPTS 配列が一対一」を、数え方を実装と揃えて実測で確かめる。
+  //     表の行は `^| check` の34本 + `^| docs/check.mjs` の1本、SCRIPTS は 'scripts/check-*' の34件 + docs/check.mjs。
+  const tableRows = checksLines.filter((l) => /^\| (?:check-|`?docs\/check\.mjs)/.test(l)).length;
+  const allLines = readTarget('scripts/check-all.mjs') || [];
+  const scriptsEntries = allLines.filter((l) => /^\s*'(?:scripts\/check-[\w-]+|docs\/check)\.mjs',?\s*$/.test(l)).length;
+  report(
+    `CHECKS.md の表と check-all.mjs の SCRIPTS が一対一(表 ${tableRows}行 / 配列 ${scriptsEntries}件)`,
+    tableRows === scriptsEntries && tableRows > 0,
+    tableRows === scriptsEntries ? undefined : '表か SCRIPTS 配列のどちらかが古い。名前ベースで突き合わせて直すこと'
+  );
+}
+// --- ここまで R249 ---
+
 // --- R33: 集計行 ---
 if (timings.length > 0) {
   const total = timings.reduce((sum, t) => sum + t.ms, 0);

@@ -1,6 +1,6 @@
 # CHECKS.md — `scripts/check-all.mjs` が回す35本の一覧と並列化できない理由
 
-この表は `scripts/check-all.mjs` の `SCRIPTS` 配列(`check-all.mjs:17`)と**一対一で一致させること**。check 本を増減したらこの表も同じコミットで直す。
+この表は `scripts/check-all.mjs` の `SCRIPTS` 配列(`check-all.mjs:43`)と**一対一で一致させること**。check 本を増減したらこの表も同じコミットで直す。
 
 ## 対象範囲
 
@@ -91,10 +91,10 @@
 
 ## リンク切れ検査(R22/R34)が何を見ているか
 
-- `docs/check.mjs:131` の正規表現 `attrRe = /(?:src|href)\s*=\s*"([^"]+)"/g` は `src` も `href` も拾うため、**iframe の src も検査対象に入っている**(`demo/hotel-page.html:212` の埋め込みiframeも含む)。
-- `docs/check.mjs:165` が `resolved.pathname` を使ってパスを取り出すため、**クエリ文字列は自動的に落ちて叩かれる**。実測: `demo/hotel-page.html:212` の相対src `../index.html?fixture=kusatsu&embed=1&bg=fff7e6` を `new URL(raw, url)` で解決すると `href` = `https://teer-tee.github.io/yadotabi/index.html?fixture=kusatsu&embed=1&bg=fff7e6`、`startsWith(BASE)` = `true`、`pathname` = `/yadotabi/index.html`、`.replace(/^\/yadotabi\//, '')` 後 = `index.html`。よって実際に HEAD される先は常に `index.html` であり、`?hotel=` 付きで叩いて Overpass を誘発する事故は構造上起きない(自分で node 実行して再現確認済み)。
-- `docs/check.mjs:143` の `internalPaths` は `Set` のため、同じパス(`index.html`)への重複登録は1回のリクエストに畳まれる。
-- **穴として残っている点(無害・今は直さない)**: `demo/hotel-page.html:224` の `<pre class="tag-example">` 内にある見本コード用の**絶対URL**(`https://teer-tee.github.io/yadotabi/?hotel=...`)も、`docs/check.mjs:151` の絶対URL分岐 `raw.startsWith(BASE)` に該当してしまい抽出される。実測: このURLを `new URL()` で解決すると `pathname` = `/yadotabi/`、置換後は空文字列になり `checkLink(page, '' || 'index.html')`(`docs/check.mjs:200`)で `index.html` として叩かれる。クエリは落ちるため今回のケースは無害だが、`<pre>` に実在しないパスの見本URLを書くと将来**偽のNGが出る**可能性がある。`docs/check.mjs` のロジックは変更していない(注記のみ)。
+- `docs/check.mjs:143` の正規表現 `attrRe = /(?:src|href)\s*=\s*"([^"]+)"/g` は `src` も `href` も拾うため、**iframe の src も検査対象に入っている**(`demo/hotel-page.html:232` の埋め込み `<iframe class="embed"` も含む)。
+- `docs/check.mjs:181`/`:193`(`collectLinks` の絶対URL分岐と相対パス分岐の2箇所。`collectMarkdownLinks` 側にも `:346`/`:357` の同じ組がある)が `resolved.pathname` を使ってパスを取り出すため、**クエリ文字列は自動的に落ちて叩かれる**。実測: `demo/hotel-page.html:232` の相対src `../index.html?fixture=kusatsu&embed=1&bg=fff7e6` を `new URL(raw, url)` で解決すると `href` = `https://teer-tee.github.io/yadotabi/index.html?fixture=kusatsu&embed=1&bg=fff7e6`、`startsWith(BASE)` = `true`、`pathname` = `/yadotabi/index.html`、`.replace(/^\/yadotabi\//, '')` 後 = `index.html`。よって実際に HEAD される先は常に `index.html` であり、`?hotel=` 付きで叩いて Overpass を誘発する事故は構造上起きない(自分で node 実行して再現確認済み)。
+- `docs/check.mjs:170` の `internalPaths` は `Set` のため、同じパス(`index.html`)への重複登録は1回のリクエストに畳まれる。
+- **穴として残っている点(無害・今は直さない)**: `demo/hotel-page.html:247` の `<pre class="tag-example">` 内にある見本コード用の**絶対URL**(`https://teer-tee.github.io/yadotabi/?hotel=...`)も、`docs/check.mjs:179` の絶対URL分岐 `raw.startsWith(BASE)` に該当してしまい抽出される。実測: このURLを `new URL()` で解決すると `pathname` = `/yadotabi/`、置換後は空文字列になり `checkLink(page, path || 'index.html')`(定義は `docs/check.mjs:203`・呼び出しは `:228`(HTML側)と `:372`(README側))で `index.html` として叩かれる。クエリは落ちるため今回のケースは無害だが、`<pre>` に実在しないパスの見本URLを書くと将来**偽のNGが出る**可能性がある(`<pre class="tag-example">` は `demo/hotel-page.html:247` と `demo/hotel-page.html:254` の2箇所あるが、絶対URLを含むのは `demo/hotel-page.html:247` のほうだけ)。`docs/check.mjs` のロジックは変更していない(注記のみ)。
 
 - **(R150)** `docs/check.mjs` は集計行の後、500ms(`SLOW_MS`)以上かかった項目を列挙する(2000ms以上は「かなり遅い」と注記、失敗判定はしない)。平均比(N倍)は不採用: 平均自体がコールド/ウォームで20ms〜135ms(実測6.7倍)swingし、速い日は誤検知・遅い日(コールド時は平均がbimodal分布の谷に落ちる)は見逃す、逆向きに壊れる基準だったため。
 
@@ -108,8 +108,8 @@
 
 ## この表が古くなっていないかの確認方法(R106、R135で補強)
 
-- `node scripts/check-all.mjs` の実行結果の本数(冒頭または末尾の総数表示)と、この文書の `^| check` で始まる表行の数(`grep -c "^| check" docs/CHECKS.md`。docs/check.mjs の行も含む)を突き合わせる。
-- 一致しなければ、`scripts/check-all.mjs:17` の `SCRIPTS` 配列と本ファイルの表を名前ベースで比較し、増減分をこの表にも反映する。
+- `node scripts/check-all.mjs` の実行結果の本数(冒頭または末尾の総数表示)と、この文書の表行の数を突き合わせる。**`grep -c "^| check" docs/CHECKS.md` は34を返す**(`| docs/check.mjs` の行は `| check` で始まらないため含まれない)ので、35本と比べるときは `grep -cE "^\| (check-|docs/check\.mjs)" docs/CHECKS.md`(実測35)を使うこと。
+- 一致しなければ、`scripts/check-all.mjs:43` の `SCRIPTS` 配列と本ファイルの表を名前ベースで比較し、増減分をこの表にも反映する。
 - **(R135追加)本数の比較は総数だけでなく、節見出しに書いた本数(「サーバを立てる◯本」等)にも行う**。節見出しの数字・節内の表の行数・`grep -l ensureServer` / `grep -l playwright` の実測本数の3つが一致しているか確認すること。R135では表の行数は合っていたのに見出しの本数だけ古いままになっており、総数一致の確認だけでは見つからなかった。
 - **(R135追加)記述と実装の対応も見る**。「並列化できない理由」「必要な改修」など理由・手順を書いた節は、`grep -rn "PORT = 3000" scripts/` や `grep -rn "ensureServer\|findFreePort" scripts/lib/server.mjs` を実際に流し、書かれている技術的理由が現在のコードと矛盾していないかを確認する。本数だけ合わせて理由の文章を放置すると、存在しない仕組みを前提にした説明が生き残る(R135で発覚した事故はこのパターン)。
 - **(R212追加・実例)** 検査を R218 の直前の本数まで増やす過程で、1行目の見出し・節見出し(「サーバを立てる◯本」「不要な◯本」)・表そのものが揃って古いままになっていた(`check-bundle`・`check-osmfallback`の2本が表から漏れていた)うえ、所要目安も1サイクル前の値(322.5s)のままだった。この確認方法どおりに `grep -c "^| check"` と `SCRIPTS` 配列を突き合わせて発見・修正した。
