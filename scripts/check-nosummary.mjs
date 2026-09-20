@@ -32,6 +32,9 @@
 //      指摘で削除した。[公式]リンクとの重複表示だったため。5エリア全カードで0件であることを検査する。
 //      同時に削除した TikTok/YouTube のリンクチップも、5エリア全カードで0件であることを検査する
 //      (外部SNSリンクを5種類も出しているのは競合に例が無いとの指摘のため)。
+//   (r240) 待ち方を固定時間から「描けたか」に替えたことを守る母数軸。
+//      5エリアとも「もっと見る」展開後のカード枚数が下限を満たすこと
+//      (押す前・描け切る前に読むと初期5枚のままになるので、そこで落ちる)。
 
 // R205: CI(ubuntu-latest)でも動かせるよう、Playwright の読み込み先を環境変数で差し替え可能にした。
 // 環境変数 PLAYWRIGHT_IMPORT が無ければ従来どおり Windows の絶対パスを使うので、
@@ -66,18 +69,64 @@ function ok(cond, label, extra) {
   else { fail++; console.log('  FAIL ' + label + (extra !== undefined ? ' -> ' + JSON.stringify(extra) : '')); }
 }
 
-// R152: 初期表示は5枚に絞られたので、枚数や要素数を数える検査は
-// 「もっと見る」を展開した全件(R155: 理由付き候補の実数)を母数にする。
-async function expandAll(p) {
-  const btn = p.locator('#more-btn');
-  if (await btn.count()) {
-    await btn.click();
-    await waitFor(900);
-  }
+// R240: 固定待ち(`waitFor(1500)` / `waitFor(900)` の素の setTimeout)を
+// 「描けたことを見て進む待ち方」に置き換える。
+// 2026-09-24 実測: 5エリアとも `?fixture=` の描画完了は **103〜434ms**(goto の load 後から計測)、
+// 「もっと見る」の展開は **45〜72ms** で終わっていた。1500ms / 900ms の固定待ちは実測の
+// 3〜15倍を寝ており、この本の 51.0〜53.7s のうち大半がその待ちだった。
+// 上限(タイムアウト)は必ず残す = 描けなければ待ち続けずに落ちる。
+const RENDER_TIMEOUT_MS = 15000; // 実測 434ms の約35倍。描けないときは待ち続けず落とすための上限
+const EXPAND_TIMEOUT_MS = 15000; // 実測 72ms に対する上限。同上
+
+// R240: 母数軸。待ちを詰めた結果「描け切る前に読んで空振り」しても緑にならないように、
+// 展開後のカード枚数がエリアごとに下限を満たすことを検査項目として持つ。
+// 2026-09-24 実測の展開後枚数: kusatsu 24 / hakone 22 / dogo 18 / beppu 17 / kinosaki 23。
+// 最小は別府の17枚。「もっと見る」を押す前に読むと初期5枚になるので、そこを確実に捕まえる値。
+const EXPECT_EXPANDED_MIN_PER_AREA = 12;
+const expandedCounts = {}; // area -> 展開後のカード枚数(最後に下限と突き合わせる)
+
+/**
+ * R240: 「宿の提案が描き切った」ことを DOM だけで判定して待つ。
+ * app.js の renderFeed() は読み込み中(state.stage が loading/wikifirst/osm/wiki)のあいだ
+ *   - 実カードの後ろに `.feedcard--skeleton` を残す
+ *   - `#feed-status` に「周辺を集めています…」等の進捗文言を出す
+ *   - 「もっと見る」ボタンを出さない
+ * ので、**スケルトンが消え・進捗文言が消え・実カードが1枚以上ある**の3つが揃った時点が
+ * `state.stage === 'done'` の描画完了にあたる。app.js には手を入れず、画面に出ているものだけで判定する。
+ */
+async function waitRendered(p) {
+  await p.waitForFunction(() => {
+    const list = document.getElementById('feed-list');
+    if (!list) return false;
+    if (list.querySelector('.feedcard--skeleton')) return false;
+    const status = document.getElementById('feed-status');
+    if (status && !status.hidden && status.textContent.trim()) return false;
+    return list.querySelectorAll('.feedcard').length > 0;
+  }, null, { timeout: RENDER_TIMEOUT_MS });
 }
 
-function waitFor(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+/** R240: `?fixture=` を開いて描き切るまで待つ(goto + waitRendered の定型)。 */
+async function openFixture(p, area) {
+  await p.goto(`${BASE}/?fixture=${area}`, { waitUntil: 'load' });
+  await waitRendered(p);
+}
+
+// R152: 初期表示は5枚に絞られたので、枚数や要素数を数える検査は
+// 「もっと見る」を展開した全件(R155: 理由付き候補の実数)を母数にする。
+// R240: 押したあと **カードが実際に増え切るまで**待つ(固定待ちだと「増える前に読む」のを
+// 時間で祈っているだけになる)。展開後の枚数は area ごとに控えて母数軸で突き合わせる。
+async function expandAll(p, area) {
+  const btn = p.locator('#more-btn');
+  if (await btn.count()) {
+    const before = await p.locator('.feedcard').count();
+    await btn.click();
+    await p.waitForFunction(
+      (n) => document.querySelectorAll('.feedcard').length > n,
+      before,
+      { timeout: EXPAND_TIMEOUT_MS }
+    );
+  }
+  if (area) expandedCounts[area] = await p.locator('.feedcard').count();
 }
 
 async function main() {
@@ -94,16 +143,12 @@ async function main() {
     });
     page.on('pageerror', (err) => consoleErrors.push(String(err)));
 
-    await page.goto(`${BASE}/?fixture=dogo`, { waitUntil: 'load' });
-    await waitFor(1500);
+    await openFixture(page, 'dogo');
 
     // R152: 初期カードは5枚になり、その5枚は全て要約を持つ(--none が出ない)。
     // 「要約が無いときの文言」を検査するのがこの本の目的なので、「もっと見る」を
     // 展開した全件(R155実測: dogo 28件)を母数にする。
-    if (await page.locator('#more-btn').count()) {
-      await page.locator('#more-btn').click();
-      await waitFor(900);
-    }
+    await expandAll(page, 'dogo');
 
     const totalCardCount = await page.locator('.feedcard').count();
     const summaryCount = await page.locator('.feedcard__summary').count();
@@ -194,9 +239,8 @@ async function main() {
     const beppuConsoleErrors = [];
     beppuPage.on('console', (msg) => { if (msg.type() === 'error') beppuConsoleErrors.push(msg.text()); });
     beppuPage.on('pageerror', (err) => beppuConsoleErrors.push(String(err)));
-    await beppuPage.goto(`${BASE}/?fixture=beppu`, { waitUntil: 'load' });
-    await waitFor(1500);
-    await expandAll(beppuPage);
+    await openFixture(beppuPage, 'beppu');
+    await expandAll(beppuPage, 'beppu');
 
     const umitamagoRow = await beppuPage.locator('.feedcard').evaluateAll((cards) => {
       const card = cards.find((c) => {
@@ -237,9 +281,8 @@ async function main() {
     for (const area of AREAS) {
       const areaPage = area === 'beppu' ? beppuPage : (area === 'dogo' ? page : await context.newPage());
       if (area !== 'beppu' && area !== 'dogo') {
-        await areaPage.goto(`${BASE}/?fixture=${area}`, { waitUntil: 'load' });
-        await waitFor(1500);
-        await expandAll(areaPage);
+        await openFixture(areaPage, area);
+        await expandAll(areaPage, area);
       }
       const rows = await areaPage.locator('.feedcard__summary--none').evaluateAll((els) =>
         els.map((el) => ({
@@ -273,9 +316,8 @@ async function main() {
     for (const area of AREAS) {
       const areaPage = area === 'beppu' ? beppuPage : (area === 'dogo' ? page : await context.newPage());
       if (area !== 'beppu' && area !== 'dogo') {
-        await areaPage.goto(`${BASE}/?fixture=${area}`, { waitUntil: 'load' });
-        await waitFor(1500);
-        await expandAll(areaPage);
+        await openFixture(areaPage, area);
+        await expandAll(areaPage, area);
       }
       const rows = await areaPage.locator('.feedcard').evaluateAll((cards) =>
         cards.map((c) => {
@@ -333,9 +375,8 @@ async function main() {
     for (const area of AREAS) {
       const areaPage = area === 'beppu' ? beppuPage : (area === 'dogo' ? page : await context.newPage());
       if (area !== 'beppu' && area !== 'dogo') {
-        await areaPage.goto(`${BASE}/?fixture=${area}`, { waitUntil: 'load' });
-        await waitFor(1500);
-        await expandAll(areaPage);
+        await openFixture(areaPage, area);
+        await expandAll(areaPage, area);
       }
       const noneTextsArea = await areaPage.locator('.feedcard__summary--none').evaluateAll((els) =>
         els.map((el) => el.textContent)
@@ -355,9 +396,8 @@ async function main() {
       for (const area of AREAS) {
         const areaPage = area === 'beppu' ? beppuPage : (area === 'dogo' ? page : await context.newPage());
         if (area !== 'beppu' && area !== 'dogo') {
-          await areaPage.goto(`${BASE}/?fixture=${area}`, { waitUntil: 'load' });
-          await waitFor(1500);
-          await expandAll(areaPage);
+          await openFixture(areaPage, area);
+          await expandAll(areaPage, area);
         }
         n += await areaPage.locator('.feedcard__summary--none').count();
         if (area !== 'beppu' && area !== 'dogo') await areaPage.close();
@@ -412,9 +452,8 @@ async function main() {
 
     // kusatsu で「24時間」「ほか」付きの正常系も確認する
     const kusatsuPage = await context.newPage();
-    await kusatsuPage.goto(`${BASE}/?fixture=kusatsu`, { waitUntil: 'load' });
-    await waitFor(1500);
-    await expandAll(kusatsuPage);
+    await openFixture(kusatsuPage, 'kusatsu');
+    await expandAll(kusatsuPage, 'kusatsu');
     const kusatsuHours = await kusatsuPage.locator('.feedcard').evaluateAll((cards) =>
       cards.map((c) => ({
         name: c.querySelector('.feedcard__name') ? c.querySelector('.feedcard__name').textContent : '',
@@ -445,13 +484,11 @@ async function main() {
     // (rank・候補集合は不変のため、この本数が動いたら engine 側で openingHours を
     // 取りこぼした/余計に付けた regression の合図になる)
     const hakonePage = await context.newPage();
-    await hakonePage.goto(`${BASE}/?fixture=hakone`, { waitUntil: 'load' });
-    await waitFor(1500);
-    await expandAll(hakonePage);
+    await openFixture(hakonePage, 'hakone');
+    await expandAll(hakonePage, 'hakone');
     const kinosakiPage = await context.newPage();
-    await kinosakiPage.goto(`${BASE}/?fixture=kinosaki`, { waitUntil: 'load' });
-    await waitFor(1500);
-    await expandAll(kinosakiPage);
+    await openFixture(kinosakiPage, 'kinosaki');
+    await expandAll(kinosakiPage, 'kinosaki');
     const beppuHoursCount = await beppuPage.locator('.feedcard__hours').count();
     const hakoneHoursCount = await hakonePage.locator('.feedcard__hours').count();
     const kusatsuHoursCount = await kusatsuPage.locator('.feedcard__hours').count();
@@ -590,6 +627,21 @@ async function main() {
       noMismatch.length === 0,
       '(r140) c. dogo 展開後、初期5件のみ .feedcard__no が1つずつ存在し6件目以降は無い(帯を畳んでもバッジ有無はindexで決まる)',
       noMismatch
+    );
+
+    // ===== R240: 待ち方を「描けたか」に替えたことを守る母数軸 =====
+    // 固定待ち(1500ms / 900ms)を「スケルトンが消えて実カードが並んだら進む」「押したあと
+    // カードが実際に増えるまで待つ」に替えたので、早すぎて読み取りが空振りしたときに
+    // **照合の中身が全部一致したまま緑になる**ことを塞ぐ。展開前は初期5枚しか無いので、
+    // どのエリアも下限を満たしていれば「押して増え切ってから読んだ」ことが言える。
+    // 2026-09-24 実測: kusatsu 24 / hakone 22 / dogo 18 / beppu 17 / kinosaki 23。
+    const expandedBelow = Object.entries(expandedCounts)
+      .filter(([, n]) => n < EXPECT_EXPANDED_MIN_PER_AREA);
+    ok(
+      Object.keys(expandedCounts).length === 5 && expandedBelow.length === 0,
+      `(r240) 母数軸: 5エリアとも「もっと見る」展開後のカードが ${EXPECT_EXPANDED_MIN_PER_AREA}枚以上`
+      + `(押す前に読むと初期5枚のまま)`,
+      { expandedCounts, below: expandedBelow }
     );
 
     await hakonePage.close();

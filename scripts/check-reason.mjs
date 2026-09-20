@@ -17,6 +17,8 @@
 //   (f) R231: 「もっと見る」を開いた画面に同じ「このあたりでは珍しいX」が2枚以上出ていない
 //   (g) R231: 「もっと見る」を開いた画面で理由行を持つカードの枚数が基準値を下回らない
 //   (h) R233-3: 母数の下限(5エリア合計)と、cards5 を通らない別軸(展開後の全カードの文言照合)
+//   (i) R240: 待ち方を固定時間から「描けたか」に替えたことを守る母数軸
+//       (d で読んだカード名25件・展開後の枚数の下限)
 //
 // ■ (h) を足した理由(R233-3。「母数が0でも緑」を塞ぐ)
 //   (e)(e2)(e3) の3つは `ok(mismatch.length === 0)` `ok(swallowed.length === 0)`
@@ -117,6 +119,15 @@ const EXPECT_WALKABLE_TOTAL_MIN = 8;       // 徒歩800m以内の cards5 の合�
 // (h2) 別軸: 展開後(cards+more)の理由行の合計本数の下限(実測78本)。
 const EXPECT_EXPANDED_REASON_TOTAL_MIN = 60;
 
+// ===== R240: 待ち方を「描けたか」に替えたことを守る母数軸 =====
+// 固定待ちを詰めたので、描け切る前に読んでしまうと**照合の中身は全部一致したまま母数だけが減る**
+// (空集合に対する forEach は何も実行しないので mismatch 0 = 緑になる)。R233 で塞いだのと同じ型の穴が
+// 待ち方の変更で再び開くため、読み取りの母数そのものを検査項目に持つ。
+const EXPECT_DEBUG_NAMES_TOTAL = 25;  // (d) で読むカード名: 5エリア × 初期5枚(仕様上固定)
+// 2026-09-24 実測の展開後枚数: kusatsu 24 / hakone 22 / beppu 17 / dogo 18 / kinosaki 23。
+// 最小は別府の17枚。「もっと見る」を押す前に読むと初期5枚になるので、そこを確実に捕まえる値にする。
+const EXPECT_EXPANDED_MIN_PER_AREA = 12;
+
 /**
  * check-fame.mjs の stripJsComments と同じ方針。
  * コメントを同じ長さの空白に置き換えるので行番号・文字位置はずれない。
@@ -194,13 +205,60 @@ function ok(cond, label, extra) {
   else { fail++; console.log('  FAIL ' + label + (extra !== undefined ? ' -> ' + JSON.stringify(extra) : '')); }
 }
 
-function waitFor(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+// R240: 固定待ち(`waitFor(2000)` の素の setTimeout)を「描けたことを見て進む待ち方」に置き換える。
+// 2026-09-24 実測: 5エリアとも `?fixture=` の描画完了は **103〜434ms**(goto の load 後から計測)、
+// 「もっと見る」の展開は **45〜72ms** で終わっていた。つまり 2000ms / 1200ms の固定待ちは
+// **実測の5〜25倍**を寝ており、この本の 79.6〜79.9s のうち大半がその待ちだった。
+// 上限(タイムアウト)は必ず残す = 描けなければ待ち続けずに落ちる。
+const RENDER_TIMEOUT_MS = 15000; // 実測 434ms の約35倍。描けないときは待ち続けず落とすための上限
+const EXPAND_TIMEOUT_MS = 15000; // 実測 72ms に対する上限。同上
+
+/**
+ * R240: 「宿の提案が描き切った」ことを DOM だけで判定して待つ。
+ * app.js の renderFeed() は読み込み中(state.stage が loading/wikifirst/osm/wiki)のあいだ
+ *   - 実カードの後ろに `.feedcard--skeleton` を残す
+ *   - `#feed-status` に「周辺を集めています…」等の進捗文言を出す
+ *   - 「もっと見る」ボタンを出さない
+ * ので、**スケルトンが消え・進捗文言が消え・実カードが1枚以上ある**の3つが揃った時点が
+ * `state.stage === 'done'` の描画完了にあたる。app.js には手を入れず、画面に出ているものだけで判定する。
+ */
+async function waitRendered(page) {
+  await page.waitForFunction(() => {
+    const list = document.getElementById('feed-list');
+    if (!list) return false;
+    if (list.querySelector('.feedcard--skeleton')) return false;
+    const status = document.getElementById('feed-status');
+    if (status && !status.hidden && status.textContent.trim()) return false;
+    return list.querySelectorAll('.feedcard').length > 0;
+  }, null, { timeout: RENDER_TIMEOUT_MS });
+}
+
+/** R240: `?fixture=` を開いて描き切るまで待つ(goto + waitRendered の定型)。 */
+async function openFixture(page, base, area, query) {
+  await page.goto(`${base}/?fixture=${area}${query || ''}`, { waitUntil: 'load' });
+  await waitRendered(page);
+}
+
+/**
+ * R240: 「もっと見る」を押して、**カードが実際に増え切るまで**待つ。
+ * 押す前の枚数を控えておき、`.feedcard` がそれを超えたことを見て進む
+ * (固定待ちだと「増える前に読む」のを時間で祈っているだけになる)。
+ * ボタンが無い/見えないときは押さずにそのまま返す(この本の従来の挙動と同じ)。
+ */
+async function expandMore(page) {
+  const btn = page.locator('#more-btn');
+  if (!(await btn.count()) || !(await btn.first().isVisible())) return;
+  const before = await page.locator('.feedcard').count();
+  await btn.first().click();
+  await page.waitForFunction(
+    (n) => document.querySelectorAll('.feedcard').length > n,
+    before,
+    { timeout: EXPAND_TIMEOUT_MS }
+  );
 }
 
 async function suggestData(page, base, area) {
-  await page.goto(`${base}/?fixture=${area}`, { waitUntil: 'load' });
-  await waitFor(2000);
+  await openFixture(page, base, area);
   return page.evaluate(async (area) => {
     const res = await fetch('fixtures/' + area + '.json');
     const json = await res.json();
@@ -225,13 +283,8 @@ async function suggestData(page, base, area) {
  * (旧 (b) が内部値を見ていたせいで5年分の不具合を素通りさせた)。
  */
 async function expandedReasons(page, base, area) {
-  await page.goto(`${base}/?fixture=${area}`, { waitUntil: 'load' });
-  await waitFor(2000);
-  const btn = page.locator('#more-btn');
-  if (await btn.count() && await btn.first().isVisible()) {
-    await btn.first().click();
-    await waitFor(1200);
-  }
+  await openFixture(page, base, area);
+  await expandMore(page);
   return page.evaluate(() =>
     Array.from(document.querySelectorAll('.feedcard')).map((el) => {
       const nameEl = el.querySelector('.feedcard__name');
@@ -253,8 +306,7 @@ async function expandedReasons(page, base, area) {
  * 母集団(同カテゴリ枚数を数える範囲)は app.js の reasonText() と同じ state.cards = 初期5枚。
  */
 async function reasonWithMaterials(page, base, area) {
-  await page.goto(`${base}/?fixture=${area}`, { waitUntil: 'load' });
-  await waitFor(2000);
+  await openFixture(page, base, area);
 
   // 画面から: カード名と理由行(「もっと見る」は開かない。母集団が初期5枚のため)
   const dom = await page.evaluate(() =>
@@ -316,13 +368,8 @@ async function reasonWithMaterials(page, base, area) {
  * **「珍しい」を名乗る資格は cards+more** という2つの母集団を使う(expectedReason と同じ)。
  */
 async function expandedWithMaterials(page, base, area) {
-  await page.goto(`${base}/?fixture=${area}`, { waitUntil: 'load' });
-  await waitFor(2000);
-  const btn = page.locator('#more-btn');
-  if (await btn.count() && await btn.first().isVisible()) {
-    await btn.first().click();
-    await waitFor(1200);
-  }
+  await openFixture(page, base, area);
+  await expandMore(page);
   const dom = await page.evaluate(() =>
     Array.from(document.querySelectorAll('.feedcard')).map((el) => {
       const nameEl = el.querySelector('.feedcard__name');
@@ -363,7 +410,9 @@ async function expandedWithMaterials(page, base, area) {
     const shown = dom.find((x) => x.name === m.name);
     return { ...m, shownReason: shown ? shown.reason : null };
   });
-  return { all, cardsInView: materials.cards, pool };
+  // R240 母数軸の材料: all.length は **材料側(engine の再計算)** の枚数なので、展開が
+  // 効いていなくても 104 のまま動かない。画面に本当に何枚並んだかは dom.length で数える。
+  return { all, cardsInView: materials.cards, pool, domCount: dom.length };
 }
 
 /**
@@ -424,6 +473,9 @@ async function main() {
   const totals = {
     cards5: 0, cards5Shown: 0, representative: 0, walkable: 0,
     expandedCards: 0, expandedReason: 0, expandedChecked: 0,
+    // R240: 待ちを詰めた結果「描け切る前に読んで空振り」しても緑にならないための母数軸。
+    debugNames: 0,   // (d) で読めたカード名の合計(5エリア × 初期5枚)
+    expandedMin: Infinity, // 展開後カード枚数の最小値(エリア単位。展開が効いたことの下限)
   };
   const expandedMismatch = [];
 
@@ -509,15 +561,18 @@ async function main() {
       ok(!farHasReason, `${area}: far にreasonが付いていない`);
 
       // (d) debug=1 の有無で並び順が完全一致
-      await page.goto(`${base}/?fixture=${area}`, { waitUntil: 'load' });
-      await waitFor(1500);
+      await openFixture(page, base, area);
       const namesNoDebug = await page.locator('.feedcard__name').allTextContents();
-      await page.goto(`${base}/?fixture=${area}&debug=1`, { waitUntil: 'load' });
-      await waitFor(1500);
+      await openFixture(page, base, area, '&debug=1');
       const namesDebug = await page.locator('.feedcard__name').allTextContents();
+      // R240 母数軸: 名前を1つも読めていないと JSON.stringify([]) 同士が一致して緑になる。
+      // 初期表示は5枚(仕様)なので、両方が5枚読めていることを一致の条件に含める。
+      totals.debugNames += namesNoDebug.length;
       ok(
-        JSON.stringify(namesNoDebug) === JSON.stringify(namesDebug),
-        `${area}: debug=1有無で並び順が完全一致`
+        namesNoDebug.length === 5 && namesDebug.length === 5 &&
+          JSON.stringify(namesNoDebug) === JSON.stringify(namesDebug),
+        `${area}: debug=1有無で並び順が完全一致(各5枚のカード名を照合)`,
+        { noDebug: namesNoDebug.length, debug: namesDebug.length }
       );
 
       // (e) R227: 理由行の文言が、材料から組み立てた期待値と1枚ずつ一致するか。
@@ -585,6 +640,10 @@ async function main() {
       // 素通りさせていた。ここは本数ではなく**中身**を見るので、それが落ちる。
       const exp = await expandedWithMaterials(page, base, area);
       totals.expandedCards += exp.all.length;
+      // R240 母数軸: 「もっと見る」を押す前(または増え切る前)に読んでしまうと画面には
+      // 初期5枚しか並んでいない。**材料側ではなく画面側の枚数**の最小値を控えて、
+      // あとで下限と突き合わせる(材料側は engine の再計算なので展開の有無で動かない)。
+      if (exp.domCount < totals.expandedMin) totals.expandedMin = exp.domCount;
       totals.expandedReason += exp.all.filter((c) => c.shownReason).length;
       exp.all.forEach((c) => {
         const expect = expectedReason(c, exp.cardsInView, EXPECT_BACKLINKS_MIN, exp.pool);
@@ -628,6 +687,17 @@ async function main() {
     ok(totals.expandedChecked > totals.cards5 && expandedMismatch.length === 0,
       `合計: 展開後の全カード(cards+more ${totals.expandedChecked}枚)の理由行が材料どおり`,
       { checked: totals.expandedChecked, cards5: totals.cards5, mismatch: expandedMismatch.slice(0, 8) });
+
+    // ===== R240: 待ち方を「描けたか」に替えたことを守る母数軸 =====
+    // 固定待ちを 2000ms/1200ms から「スケルトンが消えて実カードが並んだら進む」に替えたので、
+    // 早すぎて読み取りが空振りしたときに**中身の照合が全部一致したまま緑になる**ことを塞ぐ。
+    ok(totals.debugNames === EXPECT_DEBUG_NAMES_TOTAL,
+      `合計: (d)で読んだカード名が ${EXPECT_DEBUG_NAMES_TOTAL}件(5エリア×初期5枚)`,
+      { actual: totals.debugNames, expect: EXPECT_DEBUG_NAMES_TOTAL });
+    ok(totals.expandedMin >= EXPECT_EXPANDED_MIN_PER_AREA,
+      `合計: 「もっと見る」展開後のカード枚数がどのエリアも ${EXPECT_EXPANDED_MIN_PER_AREA}枚以上`
+      + `(押す前に読むと初期5枚のまま)`,
+      { min: totals.expandedMin, expect: EXPECT_EXPANDED_MIN_PER_AREA });
 
     ok(consoleErrors.length === 0, 'コンソールエラー0件', consoleErrors);
 
