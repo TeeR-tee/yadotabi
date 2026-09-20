@@ -1140,6 +1140,10 @@
   //   「全カードに同じ文言」に近づき情報量が落ちる)ため、流用しなかった。
   var FAME_NATIONAL_MIN = 150; // ここ以上は全国的に名前が知られている層
   var FAME_LOCAL_MIN = 60;     // ここ以上はその地方でよく知られている層
+  // ★R242: 上の2つのバッジが何を根拠にしているかを画面で1行だけ説明する文言。
+  // 数字(件数・しきい値)と評価の語は1文字も入れない。表示は renderFeed() の
+  // #feed-origin(距離の凡例と同じ場所)。
+  var FAME_ORIGIN_TEXT = '★は、百科事典で他の記事からどれだけ触れられているかで付けています';
   /**
    * @param {object} card カード
    * @param {?string} reasonMsg 同じカードに既に出ている💡理由行の文言(無ければ null)
@@ -1584,12 +1588,29 @@
 
     // R228: カードの徒歩/車の分数・距離が「選んだ宿からの値」であることを示す凡例。
     // カードが0件のときは起点を語っても意味がない(嘘になる)ため出さない。
+    //
+    // ★R242: 同じ場所に「★ …よく知られた場所」バッジの根拠も足す。
+    // R228 で距離は「何が起点か」を答えられるようになったが、同じ画面に出ている
+    // 人気バッジが何を根拠にしているかは1文字も書かれていなかった(画面での非対称)。
+    // 文言の制約(みのるんの設計思想):
+    //   - 数字を出さない。「被リンク129件」と書いても「何をもって129件なのか」が
+    //     答えられないので、件数・しきい値は画面に一切出さない。
+    //   - 評価の語(おすすめ/人気No.1/必見 等)を使わない(R227・R231・R226)。
+    //   - 専門用語を使わない。「被リンク」「Wikipedia API」ではなく
+    //     「百科事典で他の記事からどれだけ触れられているか」と噛み砕く。
+    // 出す条件は距離の凡例と完全に同じ(カードが0件なら #feed-origin ごと隠れる)。
+    // しきい値・バッジの文言・出す条件は1バイトも変えていない(R241 のまま)。
     if (els.feedOrigin) {
       var showOrigin = !!state.cards.length;
       els.feedOrigin.hidden = !showOrigin;
-      els.feedOrigin.textContent = showOrigin
-        ? '距離は「' + (hotel.name || '') + '」からの目安です'
-        : '';
+      els.feedOrigin.textContent = '';
+      if (showOrigin) {
+        // 宿名を含むのでHTML文字列を組み立てず、テキストノードで足す。
+        els.feedOrigin.appendChild(
+          document.createTextNode('距離は「' + (hotel.name || '') + '」からの目安です'));
+        els.feedOrigin.appendChild(document.createElement('br'));
+        els.feedOrigin.appendChild(document.createTextNode(FAME_ORIGIN_TEXT));
+      }
     }
 
     var html = state.cards.map(function (c, i) { return cardHtml(c, i, true); }).join('');

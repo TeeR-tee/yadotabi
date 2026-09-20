@@ -57,6 +57,22 @@ const TEXT_NATIONAL = '全国的によく知られた場所';
 const TEXT_LOCAL = 'この地方でよく知られた場所';
 const REPRESENTATIVE_PREFIX = 'このあたりの代表的な';
 
+// ★R242: バッジの根拠を画面で説明する1行(#feed-origin の2行目)。
+// 守る軸は2つ:
+//   (a) 有無軸 = 5エリアの初期画面で #feed-origin が表示され、この根拠の文言を含むこと。
+//       併せて「カード0件(simulate=empty)」「状態A(宿未選択)」では出ないことも見る。
+//   (b) 中身軸 = その根拠の行に **数字が1文字も含まれない** こと + **評価の語を1つも
+//       含まない** こと。行を出したまま中身だけ壊す変更は、この軸だけが捕まえる
+//       (R216・R234・R238・R241 と同じ「有無は緑・中身だけが赤」の形)。
+// 数字を出さないのはみのるんの設計思想。「60何件見つかりました」と書いても
+// 「何をもって60何件なのか」が答えられないため、件数もしきい値も画面に出さない。
+const FAME_ORIGIN_TEXT = '★は、百科事典で他の記事からどれだけ触れられているかで付けています';
+// 根拠の行を距離の行から切り出すための目印(この語より後ろが根拠の行)。
+const FAME_ORIGIN_HEAD = '★は、';
+// R227・R231・R226: 表示の文言に評価の語を使うと、対象によっては嘘になる。
+const BANNED_WORDS = ['おすすめ', 'お勧め', '人気', '必見', '最高', 'ベスト', 'No.1',
+  'ランキング', '話題', '絶対', '一番', '評価', '穴場', '定番'];
+
 let pass = 0;
 let fail = 0;
 function ok(cond, label, extra) {
@@ -198,6 +214,23 @@ async function readArea(page, base, area) {
   // ★R241 (a) 母数軸: 展開する前の画面をそのまま読む。engine は通さない。
   const initial = await page.evaluate(READ_CARDS_IN_DOM);
 
+  // ★R242: バッジの根拠の1行も **画面(DOM)から** 読む。engine の再計算値は使わない
+  // (R240 の教訓)。hidden と、根拠の行だけを切り出した文字列を返す。
+  const origin = await page.evaluate((head) => {
+    const el = document.getElementById('feed-origin');
+    if (!el) return { exists: false, hidden: null, text: '', whyLine: '' };
+    const text = el.textContent || '';
+    const at = text.indexOf(head);
+    return {
+      exists: true,
+      hidden: el.hidden,
+      text,
+      // 距離の行と混ざらないよう、根拠の行だけを取り出す(見つからなければ空文字)。
+      whyLine: at >= 0 ? text.slice(at) : '',
+      overflow: el.scrollWidth > el.clientWidth + 1,
+    };
+  }, FAME_ORIGIN_HEAD);
+
   // 「もっと見る」を展開して、表示されうるカードを全部俎上に載せる。
   const moreBtn = page.locator('#more-btn');
   if (await moreBtn.count() && await moreBtn.isVisible()) {
@@ -236,7 +269,7 @@ async function readArea(page, base, area) {
     sameCatInInitial: sameCatCount(c.cat),
   });
 
-  return { initial: initial.map(attach), expanded: dom.map(attach) };
+  return { initial: initial.map(attach), expanded: dom.map(attach), origin };
 }
 
 async function main() {
@@ -257,7 +290,9 @@ async function main() {
   // 画面側の合計(national / local)と突き合わせることで、
   // 「バッジが全部消える」壊し方も「2種類の文言を入れ替える」壊し方も捕まえる別軸になる。
   const totals = { cards: 0, badged: 0, national: 0, local: 0, dup: 0, expectNational: 0, expectLocal: 0,
-    initCards: 0, initBadged: 0, initExpect: 0 };
+    initCards: 0, initBadged: 0, initExpect: 0,
+    // ★R242: 根拠の行が出ているエリア数(5エリア合計。全エリアが同時に消えても落ちる)
+    originShown: 0, originWithWhy: 0 };
 
   // ★R241 (a) 母数軸の期待値。初期5枚(= 「もっと見る」を押す前)でバッジが出る枚数を
   // エリアごとに固定値で持つ。R241 の実測で 8枚 → **10枚**(草津 0→1・別府 2→3)になった。
@@ -274,7 +309,36 @@ async function main() {
 
     console.log('\n--- エリア別の内訳(バッジ枚数/全枚数) ---');
     for (const area of AREAS) {
-      const { initial, expanded: cards } = await readArea(page, base, area);
+      const { initial, expanded: cards, origin } = await readArea(page, base, area);
+
+      // ===== ★R242 ここから: バッジの根拠の1行(#feed-origin の2行目)を守る2軸 =====
+      // (a) 有無軸: 画面に出ていて、根拠の文言をそのまま含むこと。
+      ok(origin.exists && origin.hidden === false,
+        `${area}: 初期画面で #feed-origin が表示されている`,
+        { exists: origin.exists, hidden: origin.hidden });
+      ok(origin.whyLine.indexOf(FAME_ORIGIN_TEXT) === 0,
+        `${area}: #feed-origin にバッジの根拠の1行が出ている`, origin.text);
+      // 距離の凡例(R228)と同居していること。片方を消す変更も捕まえる。
+      ok(origin.text.indexOf('距離は「') === 0 && origin.text.length > FAME_ORIGIN_TEXT.length,
+        `${area}: 距離の凡例(R228)と根拠の行が同じ #feed-origin に並んでいる`, origin.text);
+      ok(origin.overflow === false,
+        `${area}: #feed-origin のはみ出しが0件(1280px)`, origin.overflow);
+
+      // (b) 中身軸: 根拠の行に数字が1文字も無いこと + 評価の語が無いこと。
+      //     行は出したまま中身だけ壊す変更は、この2件だけが捕まえる。
+      //     母数として「根拠の行が空でないこと」を同じ判定に入れる(空文字に対する
+      //     test が常に緑になる穴を作らない。R226・R233-2 と同型)。
+      const whyDigits = origin.whyLine.match(/[0-9０-９]/g) || [];
+      ok(origin.whyLine.length >= 1 && whyDigits.length === 0,
+        `${area}: 根拠の行に数字が1文字も含まれない(行が空でない)`,
+        { whyLine: origin.whyLine, digits: whyDigits });
+      const whyBanned = BANNED_WORDS.filter((w) => origin.whyLine.indexOf(w) >= 0);
+      ok(origin.whyLine.length >= 1 && whyBanned.length === 0,
+        `${area}: 根拠の行に評価の語が含まれない(行が空でない)`,
+        { whyLine: origin.whyLine, banned: whyBanned });
+      totals.originShown += origin.exists && origin.hidden === false ? 1 : 0;
+      totals.originWithWhy += origin.whyLine.indexOf(FAME_ORIGIN_TEXT) === 0 ? 1 : 0;
+      // ===== ★R242 ここまで =====
 
       // ===== ★R241 ここから: 初期5枚(「もっと見る」を押す前)だけを見る2軸 =====
       // (a) 母数軸: 画面のカード枚数と、そのうちバッジが出ている枚数。
@@ -431,6 +495,37 @@ async function main() {
     // 5エリア合計のカード枚数の下限(エリア単位の下限とは別軸。全エリアが同時に空になっても落ちる)
     ok(totals.cards >= AREAS.length,
       `合計: カードが5エリア合計で ${AREAS.length} 枚以上`, totals.cards);
+
+    // ★R242 合計の有無軸(エリア単位とは別軸。5エリアが同時に消えても落ちる)
+    ok(totals.originShown === AREAS.length,
+      `合計: 根拠の行を載せた #feed-origin が ${AREAS.length} エリアで表示される`, totals.originShown);
+    ok(totals.originWithWhy === AREAS.length,
+      `合計: 根拠の文言が ${AREAS.length} エリアすべてに出ている`, totals.originWithWhy);
+
+    // ★R242: 根拠の行も距離の凡例(R228)と同じ条件でしか出ないこと。
+    // カードが0件の画面と、宿を選ぶ前の画面(状態A)で出ていたら「根拠が無いのに
+    // 根拠を語っている」ことになる。check-distance.mjs が守っている3状態のうち
+    // 2つを、根拠の行の側からも見る(同じ穴を2本で塞ぐ)。
+    await page.goto(`${base}/?fixture=kusatsu&simulate=empty`, { waitUntil: 'load' });
+    await waitFor(1500);
+    const emptyOrigin = await page.evaluate(() => {
+      const el = document.getElementById('feed-origin');
+      return { hidden: el ? el.hidden : null, text: el ? el.textContent : null };
+    });
+    ok(emptyOrigin.hidden === true && !(emptyOrigin.text || '').includes(FAME_ORIGIN_TEXT),
+      'カード0件(simulate=empty)では根拠の行が出ない', emptyOrigin);
+
+    await page.goBack();
+    await waitFor(800);
+    const stateA = await page.evaluate(() => {
+      const el = document.getElementById('feed-origin');
+      const sel = document.getElementById('view-select');
+      return { selectHidden: sel ? sel.hidden : null, hidden: el ? el.hidden : null,
+        text: el ? el.textContent : null };
+    });
+    ok(stateA.selectHidden === false, '状態A(宿未選択)に戻れている', stateA.selectHidden);
+    ok(stateA.hidden === true && !(stateA.text || '').includes(FAME_ORIGIN_TEXT),
+      '状態A(宿未選択)では根拠の行が出ない', stateA);
 
     ok(consoleErrors.length === 0, 'コンソールエラー0件', consoleErrors);
 
