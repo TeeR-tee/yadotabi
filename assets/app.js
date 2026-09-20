@@ -1605,15 +1605,19 @@
       // bundle() は 1件しかないテーマを label:null の端数束にまとめて最後に置く。
       // そのまま見出し無しで続けると直前の束の見出しの下にぶら下がって見えるので、
       // テーマを名乗らない見出しで縁を切る(嘘のテーマ名を付けない)。
+      // R254: 見出しに枚数の数字を出さない。押す前の R236 の行も R250 の3行目も
+      // 数字を0文字にすると決めて作ったのに、押した後のこの見出しだけが
+      // 「そのほか 5件」と名乗っていた。その 5 が何を数えた 5 なのか
+      // (テーマが付かなかったカード/1件だけだったテーマから送られてきたカード)は
+      // 画面のどこにも書いていないため、数え方を名乗らない数字は出さない。
+      // 枚数は下に並ぶカードを数えれば分かるので情報は落ちない。
+      // 見出しそのものは R226・R158 の区切りとして残す。
       if (b.bare) {
-        out += '<h3 class="feedbundle feedbundle--rest feedbundle--bare">' + escapeHtml(BARE_BUNDLE_HEAD) +
-          ' <span class="feedbundle__n">' + escapeHtml(String(b.indices.length)) + '件</span></h3>';
+        out += '<h3 class="feedbundle feedbundle--rest feedbundle--bare">' + escapeHtml(BARE_BUNDLE_HEAD) + '</h3>';
       } else if (b.label) {
-        out += '<h3 class="feedbundle">' + escapeHtml(b.label) +
-          ' <span class="feedbundle__n">' + escapeHtml(String(b.indices.length)) + '件</span></h3>';
+        out += '<h3 class="feedbundle">' + escapeHtml(b.label) + '</h3>';
       } else {
-        out += '<h3 class="feedbundle feedbundle--rest">そのほか' +
-          ' <span class="feedbundle__n">' + escapeHtml(String(b.indices.length)) + '件</span></h3>';
+        out += '<h3 class="feedbundle feedbundle--rest">そのほか</h3>';
       }
       b.indices.forEach(function (i) {
         // 番号・data-index は rank 順の添字のまま(案A)。並ぶ位置だけが束ごとになる。

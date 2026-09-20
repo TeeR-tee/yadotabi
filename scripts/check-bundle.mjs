@@ -351,8 +351,13 @@ async function main() {
       if (cur) headCounts.push({ label: cur, claimed: curClaim, actual: curN });
 
       ok(mismatched.length === 0, '★見出しの下のカードが全てその束のテーマ(1枚も混ざらない)', mismatched);
-      const countBad = headCounts.filter((h) => h.claimed !== h.actual);
-      ok(countBad.length === 0, '見出しが名乗る件数と直下のカード枚数が一致', countBad);
+      // R254: 見出しが件数の数字を名乗らなくなったため、「名乗る件数と実数の一致」は
+      // claimed が常に0の死んだ照合になった(R235 の型)。照合の向きを裏返し、
+      // 「どの見出しも件数を名乗っていない」ことと「見出しの下に必ずカードがある」ことを見る。
+      const claimBad = headCounts.filter((h) => h.claimed !== 0);
+      ok(claimBad.length === 0, 'R254: 束見出しが件数の数字を名乗っていない', claimBad);
+      const emptyHead = headCounts.filter((h) => h.actual === 0);
+      ok(emptyHead.length === 0, '見出しの直下にカードが1枚以上ある(中身の無い見出しが無い)', emptyHead);
 
       // ---- R226: 「写真と解説がまだ無い場所」の区切り ----
       // 数字(見出し本数・カード枚数)は1つも変わらない壊し方があるため、

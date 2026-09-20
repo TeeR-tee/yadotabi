@@ -935,6 +935,89 @@ function decodeHtmlEntities(str) {
 }
 // --- ここまで R250 ---
 
+// --- R254: 展開後の束見出しが枚数の数字を名乗らないことの検査 ---
+// 発端: 同じ「もっと見る」まわりなのに、押す前の R236 の行と R250 の3行目は
+// 件数の数字を0文字にすると決めて作ったのに、押した後の束見出しだけが
+// 「そのほか 5件」「写真と解説がまだ無い場所 7件」と数字を出していた。
+// その 5 が何を数えた 5 なのか(テーマが付かなかったカード/1件だけだったテーマから
+// 送られてきたカード)は画面のどこにも書かれておらず、みのるんの
+// 「『60何件見つかりました』だと『何をもって60何件なんですか』という話」がそのまま当たる。
+// 直したあと、これは2通りに戻りうる:
+//   (1) 数字が見出しに戻る(「◯件」や「約◯」)。
+//   (2) 数字を消すついでに見出しごと消してしまい、R226・R158 で入れた
+//       「どこから先が写真も解説も無い帯か」の区切りが失われる。
+// そこで軸を3本に割る。R240・R250 の教訓に従い、母数は実ファイルから取り、件数の定数は書かない。
+{
+  // (a) 母数軸: assets/app.js の moreBundledHtml() の中から、見出し(<h3 class="feedbundle">)を
+  //     組んでいる行を実ファイルで数える。ここが 0 本だと下の (b)(c) は「探す対象が無い」ので
+  //     素通りして偽の緑になる(R235 の破壊実証と同じ形)。本数の定数は持たず、数えた本数を名乗る。
+  const appLinesR254 = (() => {
+    try {
+      return readFileSync(join(REPO_ROOT, 'assets', 'app.js'), 'utf8').split('\n');
+    } catch {
+      return [];
+    }
+  })();
+  // moreBundledHtml() の本体だけを切り出す(関数の外に同じ文字列があっても巻き込まないため)。
+  const headStartR254 = appLinesR254.findIndex((l) => /function\s+moreBundledHtml\s*\(/.test(l));
+  const bodyR254 = headStartR254 >= 0
+    ? appLinesR254.slice(headStartR254).slice(0, (() => {
+        const after = appLinesR254.slice(headStartR254);
+        const end = after.findIndex((l, i) => i > 0 && /^\s{2}\}\s*$/.test(l));
+        return end > 0 ? end + 1 : after.length;
+      })())
+    : [];
+  // 見出しを組んでいる行(コメント行は数えない)。
+  const headLinesR254 = bodyR254.filter(
+    (l) => !/^\s*\/\//.test(l) && /<h3 class="feedbundle/.test(l)
+  );
+  report(
+    `束見出しの数字: moreBundledHtml() の見出しを組む分岐を実ファイルから数えた(${headLinesR254.length}本)`,
+    headLinesR254.length >= 2,
+    headLinesR254.length >= 2
+      ? undefined
+      : `moreBundledHtml() の中に見出しを組む行が ${headLinesR254.length} 本しか無い。`
+        + '下の数字軸・見出し存続軸が母数0で素通りする'
+  );
+
+  // (b) 数字軸: 見出しを組んでいる式に「件」と b.indices.length が現れないこと。
+  //     数字を直接埋める形(「5件」「約5」)も、長さから組み立てる形も両方ここで捕まえる。
+  const numHitsR254 = headLinesR254.filter(
+    (l) => /件/.test(l) || /\.indices\.length/.test(l) || /[0-90-9]\s*<\/(h3|span)>/.test(l)
+  );
+  report(
+    `束見出しの数字: 見出しを組む式に「件」も indices.length も無い(${headLinesR254.length}本を照合)`,
+    headLinesR254.length >= 2 && numHitsR254.length === 0,
+    headLinesR254.length < 2
+      ? '母数が足りないので照合できていない(上の母数軸を先に直す)'
+      : numHitsR254.length > 0
+        ? `見出しが枚数の数字を名乗っている: ${numHitsR254.map((l) => l.trim()).join(' / ')}`
+        : undefined
+  );
+
+  // (c) 見出し存続軸: 数字を消すついでに見出しごと消していないこと。
+  //     BARE_BUNDLE_HEAD(定数)と「そのほか」(直書き)が、どちらも見出しを組む式の中に
+  //     依然として実在すること。文言そのものは定数を書き写さず実ファイルから取り出す。
+  const bareHeadLineR254 = appLinesR254.find((l) => /^\s*var\s+BARE_BUNDLE_HEAD\s*=/.test(l)) || '';
+  const bareHeadMatchR254 = bareHeadLineR254.match(/=\s*'([^']*)'/);
+  const bareHeadTextR254 = bareHeadMatchR254 ? bareHeadMatchR254[1] : '';
+  const hasBareHeadR254 = bareHeadTextR254.length > 0
+    && headLinesR254.some((l) => /BARE_BUNDLE_HEAD/.test(l));
+  const hasRestHeadR254 = headLinesR254.some((l) => /そのほか/.test(l));
+  report(
+    `束見出しの存続: 「${bareHeadTextR254}」と「そのほか」が見出しとして残っている`,
+    hasBareHeadR254 && hasRestHeadR254,
+    bareHeadTextR254.length === 0
+      ? 'BARE_BUNDLE_HEAD が assets/app.js から取り出せない(定義が消えたか形が変わった)'
+      : !hasBareHeadR254
+        ? 'BARE_BUNDLE_HEAD を出している見出しが moreBundledHtml() に無い(見出しごと消えた)'
+        : !hasRestHeadR254
+          ? '「そのほか」の見出しが moreBundledHtml() に無い(見出しごと消えた)'
+          : undefined
+  );
+}
+// --- ここまで R254 ---
+
 // --- R33: 集計行 ---
 if (timings.length > 0) {
   const total = timings.reduce((sum, t) => sum + t.ms, 0);
