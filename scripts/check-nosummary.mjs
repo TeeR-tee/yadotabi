@@ -15,8 +15,11 @@
 //   3. .feedcard__summary の総数が展開後の全件数と一致(要約有無にかかわらず全カードに1本)
 //   4. .feedcard__summary--none の getComputedStyle().color が .feedcard__summary の既定色と異なる
 //   5. コンソールエラー0件
-//   6. R123: 記事が実在する8枚(10位松山城 等)は HAS_ARTICLE_NO_SUMMARY_TEXT を含み、
-//      真に記事が無い12枚は NO_SUMMARY_TEXT ちょうどに一致すること(誤爆0件を1枚ずつ確認)
+//   6. R123/R235: 記事が実在するのに要約が無いカードは HAS_ARTICLE_NO_SUMMARY_TEXT を含み、
+//      真に記事が無いカードは NO_SUMMARY_TEXT ちょうどに一致すること(誤爆0件を1枚ずつ確認)。
+//      R235 で 6a を「枚数軸(6a-1)/母数軸(6a-0)/中身軸(6a-2)」の3本に割った
+//      (旧 6a は `hasArticleRows.length === 0 && hasArticleRows.every(...)` で、左が真のとき
+//      右は空配列への every = 構造上必ず true になり、文言照合が1度も走っていなかった)。
 //   7. R124: wikipediaTitle が無く wikidataId しか無い候補(?fixture=beppu「別府市美術館」)でも
 //      要約行にリンクが出ること(Wikidata転送URL経由。行き止まり修正の不変条件)
 //   8. R124/R149: 5エリア全カードで、HAS_ARTICLE_NO_SUMMARY_TEXT を含む .feedcard__summary--none には
@@ -185,14 +188,41 @@ async function main() {
     // 2026-09-19 R177実測(展開後18件が母数): 記事が実在するもの0枚、真に記事が無いもの2枚。
     // R166(名指し取得)で記事が実在するカード全部に要約(extract)が付くようになった結果、
     // 旧リストの8枚が全て --none 自体から外れ(=要約が表示される側に移った)、
-    // HAS_ARTICLE_NO_SUMMARY_TEXT に該当するカードが0枚になった。これは
-    // 「記事があるのに要約を出せていない」カードが無くなったという改善であり、
-    // **判定の中身(文言がどちらのテキストと一致するか)は1文字も変えていない**
-    // (DOGO_HAS_ARTICLE_NAMES を空リストにしたことで hasArticleRows は必然的に空になる)。
+    // HAS_ARTICLE_NO_SUMMARY_TEXT に該当するカードが0枚になった。
+    //
+    // 2026-09-24 R235: この 6a はこれまで
+    //   ok(hasArticleRows.length === 0 && hasArticleRows.every((r) => r.noneText.indexOf(...) === 0), ...)
+    // という1本だった。`&&` の左が真のとき hasArticleRows は必ず空配列なので、
+    // 右の `.every()` は**空配列への呼び出しで構造上必ず true**。つまり
+    // 「文言が HAS_ARTICLE_NO_SUMMARY_TEXT になっている」という名乗りの照合は**1度も走っていなかった**
+    // (R225「export されている=使われている、ではない」と同型)。
+    // R226 の「本数の下限と中身の照合を別項目で持つ」に従い、**枚数の項目と文言の項目を2本に割る**。
+    // 文言の母数は空になりうる DOGO_HAS_ARTICLE_NAMES 由来の hasArticleRows ではなく、
+    // **画面に実際に出ている --none の文言そのもの**から取る(:294・:338 と同じ取り方)。
     ok(
-      hasArticleRows.length === 0 && hasArticleRows.every((r) => r.noneText.indexOf(HAS_ARTICLE_NO_SUMMARY_TEXT) === 0),
-      '6a. 記事が実在する8枚がHAS_ARTICLE_NO_SUMMARY_TEXTになっている -> 0枚(全て要約表示側に移行)',
+      hasArticleRows.length === 0,
+      '6a-1. 枚数軸: DOGO_HAS_ARTICLE_NAMES に載る名前で --none に残っているカードが0枚',
       hasArticleRows
+    );
+    // 中身軸: **母数が空になりようのない側**から取り直す。dogo 展開後に実在する --none 全件が、
+    // 「NO_SUMMARY_TEXT ちょうど」か「HAS_ARTICLE_NO_SUMMARY_TEXT で始まる」か
+    // 「PHOTO_NO_ARTICLE_TEXT ちょうど」の**3つの定数のいずれか**に必ず当たること。
+    // hasArticleRows と違いこの母数は画面から取るので、**0枚になったらこの項目自体が落ちる**
+    // (下の 6a-0 が母数の下限を持つ)。これで HAS_ARTICLE_NO_SUMMARY_TEXT の文字列比較が
+    // 毎回実際に走る = 定数を書き換えたら赤くなる、生きた照合になる。
+    const KNOWN_NONE_TEXTS = [NO_SUMMARY_TEXT, HAS_ARTICLE_NO_SUMMARY_TEXT, PHOTO_NO_ARTICLE_TEXT];
+    const matchesKnownNoneText = (t) =>
+      t === NO_SUMMARY_TEXT || t.indexOf(HAS_ARTICLE_NO_SUMMARY_TEXT) === 0 || t === PHOTO_NO_ARTICLE_TEXT;
+    ok(
+      noneRows.length >= 2,
+      `6a-0. 母数軸: dogo 展開後に --none のカードが2枚以上ある(実測 ${noneRows.length}枚)`,
+      noneRows.map((r) => r.name)
+    );
+    const unknownNoneRows = noneRows.filter((r) => !matchesKnownNoneText(r.noneText));
+    ok(
+      unknownNoneRows.length === 0,
+      `6a-2. 中身軸: dogo の --none ${noneRows.length}枚が3定数のいずれかと一致(HAS_ARTICLE側 ${noneRows.filter((r) => r.noneText.indexOf(HAS_ARTICLE_NO_SUMMARY_TEXT) === 0).length}枚)`,
+      { unknownNoneRows, KNOWN_NONE_TEXTS }
     );
     // 2026-09-19 R177実測: 2枚(椿の湯・振鷺閣)。どちらも実データで Wikipedia 記事を
     // 持たないことを確認済み(fixtures/dogo.json の overpass タグに wikipedia/wikidata

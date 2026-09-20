@@ -762,6 +762,104 @@ function decodeHtmlEntities(str) {
 }
 // --- ここまで R249 ---
 
+// --- R235: 「構造上どうやっても落ちない照合(死んだ照合)」が検査本の中に1件も無いことの検査 ---
+// 発端は `scripts/check-nosummary.mjs` の 6a:
+//   ok(hasArticleRows.length === 0 && hasArticleRows.every((r) => r.noneText.indexOf(CONST) === 0), '6a. …')
+// `&&` の左が真のとき hasArticleRows は必ず空配列なので、右の `.every()` は**空配列への呼び出しで
+// 常に true**。検査名は「文言が CONST になっている」と名乗っているのに、その文言照合は1度も
+// 走っていなかった(R225「export されている=使われている、ではない」と同型)。
+// **検査があるから守られている、も疑う**。同じ形が他に生えていないかを全検査本から静的に探す。
+//
+// R240 の教訓に従い、**母数も実ファイルから数える**(件数の定数を書かない)。
+// R249 の readTarget と同じやり方で検査本のソースを読むだけで、追加のネットワークアクセスはしない。
+{
+  const { readdirSync } = await import('node:fs');
+
+  // (a) 母数軸: 走査対象の検査本を実ファイルから数える。
+  //     scripts/check-*.mjs のうち束ね役の check-all.mjs を除いた34本 + docs/check.mjs 自身 = 35本。
+  //     件数の定数は持たず、「1本でも読めなければ落ちる」形にする(黙って飛ばすと母数が減って軸が死ぬ)。
+  let scriptNames = [];
+  try {
+    scriptNames = readdirSync(join(REPO_ROOT, 'scripts'))
+      .filter((f) => /^check-[\w-]+\.mjs$/.test(f) && f !== 'check-all.mjs')
+      .sort();
+  } catch {
+    scriptNames = [];
+  }
+  const bookPaths = scriptNames.map((f) => 'scripts/' + f).concat(['docs/check.mjs']);
+
+  const books = [];
+  const unreadable = [];
+  for (const rel of bookPaths) {
+    try {
+      books.push({ path: rel, lines: readFileSync(join(REPO_ROOT, rel), 'utf8').split('\n') });
+    } catch {
+      unreadable.push(rel);
+    }
+  }
+  report(
+    `死んだ照合軸: 走査対象の検査本を実ファイルから数えて全部読めた(${books.length}/${bookPaths.length}本)`,
+    books.length === bookPaths.length && books.length > 1 && unreadable.length === 0,
+    unreadable.length === 0
+      ? (books.length > 1 ? undefined : 'scripts/ から検査本を1本も数えられていない。readdirSync 側が壊れている')
+      : '読めなかった: ' + unreadable.join(' / ')
+  );
+
+  // (b) 死んだ形軸: `xs.length === 0 && xs.every(` と逆順 `xs.every(…) && xs.length === 0` を全本から探す。
+  //     どちらも「左が真なら配列は空 → 空配列への every は常に true」で、照合が死ぬ形。
+  //     `length > 0 && …every(` は母数が空でないことを確かめている**生きた**形なので対象外
+  //     (check-nosummary.mjs の (r234) b1 が実例)。
+  //     見つかったらファイル名・行番号・その行を名指しで出す(例外リストは作らない = R249 の判断)。
+  const DEAD_FORMS = [
+    { re: /\.length\s*===\s*0\s*&&[^;]*\.every\s*\(/, why: 'length === 0 の右で空配列に every(常に true)' },
+    { re: /\.every\s*\([^;]*\)\s*&&[^;]*\.length\s*===\s*0/, why: 'every の左が空配列(常に true)で length === 0 と AND' },
+  ];
+  const deadMatches = [];
+  for (const book of books) {
+    book.lines.forEach((line, i) => {
+      const code = line.replace(/^\s*(\/\/.*)?$/, ''); // 行まるごとコメントは対象外
+      if (!code || /^\s*\/\//.test(line)) return;
+      for (const form of DEAD_FORMS) {
+        if (form.re.test(code)) {
+          deadMatches.push(`${book.path}:${i + 1} ${form.why} -> ${line.trim()}`);
+          break;
+        }
+      }
+    });
+  }
+  report(
+    `死んだ照合軸: 「常に true になる照合」が検査本${books.length}本に0件(${deadMatches.length}件検出)`,
+    deadMatches.length === 0,
+    deadMatches.length === 0
+      ? undefined
+      : '枚数判定と中身判定を ok() 2本に割るか、中身の母数を空にならない側から取り直すこと / ' + deadMatches.join(' / ')
+  );
+
+  // (c) 生存確認軸: R235 で生かした照合を、直した本人が後から消してしまう事故を防ぐ。
+  //     check-nosummary.mjs の中に HAS_ARTICLE_NO_SUMMARY_TEXT を**実際に照合している ok()**が
+  //     1本以上あること(定数の定義行・コメント行は数えない)。
+  const nosummary = books.find((b) => b.path === 'scripts/check-nosummary.mjs');
+  const liveCompareLines = nosummary
+    ? nosummary.lines.filter(
+        (l) =>
+          !/^\s*\/\//.test(l) &&
+          /HAS_ARTICLE_NO_SUMMARY_TEXT/.test(l) &&
+          !/^\s*const\s+HAS_ARTICLE_NO_SUMMARY_TEXT\s*=/.test(l) &&
+          /(indexOf\s*\(|===|!==|startsWith\s*\()/.test(l)
+      )
+    : [];
+  report(
+    `死んだ照合軸: check-nosummary.mjs が HAS_ARTICLE_NO_SUMMARY_TEXT を実際に照合している(${liveCompareLines.length}行)`,
+    !!nosummary && liveCompareLines.length > 0,
+    !nosummary
+      ? 'scripts/check-nosummary.mjs が読めない'
+      : liveCompareLines.length > 0
+        ? undefined
+        : '定数が定義だけされて誰も比較していない。R235 で生かした照合が消えている'
+  );
+}
+// --- ここまで R235 ---
+
 // --- R33: 集計行 ---
 if (timings.length > 0) {
   const total = timings.reduce((sum, t) => sum + t.ms, 0);
