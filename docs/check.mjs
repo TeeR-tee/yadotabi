@@ -1018,6 +1018,107 @@ function decodeHtmlEntities(str) {
 }
 // --- ここまで R254 ---
 
+// --- R255: カードの分数(徒歩・車)の出どころを画面が断っていることの検査 ---
+// 発端: 全カードのメタ行に出ている「徒歩◯分 · 車◯分」は、engine.js が地図の上を
+// まっすぐ結んだ長さを固定の速さで割っているだけなのに、すぐ隣の距離には R228 で起点の
+// 断りが付いたのに、分数だけは画面に1文字も説明が無かった。TIMES_ORIGIN_TEXT を
+// #feed-origin に足したが、「足しただけ」では R250 と同じ2通りに壊れる:
+//   (1) 出す条件を state.cards の件数や定数から決めると、分数が画面に無い場面でも名乗る。
+//   (2) 文言に数字(速さ)や評価の語・専門用語が混じる。
+// 軸は3本。母数は実ファイルから取り、件数の定数は書かない(R240・R250 の教訓)。
+{
+  // (a) 母数軸: assets/app.js を実ファイルから読めていて、renderFeedOrigin() の中に
+  //     行を足す分岐(TextNode を足す行)が3本以上実在すること。
+  //     ここが0のとき、下の (b)(c) は「探す対象が無い」ので素通りして偽の緑になる。
+  const appLinesR255 = (() => {
+    try {
+      return readFileSync(join(REPO_ROOT, 'assets', 'app.js'), 'utf8').split('\n');
+    } catch {
+      return [];
+    }
+  })();
+  // renderFeedOrigin() の本体を実ファイルから切り出す(次の function 宣言の手前まで)。
+  const startR255 = appLinesR255.findIndex((l) => /function\s+renderFeedOrigin\s*\(/.test(l));
+  const bodyR255 = startR255 >= 0
+    ? appLinesR255.slice(startR255).slice(0, (() => {
+        const after = appLinesR255.slice(startR255 + 1);
+        const end = after.findIndex((l) => /^\s*function\s+\w+\s*\(/.test(l));
+        return end < 0 ? after.length + 1 : end + 1;
+      })())
+    : [];
+  // 文言を足している分岐(コメント行は数えない)。定数名を出す行と TextNode を足す行の
+  // どちらも数える(R255 の分数の断りは4行目にせず1行目の続きにしたため、
+  // appendChild だけを数えると母数が落ちる)。
+  const originLinesR255 = bodyR255.filter(
+    (l) => !/^\s*\/\//.test(l)
+      && (/appendChild\(document\.createTextNode\(/.test(l) || /_ORIGIN_TEXT/.test(l))
+  );
+  report(
+    `分数の出どころ: renderFeedOrigin() の文言を足す分岐を実ファイルから数えた(${originLinesR255.length}本)`,
+    originLinesR255.length >= 3,
+    originLinesR255.length >= 3
+      ? undefined
+      : `renderFeedOrigin() の中に文言を足す分岐が ${originLinesR255.length} 本しか無い。`
+        + '下の文言軸・条件軸が母数0で素通りする'
+  );
+
+  // 文言の定数(TIMES_ORIGIN_TEXT = '…')を実ファイルから取り出す。定数は書き写さない。
+  const timesTextLineR255 = appLinesR255.find((l) => /^\s*var\s+TIMES_ORIGIN_TEXT\s*=/.test(l)) || '';
+  const timesTextMatchR255 = timesTextLineR255.match(/=\s*'([^']*)'/);
+  const timesTextR255 = timesTextMatchR255 ? timesTextMatchR255[1] : '';
+
+  // (b) 文言軸: 新しい文言に数字と評価の語・専門用語が1文字も無いこと。
+  //     基準は R250 の SUBPIN_BANNED_WORDS と同じ考え方(向こうは「・」ピン用なので流用せず、
+  //     分数の行に起きやすい言い方(直線距離・時速・謝罪)をここに足して置く)。
+  const TIMES_BANNED_WORDS = ['おすすめ', 'お勧め', '人気', '必見', '最高', 'ベスト', 'No.1',
+    'ランキング', '話題', '絶対', '一番', '評価', '穴場', '定番',
+    '直線距離', '直線', 'ハーバサイン', '時速', '分速', '大圏距離',
+    'ご了承', '正確では', 'すみません', '分', 'km', 'm/'];
+  const hasDigitR255 = /[0-9０-９]/.test(timesTextR255);
+  const hitWordsR255 = TIMES_BANNED_WORDS.filter((w) => timesTextR255.indexOf(w) >= 0);
+  report(
+    `分数の出どころ: 文言に数字と評価の語・専門用語が無い(「${timesTextR255}」)`,
+    originLinesR255.length >= 3 && timesTextR255.length > 0 && !hasDigitR255 && hitWordsR255.length === 0,
+    originLinesR255.length < 3
+      ? '母数が足りないので照合できていない(上の母数軸を先に直す)'
+      : timesTextR255.length === 0
+        ? 'TIMES_ORIGIN_TEXT が assets/app.js から取り出せない(定義が消えたか形が変わった)'
+        : hasDigitR255
+          ? `文言に数字が入っている: 「${timesTextR255}」`
+          : hitWordsR255.length > 0
+            ? `文言に評価の語・専門用語が入っている: ${hitWordsR255.join('・')}`
+            : undefined
+  );
+
+  // (c) 条件軸: 分数の行を出すかどうかの判定が、**カードの DOM から .feedcard__times を
+  //     数える形**であること。state.cards の件数や数値定数から決めていないこと。
+  const condLinesR255 = appLinesR255.filter(
+    (l) => !/^\s*\/\//.test(l) && /\.feedcard__times/.test(l) && /querySelectorAll/.test(l)
+  );
+  // 判定が DOM ではなく state.cards・数値・真偽値リテラルから決められていたら落とす。
+  // (DOM から数えた結果を `.length > 0` で真偽にするのは正しい形なので、ここでは咎めない)
+  const badCondLinesR255 = appLinesR255.filter(
+    (l) =>
+      !/^\s*\/\//.test(l) &&
+      /timesOnScreen\s*=/.test(l) &&
+      !/querySelectorAll/.test(l) &&
+      /(state\.cards|=\s*\d|=\s*true|=\s*false|\.length\s*[><]=?\s*\d)/.test(l)
+  );
+  report(
+    `分数の出どころ: 出す条件をカードのDOM(.feedcard__times)から数えている(${condLinesR255.length}行)`,
+    originLinesR255.length >= 3 && condLinesR255.length > 0 && badCondLinesR255.length === 0,
+    originLinesR255.length < 3
+      ? '母数が足りないので照合できていない(上の母数軸を先に直す)'
+      : condLinesR255.length === 0
+        ? '.feedcard__times を querySelectorAll で数えている行が assets/app.js に無い。'
+          + '件数や state.cards から決めると、分数が画面に無い場面でも名乗ってしまう'
+        : badCondLinesR255.length > 0
+          ? `出す条件が state.cards や数値定数から決められている: ${badCondLinesR255.join(' / ')}`
+          : undefined
+  );
+}
+// --- ここまで R255 ---
+
 // --- R33: 集計行 ---
 if (timings.length > 0) {
   const total = timings.reduce((sum, t) => sum + t.ms, 0);

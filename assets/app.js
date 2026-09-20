@@ -1149,6 +1149,18 @@
   // 言い回しは上の2行と同じ「◯◯は、…です」にそろえる。表示は renderFeedOrigin() の
   // #feed-origin(距離の凡例・★の凡例と同じ場所)で、地図に「・」が実在するときだけ。
   var SUBPIN_ORIGIN_TEXT = '地図の小さい点は、この下に続けて並んでいる場所です';
+  // ★R255: カードの「🚶徒歩◯分 · 🚗車◯分」が、道を通った時間ではなく地図の上を
+  // まっすぐ結んだ長さから割り算で出していることを画面で1行だけ断る文言。
+  // 数字(速さ・分)と評価の語・専門用語(「直線距離」「ハーバサイン」など)は1文字も
+  // 入れない。謝罪や言い訳にもしない(事実だけを言う)。
+  // 表示は renderFeedOrigin() の #feed-origin で、カードに分数(.feedcard__times)が
+  // 実在するときだけ。★独立した4行目にしないのは、行を足すと横画面
+  // (812x375)で1枚目のカードの可視高さが 157.6px → 139.4px と 150px を割り、
+  // check-a11y が落ちるため(実測)。そこで距離の行の続きにし、文言を読点から
+  // 始めて一文になる形にしてある。★長さも制約で、横画面の列幅は 560px、
+  // 左右の余白を引いた文字の幅は 528px しか無い。ここを超えると行が折り返され、
+  // 結局 1行分高くなって同じ軸が落ちる(実測: 「地図の上を」を含む長い案は 531px で落ちた)。
+  var TIMES_ORIGIN_TEXT = '、時間はまっすぐ結んだ長さからの目安です';
   /**
    * @param {object} card カード
    * @param {?string} reasonMsg 同じカードに既に出ている💡理由行の文言(無ければ null)
@@ -1750,6 +1762,7 @@
    *   1行目 距離の起点  … カードが1枚でもあるときだけ
    *   2行目 ★の出どころ … ★バッジが画面に出ているときだけ(FAME_ORIGIN_TEXT)
    *   3行目 「・」ピン  … 「・」ピンが地図に出ているときだけ(SUBPIN_ORIGIN_TEXT)
+   *   1行目の続き … 分数の出どころ。分数が画面に出ているときだけ(TIMES_ORIGIN_TEXT)
    *
    * ★R250: 3行目を足した。「もっと見る」を開くと地図のピンが数字つきの5本から
    * 増え、6番目以降は番号の無い「・」(`pin--sub`)になるが、それが何なのかは画面に
@@ -1757,6 +1770,16 @@
    * **地図の DOM に .pin--sub が実在するか**から決める(R240 の死んだ軸・R245 の
    * 「画面に出ていないものを名乗らない」の型)。展開前は .pin--sub が0本なので
    * 行ごと出ない。「点はありません」のような代わりの文言も出さない。
+   *
+   * ★R255: 4行目を足した。全カードのメタ行に出ている「徒歩◯分 · 車◯分」は
+   * engine.js が地図の上をまっすぐ結んだ長さを固定の速さで割っているだけで、道の
+   * 遠回りも坂も見ていないのに、画面はそれを1文字も断っていなかった(すぐ隣の距離
+   * には R228 で起点の断りを付けたのに、分数だけ説明が無く流儀が不揃いだった)。
+   * 出す条件は state.cards の件数や定数からではなく、**描き終えたカードの DOM に
+   * .feedcard__times が実在するか**から決める(R245・R250 と同じ型)。この関数は
+   * renderFeed の末尾で renderFeedMap の後に呼ばれるため、参照する DOM は最新。
+   * ★独立した4行目にしないのは、横画面(812x375)で1枚目のカードの可視高さが
+   * 150px を割って check-a11y が落ちるため(実測: 157.6px → 139.4px)。
    */
   function renderFeedOrigin(hotel) {
     if (!els.feedOrigin) return;
@@ -1767,12 +1790,15 @@
     var subPinsOnScreen = els.feedMap
       ? els.feedMap.querySelectorAll('.pin--sub').length > 0
       : false;
+    // 画面に出ている分数(徒歩・車)の本数。0本なら分数の行だけを落とす。
+    var timesOnScreen = els.feedList.querySelectorAll('.feedcard__times').length > 0;
     els.feedOrigin.hidden = !showOrigin;
     els.feedOrigin.textContent = '';
     if (!showOrigin) return;
     // 宿名を含むのでHTML文字列を組み立てず、テキストノードで足す。
-    els.feedOrigin.appendChild(
-      document.createTextNode('距離は「' + ((hotel && hotel.name) || '') + '」からの目安です'));
+    els.feedOrigin.appendChild(document.createTextNode(
+      '距離は「' + ((hotel && hotel.name) || '') + '」からの目安です'
+      + (timesOnScreen ? TIMES_ORIGIN_TEXT : '')));
     if (fameOnScreen) {
       els.feedOrigin.appendChild(document.createElement('br'));
       els.feedOrigin.appendChild(document.createTextNode(FAME_ORIGIN_TEXT));
