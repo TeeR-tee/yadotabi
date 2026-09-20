@@ -499,6 +499,123 @@ function decodeHtmlEntities(str) {
 }
 // --- ここまで R247 ---
 
+// --- R248: FIXTURES.md の行番号引用が、指している先の実際のコードと一致することの検査 ---
+// FIXTURES.md は `assets/geo.js` の fixtureData 分岐を「L1040」のような行番号つきで解説している
+// 道案内の文書だが、**22件の引用のうち21件が指す先を外していた**(geo.js が 3008 行まで伸びた
+// のに文書側が 2026-09-19 のまま据え置かれていた。enrichFame は約400行のずれ)。行番号は
+// 「ある/ない」では守れず、**指した先に本当にその関数があるか**まで見ないと意味がない。
+//
+// R240 の教訓に従い、**母数も期待値も実ファイルから取る**。件数の定数も期待行番号の表も持たない。
+// (b) は geo.js が1行でも動けば自然に発火するので、死んだ軸にはならない。
+{
+  const fixturesBody = readFileSync(join(REPO_ROOT, 'docs', 'FIXTURES.md'), 'utf8');
+  const geoLines = readFileSync(join(REPO_ROOT, 'assets', 'geo.js'), 'utf8').split('\n');
+  const engineLines = readFileSync(join(REPO_ROOT, 'assets', 'engine.js'), 'utf8').split('\n');
+
+  // 引用の抽出: 同じ行に書かれた `関数名` のバッククォート表記を手がかりに、L<数字> と関数名を組にする。
+  // 1行に複数の L<数字> がある箇所(例: 「**L1275, L1391**(`fetchSpots`)」)も全件ばらして拾う。
+  const citations = [];
+  fixturesBody.split('\n').forEach((line, i) => {
+    const nums = line.match(/L\d{3,4}/g);
+    if (!nums) return;
+    // その行で言及されている関数名(バッククォート内の識別子)。engine.js 側の引用は行内に
+    // `engine.js` と書かれているかで振り分ける。
+    const names = (line.match(/`([A-Za-z_$][\w$]*)`/g) || []).map((m) => m.slice(1, -1));
+    const inEngine = /engine\.js/.test(line);
+    nums.forEach((n) => {
+      citations.push({ docLine: i + 1, ref: n, lineNo: Number(n.slice(1)), names, inEngine });
+    });
+  });
+
+  // (a) 存在軸: 母数の確認。引用が1件も無ければ、文書が道案内をやめたか検査が壊れている。
+  report(
+    `FIXTURES.md に geo.js の行番号引用がある(${citations.length}件)`,
+    citations.length > 0,
+    citations.length > 0 ? undefined : 'L<数字> の引用が1件も見つからない'
+  );
+
+  // (b) 行番号軸: 引用した行番号が指す実際のコード行に、同じ行で名乗っている関数名が含まれること。
+  //     関数は定義行だけでなく本文中の分岐も指すため、**定義行から次の関数定義までの範囲**に
+  //     引用行が入っているかで判定する。geo.js が動けば必ずここが発火する。
+  //     内側に別の関数(fetchWikiNearby の baseParams など)を抱える関数があるため、
+  //     終端は「次の function」ではなく**インデントが定義行と同じ `}` まで**で取る。
+  const findFunctionRange = (lines, name) => {
+    const defRe = new RegExp(`^(\\s*)(?:async\\s+)?function\\s+${name}\\s*\\(`);
+    let start = -1;
+    let indent = '';
+    for (let i = 0; i < lines.length; i++) {
+      const m = defRe.exec(lines[i]);
+      if (m) { start = i; indent = m[1]; break; }
+    }
+    if (start < 0) return null;
+    const closeRe = new RegExp(`^${indent}\\}`);
+    let end = lines.length;
+    for (let i = start + 1; i < lines.length; i++) {
+      if (closeRe.test(lines[i])) { end = i + 1; break; }
+    }
+    return { start: start + 1, end };  // 1始まりの行番号で返す
+  };
+
+  const strayCitations = [];
+  for (const c of citations) {
+    const lines = c.inEngine ? engineLines : geoLines;
+    const file = c.inEngine ? 'engine.js' : 'geo.js';
+    // 行内に挙がった識別子のうち、そのファイルに関数定義として実在するものだけを照合対象にする。
+    const ranges = c.names
+      .map((name) => ({ name, range: findFunctionRange(lines, name) }))
+      .filter((r) => r.range);
+    if (ranges.length === 0) continue;  // 関数名を名乗っていない引用は対象外
+    const hit = ranges.find((r) => c.lineNo >= r.range.start && c.lineNo <= r.range.end);
+    if (!hit) {
+      const names = ranges.map((r) => `${r.name}(${file}:${r.range.start}-${r.range.end})`).join(' / ');
+      strayCitations.push(`FIXTURES.md:${c.docLine} の ${c.ref} は ${names} の外を指している`);
+    }
+  }
+  report(
+    `FIXTURES.md の行番号引用がすべて実際の関数の中を指している(${citations.length}件照合)`,
+    strayCitations.length === 0,
+    strayCitations.length === 0 ? undefined : strayCitations.join(' / ')
+  );
+
+  // (c) 前提軸: enrichFame の記述が「本番では動いている」と読める書き方になっていないこと。
+  //     実態は定義と export だけで呼び出し0件(R225 は判断待ち)。実際の呼び出し件数も
+  //     geo.js から数え、**呼ばれ始めたらこの軸のほうが先に赤くなる**ようにしておく。
+  const enrichCallCount = geoLines.filter(
+    (l) => /\benrichFame\s*\(/.test(l) && !/function\s+enrichFame/.test(l) && !/^\s*(\/\/|\*)/.test(l)
+  ).length;
+  report(
+    `geo.js の enrichFame は呼び出し0件のまま(R225 判断待ち・実測 ${enrichCallCount}件)`,
+    enrichCallCount === 0,
+    enrichCallCount === 0 ? undefined : 'enrichFame が呼ばれ始めた。FIXTURES.md の「常に null」の記述を見直すこと'
+  );
+
+  const enrichLines = fixturesBody.split('\n').filter((l) => l.includes('enrichFame'));
+  report('FIXTURES.md に enrichFame の記述がある', enrichLines.length > 0);
+
+  if (enrichCallCount === 0 && enrichLines.length > 0) {
+    // 呼ばれていないのに「呼ばれていない」と一言も書いていない記述を落とす。
+    const admitsUncalled = enrichLines.filter(
+      (l) => /呼ばれていない|呼び出しは?0件|呼び出し0件|どこからも呼ばれ/.test(l)
+    ).length;
+    report(
+      'FIXTURES.md の enrichFame の記述が「呼ばれていない」実態に触れている',
+      admitsUncalled > 0,
+      admitsUncalled > 0 ? undefined : 'enrichFame は定義と export だけで呼び出し0件なのに、文書が「動いている前提」で書かれている'
+    );
+
+    // 「fixture だから null」と原因を取り違えている書き方を止める。
+    const blamesFixture = enrichLines.filter(
+      (l) => /(fixture|固定データ)[^。]{0,40}(含めていないため|含まれないため|だから)[^。]{0,30}null/.test(l)
+    );
+    report(
+      'FIXTURES.md が fame の null を「固定データのせい」と説明していない',
+      blamesFixture.length === 0,
+      blamesFixture.length === 0 ? undefined : '実態は本番でも enrichFame が呼ばれていないため常に null'
+    );
+  }
+}
+// --- ここまで R248 ---
+
 // --- R33: 集計行 ---
 if (timings.length > 0) {
   const total = timings.reduce((sum, t) => sum + t.ms, 0);
