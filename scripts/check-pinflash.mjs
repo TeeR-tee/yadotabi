@@ -46,6 +46,37 @@ function ok(cond, label, extra) {
   else { fail++; console.log('  FAIL ' + label + (extra !== undefined ? ' -> ' + JSON.stringify(extra) : '')); }
 }
 
+// R239: ピンを click してからカードの目印を読むまでの待ち時間。
+// 読み取りの窓(assets/app.js を読んで確かめたもの):
+//   - 下限: ピンの click ハンドラ(:1837)が呼ぶ goToCardFromPin(:1912-1932)は全て同期処理で、
+//     目印を付ける card.classList.add('feedcard--flash') は :1927。fetch も requestAnimationFrame も
+//     待たないので、click() が返った時点で目印は既に付いている。
+//   - 上限: :1928 の setTimeout(..., 1200) が 1200ms 後に目印を消す。
+//   よって窓は「0ms超 〜 1200ms未満」で、R238 が置いた 350ms にはどちらの側からの根拠も無い。
+// 実測した値: 0ms → 読み落とす回がある / 10ms → 落ちる回がある(beppu の13本目が空) /
+//   25ms・50ms → 3回とも全緑。落ち始めるのは 10ms 付近なので 5倍の余裕を取って 50ms を採用する。
+// ★ただし待ち時間の短縮そのものに通し時間の効果はほぼ無かった(実測):
+//   350ms → 168.6s / 50ms → 166.5s(差 2.1s。環境ゆらぎ 4.2s より小さい)。
+//   理由は下の settleScroll のコメントに書いた「本当の遅さ」の方にある。
+const FLASH_READ_WAIT_MS = Number(process.env.YADOTABI_PINFLASH_WAIT ?? 50);
+
+// R239: ★この検査が遅かった本当の原因。
+// goToCardFromPin(:1922) は card.scrollIntoView({ behavior: 'smooth' }) を呼ぶので、
+// クリック後およそ1秒はページが動き続ける。次のピンを click() しようとすると Playwright の
+// アクショナビリティ判定が「要素が静止するまで」待つため、click() 1回に約1.1秒かかっていた
+// (計測: 別府17本で click だけの合計 18.6s / 待ち時間の合計は 0.8s)。
+// つまり 163s の大半は待ち時間ではなく click() の中の安定待ちだった。
+// そこで次の click の前にスクロールを終端へ飛ばし、足場を静止させてから押す。
+//   実測(別府17本): そのまま ループ19.6s → スクロール停止 ループ1.8s(不一致は両方とも0)。
+// ★これは「検査する側の足場」を固めるだけで、押す本数も照合する内容も1つも変えていない
+//   (109本すべて押し、全ての結果を同じ3軸で照合する)。force:true のように
+//   アクショナビリティ判定を飛ばす手は、動いているピンを誤爆して不一致7件を出したので採らない。
+async function settleScroll(page) {
+  await page.evaluate(() => {
+    window.scrollTo({ top: window.scrollY, behavior: 'instant' });
+  });
+}
+
 function waitFor(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -234,8 +265,9 @@ async function main() {
         document.querySelectorAll('.feedcard--flash').forEach((el) => el.classList.remove('feedcard--flash'));
       });
       const pinNo = await spotPins.nth(i).evaluate((el) => el.textContent.trim());
+      await settleScroll(spotPage); // R239: 前回の smooth スクロールを止めてから押す
       await spotPins.nth(i).click();
-      await waitFor(350);
+      await waitFor(FLASH_READ_WAIT_MS);
       const flashed = await spotPage.evaluate(() => {
         const els = Array.from(document.querySelectorAll('.feedcard--flash'));
         return els.map((el) => el.dataset.index);
@@ -305,8 +337,9 @@ async function main() {
         document.querySelectorAll('.feedcard--flash').forEach((el) => el.classList.remove('feedcard--flash'));
       });
       const pinNo = await spotPins.nth(i).evaluate((el) => el.textContent.trim());
+      await settleScroll(spotPage); // R239: 前回の smooth スクロールを止めてから押す
       await spotPins.nth(i).click();
-      await waitFor(350);
+      await waitFor(FLASH_READ_WAIT_MS);
       const flashed = await spotPage.evaluate(() => {
         const els = Array.from(document.querySelectorAll('.feedcard--flash'));
         return els.map((el) => el.dataset.index);
@@ -402,8 +435,9 @@ async function main() {
         await aPage.evaluate(() => {
           document.querySelectorAll('.feedcard--flash').forEach((el) => el.classList.remove('feedcard--flash'));
         });
+        await settleScroll(aPage); // R239: 前回の smooth スクロールを止めてから押す
         await aPins.nth(i).click();
-        await waitFor(300);
+        await waitFor(FLASH_READ_WAIT_MS);
         const flashed = await aPage.evaluate(() => {
           const els = Array.from(document.querySelectorAll('.feedcard--flash'));
           return els.map((el) => el.dataset.index);
