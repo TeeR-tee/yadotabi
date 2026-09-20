@@ -131,6 +131,7 @@
   var feedMarkers = [];
   var feedSpotMarkers = [];  // 番号バッジ→ピンを引くための配列(state.cardsと同じ順)
   var flashTimer = null;     // ピン点滅の連打対策(1本だけ持つ)
+  var cardFlashTimer = null; // R237: 地図のピン→カードの目印(1本だけ持つ)
   var suggestItems = [];
   var lastSuggestQuery = '';
 
@@ -1827,6 +1828,13 @@
         iconAnchor: [12, 12]
       });
       var m = L.marker([c.lat, c.lon], { icon: icon, title: c.name, zIndexOffset: 1000 - i }).addTo(feedMap);
+      // R237: これまで観光地ピンには title 属性しか無く、title はスマホでは一生出ないため
+      // 「丸くて番号が書いてあって押せそうに見えるのに、押しても何も起きない」ピンだった。
+      // カード→地図(:2421 の番号バッジ)は既に通っているので、逆向き(地図→カード)だけを足す。
+      // 文言は場所の名前と番号だけにする(評価・情緒の語は使わない。R227・R231・R226)。
+      // aria-label は「(N)番のピンを地図で光らせる」という向きなので流用しない(R234)。
+      m.bindTooltip(c.name, { direction: 'top', offset: [0, -14], className: 'hoteltip', permanent: false });
+      m.on('click', function () { goToCardFromPin(i); });
       feedMarkers.push(m);
       spotMarkers.push(m);
       feedSpotMarkers.push(m);
@@ -1896,6 +1904,32 @@
       el.classList.remove('pin--flash');
       flashTimer = null;
     }, 1200);
+  }
+
+  // R237: 地図のピンをタップしたとき、そのピンに対応するカードまで運ぶ(地図→カード)。
+  // 添字 i は renderFeedMap の mapSpots の添字で、カードの data-index と同じ並び。
+  // ピン側も1.2秒だけ光らせて「いま押したのはこのピン」を残す(既存 flashPin の流用)。
+  function goToCardFromPin(i) {
+    var card = els.feedList ? els.feedList.querySelector('.feedcard[data-index="' + i + '"]') : null;
+    if (!card) return;
+    var hotel = state.hotel;
+    var spot = (state.moreOpen ? state.cards.concat(state.more) : state.cards)[i];
+    if (hotel && spot) {
+      passivePush('tap', { hotelId: hotel.id, cardId: spot.id, cardName: spot.name, index: i });
+    }
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    var prev = els.feedList.querySelector('.feedcard--flash');
+    if (prev) prev.classList.remove('feedcard--flash');
+    if (cardFlashTimer) {
+      clearTimeout(cardFlashTimer);
+      cardFlashTimer = null;
+    }
+    card.classList.add('feedcard--flash');
+    cardFlashTimer = setTimeout(function () {
+      card.classList.remove('feedcard--flash');
+      cardFlashTimer = null;
+    }, 1200);
+    flashPin(i);
   }
 
   // ---------------------------------------------------------------------------

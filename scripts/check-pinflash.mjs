@@ -15,6 +15,9 @@
 //   4. reducedMotion: 'reduce' のコンテキストで同じ click → クラスは付くが
 //      アニメしない(animationName が none か duration が 0.01ms 相当)
 //   5. コンソールエラー0件
+//   6. R237(有無軸): .pin--spot をクリックすると対応するカードが反応する(.feedcard--flash が1枚)
+//   7. R237(中身軸): 押したピンの並び順と、反応したカードの data-index が一致する
+//      (ピンの本数が合っていても対応が1つずれていれば落ちる)
 // 撮影: click後200ms時点のスクリーンショットを screenshots/ に保存(r10-flash を含む)
 
 // R205: CI(ubuntu-latest)でも動かせるよう、Playwright の読み込み先を環境変数で差し替え可能にした。
@@ -186,6 +189,80 @@ async function main() {
     ok(hotelErrors.length === 0, 'R37: コンソールエラー0件', hotelErrors);
 
     await hotelContext.close();
+
+    // --- R237: 観光地ピン → カード(地図→カードの逆方向) ---
+    // 軸は2本。
+    //   (a) 有無軸  : .pin--spot をクリックすると反応がある(カードに目印 .feedcard--flash が付く)
+    //   (b) 中身軸  : 押したピンの番号と、目印が付いたカードの data-index が一致する
+    //                 (1番を押して1番のカードに行く。本数が合っていても対応がずれていれば落ちる)
+    const spotContext = await browser.newContext({ viewport: { width: 375, height: 812 } });
+    const spotPage = await spotContext.newPage();
+    const spotErrors = [];
+    spotPage.on('console', (msg) => { if (msg.type() === 'error') spotErrors.push(msg.text()); });
+    spotPage.on('pageerror', (err) => spotErrors.push(String(err)));
+
+    await spotPage.goto(`${BASE}/?fixture=kusatsu`, { waitUntil: 'load' });
+    await waitFor(2000);
+
+    const spotPins = spotPage.locator('.pin--spot');
+    const spotPinCount = await spotPins.count();
+    // 母数が0件だと以下の照合がすべて素通りするので、母数そのものを先に守る(R232・R233・R235)
+    ok(spotPinCount >= 5, 'R237: 観光地ピンが5個以上ある(照合の母数)', spotPinCount);
+
+    // ピンの表示名(ツールチップ)が読めること。title 属性だけではスマホで出ないため bindTooltip が要る
+    await spotPins.nth(0).hover();
+    await waitFor(300);
+    const tipText = await spotPage.evaluate(() => {
+      const t = document.querySelector('.leaflet-tooltip');
+      return t ? t.textContent.trim() : null;
+    });
+    ok(!!tipText && tipText.length > 0, 'R237: ピンにホバーすると場所の名前が出る', tipText);
+
+    // (a)有無軸 + (b)中身軸 を、見えているピン全数について回す
+    const pairs = [];
+    for (let i = 0; i < spotPinCount; i++) {
+      // 押す前に前回の目印を消しておく(前のクリックの残りを拾って緑になるのを防ぐ)
+      await spotPage.evaluate(() => {
+        document.querySelectorAll('.feedcard--flash').forEach((el) => el.classList.remove('feedcard--flash'));
+      });
+      const pinNo = await spotPins.nth(i).evaluate((el) => el.textContent.trim());
+      await spotPins.nth(i).click();
+      await waitFor(350);
+      const flashed = await spotPage.evaluate(() => {
+        const els = Array.from(document.querySelectorAll('.feedcard--flash'));
+        return els.map((el) => el.dataset.index);
+      });
+      pairs.push({ pin: i, pinNo, flashed });
+    }
+
+    // (a)有無軸: 全てのピンでカードにちょうど1枚だけ目印が付いた
+    const reacted = pairs.filter((p) => p.flashed.length === 1);
+    ok(
+      pairs.length > 0 && reacted.length === pairs.length,
+      'R237(有無軸): 観光地ピンを押すとカードがちょうど1枚反応する',
+      pairs
+    );
+
+    // (b)中身軸: 押したピンの並び順 i と、反応したカードの data-index が一致する
+    const mismatched = pairs.filter((p) => p.flashed.length !== 1 || Number(p.flashed[0]) !== p.pin);
+    ok(
+      pairs.length > 0 && mismatched.length === 0,
+      'R237(中身軸): 押したピンの番号と移動先カードの data-index が一致する',
+      { mismatched, pairs }
+    );
+
+    // 1〜5番のピンは表示している数字と data-index+1 が一致する(番号バッジとの1:1対応)
+    const numbered = pairs.filter((p) => /^\d+$/.test(p.pinNo));
+    const numberedBad = numbered.filter((p) => Number(p.pinNo) !== p.pin + 1);
+    ok(
+      numbered.length >= 5 && numberedBad.length === 0,
+      'R237(中身軸): 番号付きピンの数字と移動先カードの番号が一致する',
+      { numbered, numberedBad }
+    );
+
+    ok(spotErrors.length === 0, 'R237: コンソールエラー0件', spotErrors);
+
+    await spotContext.close();
   } finally {
     await browser.close();
     await stop();

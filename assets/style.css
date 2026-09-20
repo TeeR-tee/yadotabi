@@ -432,6 +432,12 @@ body {
   cursor: pointer;
 }
 
+/* R237: 地図のピンを押して運ばれてきたカードに1.2秒だけ縁を出す。
+   どのカードへ来たのかを、新しい色を足さずに既存の主色の縁だけで示す(ピンの pin--flash と対の関係)。 */
+.feedcard--flash {
+  box-shadow: 0 0 0 2px var(--c-primary);
+}
+
 .feedcard__media {
   position: relative;
   width: 100%;
