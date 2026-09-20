@@ -18,6 +18,14 @@
 //   6. R237(有無軸): .pin--spot をクリックすると対応するカードが反応する(.feedcard--flash が1枚)
 //   7. R237(中身軸): 押したピンの並び順と、反応したカードの data-index が一致する
 //      (ピンの本数が合っていても対応が1つずれていれば落ちる)
+//   8. R238(母数軸): 「もっと見る」で展開するとピンが増える(展開前N1本 → 展開後N2本, N2>N1)。
+//      展開後のカード枚数とピン本数が一致する。
+//   9. R238(有無軸): 展開後の観光地ピンを全数クリックし、各回カードにちょうど1枚目印が付く。
+//      goToCardFromPin の `if (!card) return;` で黙って無反応になるケースをここで落とす。
+//  10. R238(中身軸): 展開後のピンの並び順と移動先カードの data-index が一致する。
+//      展開後にだけ現れる6本目以降も別項目で照合する。
+//      1〜5番のピンだけ表示文字の数字も照合する(R159: 6番以降は `・` で番号なしが正しい状態)。
+//  11. R238: 上記を kusatsu / hakone / beppu / dogo / kinosaki の5エリアで回す。
 // 撮影: click後200ms時点のスクリーンショットを screenshots/ に保存(r10-flash を含む)
 
 // R205: CI(ubuntu-latest)でも動かせるよう、Playwright の読み込み先を環境変数で差し替え可能にした。
@@ -260,9 +268,171 @@ async function main() {
       { numbered, numberedBad }
     );
 
-    ok(spotErrors.length === 0, 'R237: コンソールエラー0件', spotErrors);
+    // --- R238: 「もっと見る」で展開した後のピンも同じ2軸で照合する ---
+    // R237 の照合は展開前に見えている5本だけだった。assets/app.js の mapSpots は
+    // state.moreOpen のとき state.cards.concat(state.more) になるので展開後は最大15本あり、
+    // 残りの最大10本は1度もクリックされていなかった(=展開後にだけ出る添字ズレを誰も見ていない)。
+    // goToCardFromPin の `if (!card) return;` は見つからなければ黙って何もしないので、
+    // 壊れても画面は「反応しないピン」に見えるだけ。ここで機械的に全本数を押して捕まえる。
+    const moreBtn = spotPage.locator('#more-btn');
+    ok(await moreBtn.count() === 1, 'R238: 「もっと見る」ボタンが存在する', await moreBtn.count());
+    await moreBtn.click();
+    await waitFor(800); // renderFeed() → renderFeedMap() で地図が描き直されるのを待つ
+
+    const openedPinCount = await spotPins.count();
+    // 母数軸: 展開でピンが実際に増えたこと。増えていないなら照合の母数が偽装されているので落とす
+    // (R232・R233・R235 の教訓。件数を守る項目を中身の照合とは別に置く)。
+    ok(
+      openedPinCount > spotPinCount,
+      'R238(母数軸): 展開でピンが増える(展開前 ' + spotPinCount + '本 → 展開後 ' + openedPinCount + '本)',
+      { before: spotPinCount, after: openedPinCount }
+    );
+
+    // 展開後のカード枚数と地図のピン本数が同じ母数であること
+    const openedCardCount = await spotPage.evaluate(
+      () => document.querySelectorAll('.feedcard[data-index]').length
+    );
+    ok(
+      openedCardCount === openedPinCount,
+      'R238(母数軸): 展開後のカード枚数と観光地ピンの本数が一致する',
+      { cards: openedCardCount, pins: openedPinCount }
+    );
+
+    // 展開後の全ピンを1本ずつ押す(展開前の5本も含めた全数。押した本数を必ず出力する)
+    const openedPairs = [];
+    for (let i = 0; i < openedPinCount; i++) {
+      await spotPage.evaluate(() => {
+        document.querySelectorAll('.feedcard--flash').forEach((el) => el.classList.remove('feedcard--flash'));
+      });
+      const pinNo = await spotPins.nth(i).evaluate((el) => el.textContent.trim());
+      await spotPins.nth(i).click();
+      await waitFor(350);
+      const flashed = await spotPage.evaluate(() => {
+        const els = Array.from(document.querySelectorAll('.feedcard--flash'));
+        return els.map((el) => el.dataset.index);
+      });
+      openedPairs.push({ pin: i, pinNo, flashed });
+    }
+    console.log('  展開後に押した観光地ピン: ' + openedPairs.length + '本 (kusatsu)');
+
+    // (a)有無軸: 展開後の各ピンでカードにちょうど1枚だけ目印が付く。
+    //   `if (!card) return;` で黙って無反応になるケースはここで flashed.length === 0 として落ちる。
+    const openedReacted = openedPairs.filter((p) => p.flashed.length === 1);
+    const openedSilent = openedPairs.filter((p) => p.flashed.length === 0);
+    ok(
+      openedPairs.length === openedPinCount &&
+        openedPairs.length > spotPinCount &&
+        openedReacted.length === openedPairs.length,
+      'R238(有無軸): 展開後の観光地ピン全' + openedPairs.length + '本がクリックでカード1枚を反応させる',
+      { silent: openedSilent, pairs: openedPairs }
+    );
+
+    // (b)中身軸: 押したピンの並び順 i と、反応したカードの data-index が一致する。
+    //   本数が合っていても対応が1つずれていれば落ちる(展開後だけずらす壊し方を捕まえる)。
+    const openedMismatched = openedPairs.filter(
+      (p) => p.flashed.length !== 1 || Number(p.flashed[0]) !== p.pin
+    );
+    ok(
+      openedPairs.length > spotPinCount && openedMismatched.length === 0,
+      'R238(中身軸): 展開後のピンの並び順と移動先カードの data-index が一致する',
+      { mismatched: openedMismatched, pairs: openedPairs }
+    );
+
+    // 展開後だけに現れるピン(6本目以降)を単独でも照合する。
+    // ここを別項目に切り出しておくと、展開前の5本が正しいまま展開後だけ壊れたときに
+    // どちら側が壊れたのかがログで分かる。
+    const tailPairs = openedPairs.slice(spotPinCount);
+    const tailMismatched = tailPairs.filter(
+      (p) => p.flashed.length !== 1 || Number(p.flashed[0]) !== p.pin
+    );
+    ok(
+      tailPairs.length > 0 && tailMismatched.length === 0,
+      'R238(中身軸): 展開後にだけ現れるピン' + tailPairs.length + '本も番号どおりのカードへ行く',
+      { tailMismatched, tailPairs }
+    );
+
+    // R159: 6番以降のピンは表示文字が `・` で番号を持たない(バッジと1:1対応しないため)。
+    // 数字一致の照合は1〜5番のピンにだけ掛ける(6番以降に番号を要求しない)。
+    const openedNumbered = openedPairs.filter((p) => /^\d+$/.test(p.pinNo));
+    const openedNumberedBad = openedNumbered.filter((p) => Number(p.pinNo) !== p.pin + 1);
+    ok(
+      openedNumbered.length === 5 && openedNumberedBad.length === 0,
+      'R238(中身軸): 展開後も番号付きピンは5本で数字とカード番号が一致する',
+      { openedNumbered, openedNumberedBad }
+    );
+
+    ok(spotErrors.length === 0, 'R237/R238: コンソールエラー0件', spotErrors);
 
     await spotContext.close();
+
+    // --- R238: 残り4エリアでも展開後の全ピンを同じ2軸で照合する ---
+    // 草津だけだと、そのエリアの件数に依存した偶然で緑になる可能性が残るため。
+    // エリアごとに「展開前→展開後の本数」と「押した本数」を出力する。
+    const areaTotals = [{ area: 'kusatsu', before: spotPinCount, after: openedPinCount }];
+    for (const area of ['hakone', 'beppu', 'dogo', 'kinosaki']) {
+      const aCtx = await browser.newContext({ viewport: { width: 375, height: 812 } });
+      const aPage = await aCtx.newPage();
+      const aErrors = [];
+      aPage.on('console', (msg) => { if (msg.type() === 'error') aErrors.push(msg.text()); });
+      aPage.on('pageerror', (err) => aErrors.push(String(err)));
+
+      await aPage.goto(`${BASE}/?fixture=${area}`, { waitUntil: 'load' });
+      await waitFor(2000);
+
+      const aPins = aPage.locator('.pin--spot');
+      const aBefore = await aPins.count();
+      const aMore = aPage.locator('#more-btn');
+      const hasMore = await aMore.count() === 1;
+      if (hasMore) {
+        await aMore.click();
+        await waitFor(800);
+      }
+      const aAfter = await aPins.count();
+      areaTotals.push({ area, before: aBefore, after: aAfter });
+
+      // 母数軸: このエリアでも照合の母数が0でなく、展開後の本数が展開前以上であること
+      ok(
+        aBefore >= 1 && aAfter >= aBefore,
+        `R238(母数軸): ${area} のピン本数(展開前 ${aBefore}本 → 展開後 ${aAfter}本)`,
+        { area, before: aBefore, after: aAfter, hasMore }
+      );
+
+      const aPairs = [];
+      for (let i = 0; i < aAfter; i++) {
+        await aPage.evaluate(() => {
+          document.querySelectorAll('.feedcard--flash').forEach((el) => el.classList.remove('feedcard--flash'));
+        });
+        await aPins.nth(i).click();
+        await waitFor(300);
+        const flashed = await aPage.evaluate(() => {
+          const els = Array.from(document.querySelectorAll('.feedcard--flash'));
+          return els.map((el) => el.dataset.index);
+        });
+        aPairs.push({ pin: i, flashed });
+      }
+      console.log(`  展開後に押した観光地ピン: ${aPairs.length}本 (${area})`);
+
+      // (a)有無軸
+      const aSilent = aPairs.filter((p) => p.flashed.length === 0);
+      ok(
+        aPairs.length === aAfter && aPairs.length > 0 && aSilent.length === 0 &&
+          aPairs.every((p) => p.flashed.length === 1),
+        `R238(有無軸): ${area} の展開後ピン全${aPairs.length}本がクリックでカード1枚を反応させる`,
+        { area, silent: aSilent, pairs: aPairs }
+      );
+
+      // (b)中身軸
+      const aMismatched = aPairs.filter((p) => p.flashed.length !== 1 || Number(p.flashed[0]) !== p.pin);
+      ok(
+        aPairs.length > 0 && aMismatched.length === 0,
+        `R238(中身軸): ${area} の展開後ピンの並び順と移動先カードの data-index が一致する`,
+        { area, mismatched: aMismatched }
+      );
+
+      ok(aErrors.length === 0, `R238: ${area} のコンソールエラー0件`, aErrors);
+      await aCtx.close();
+    }
+    console.log('  R238 エリア別ピン本数: ' + JSON.stringify(areaTotals));
   } finally {
     await browser.close();
     await stop();
