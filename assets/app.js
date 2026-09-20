@@ -1644,21 +1644,23 @@
     //   - 評価の語(おすすめ/人気No.1/必見 等)を使わない(R227・R231・R226)。
     //   - 専門用語を使わない。「被リンク」「Wikipedia API」ではなく
     //     「百科事典で他の記事からどれだけ触れられているか」と噛み砕く。
-    // 出す条件は距離の凡例と完全に同じ(カードが0件なら #feed-origin ごと隠れる)。
-    // しきい値・バッジの文言・出す条件は1バイトも変えていない(R241 のまま)。
-    if (els.feedOrigin) {
-      var showOrigin = !!state.cards.length;
-      els.feedOrigin.hidden = !showOrigin;
-      els.feedOrigin.textContent = '';
-      if (showOrigin) {
-        // 宿名を含むのでHTML文字列を組み立てず、テキストノードで足す。
-        els.feedOrigin.appendChild(
-          document.createTextNode('距離は「' + (hotel.name || '') + '」からの目安です'));
-        els.feedOrigin.appendChild(document.createElement('br'));
-        els.feedOrigin.appendChild(document.createTextNode(FAME_ORIGIN_TEXT));
-      }
-    }
-
+    // 距離の凡例を出す条件はカードが1枚以上あること(R228 のまま1バイトも変えていない)。
+    //
+    // ★R245: 一方、★の説明は **画面に★バッジが1枚でもあるときだけ** 出す。
+    // R242 は「出す条件は距離の凡例と完全に同じ」と書いたが、この2つは条件を共有して
+    // よい関係ではなかった。距離は全カードに必ず出るのに対し、★が出るのは
+    // 初期5枚で 10/25枚(草津 1/5・城崎 1/5)しかなく、
+    //   - 読み込み中の段(wikifirst/osm。カードは出ているが被リンクがまだ来ていない)
+    //   - 本番で★が1枚も付かなかった宿
+    // では「★って何だろう」と画面を探しても★がどこにも無い、という状態が起きる。
+    // R236 が見つけた「画面に無いテーマ名を名乗る」罠の裏返し(出ていない印の説明だけを
+    // 先に名乗る)なので、同じ直し方=画面(DOM)を見てから決める、にそろえる。
+    //
+    // 枚数は state.cards から組み直すのではなく **描き終えた DOM から数える**
+    // (R240 の死んだ軸の教訓。cardHtml の分岐と二重に持つと静かにずれる)。
+    // そのためこのブロックは feedList を書いたあとに移した。
+    // 「★がありません」のような代わりの文言は出さない。消すだけにする
+    // (無い印について語るのは、無い印の説明を出すのと同じ誤り)。
     var html = state.cards.map(function (c, i) { return cardHtml(c, i, true); }).join('');
     if (state.moreOpen) {
       html += moreBundledHtml();
@@ -1670,6 +1672,23 @@
     els.feedList.innerHTML = html;
     // 実カードが入った最初の描画だけ計測する(?perf=1 のとき以外は何もしない)
     perfMarkFirstCard();
+
+    if (els.feedOrigin) {
+      var showOrigin = !!state.cards.length;
+      // 画面に出ている★バッジの枚数。0枚なら★の行だけを落とす(距離の行は残す)。
+      var fameOnScreen = els.feedList.querySelectorAll('.feedcard__fame').length > 0;
+      els.feedOrigin.hidden = !showOrigin;
+      els.feedOrigin.textContent = '';
+      if (showOrigin) {
+        // 宿名を含むのでHTML文字列を組み立てず、テキストノードで足す。
+        els.feedOrigin.appendChild(
+          document.createTextNode('距離は「' + (hotel.name || '') + '」からの目安です'));
+        if (fameOnScreen) {
+          els.feedOrigin.appendChild(document.createElement('br'));
+          els.feedOrigin.appendChild(document.createTextNode(FAME_ORIGIN_TEXT));
+        }
+      }
+    }
 
     // 「もっと見る」は読み込み中は出さない(スケルトンと並ぶと意味が分からないため)
     var more = loading ? '' : moreHtml(state.more, state.moreOpen);

@@ -216,9 +216,13 @@ async function readArea(page, base, area) {
 
   // ★R242: バッジの根拠の1行も **画面(DOM)から** 読む。engine の再計算値は使わない
   // (R240 の教訓)。hidden と、根拠の行だけを切り出した文字列を返す。
+  // ★R245: 同じ瞬間に **画面に出ている★バッジの枚数** も一緒に読む。
+  // 「★の説明が出ているか」と「★が画面にあるか」を同じ1回の評価で取らないと、
+  // 展開などで画面が変わったあとの値と突き合わせることになりずれる。
   const origin = await page.evaluate((head) => {
+    const badgesOnScreen = document.querySelectorAll('#feed-list .feedcard__fame').length;
     const el = document.getElementById('feed-origin');
-    if (!el) return { exists: false, hidden: null, text: '', whyLine: '' };
+    if (!el) return { exists: false, hidden: null, text: '', whyLine: '', badgesOnScreen };
     const text = el.textContent || '';
     const at = text.indexOf(head);
     return {
@@ -228,6 +232,7 @@ async function readArea(page, base, area) {
       // 距離の行と混ざらないよう、根拠の行だけを取り出す(見つからなければ空文字)。
       whyLine: at >= 0 ? text.slice(at) : '',
       overflow: el.scrollWidth > el.clientWidth + 1,
+      badgesOnScreen,
     };
   }, FAME_ORIGIN_HEAD);
 
@@ -292,7 +297,9 @@ async function main() {
   const totals = { cards: 0, badged: 0, national: 0, local: 0, dup: 0, expectNational: 0, expectLocal: 0,
     initCards: 0, initBadged: 0, initExpect: 0,
     // ★R242: 根拠の行が出ているエリア数(5エリア合計。全エリアが同時に消えても落ちる)
-    originShown: 0, originWithWhy: 0 };
+    originShown: 0, originWithWhy: 0,
+    // ★R245: ★バッジの有無と★の説明の有無が一致したエリア数(5エリア合計)
+    originLinked: 0 };
 
   // ★R241 (a) 母数軸の期待値。初期5枚(= 「もっと見る」を押す前)でバッジが出る枚数を
   // エリアごとに固定値で持つ。R241 の実測で 8枚 → **10枚**(草津 0→1・別府 2→3)になった。
@@ -339,6 +346,20 @@ async function main() {
       totals.originShown += origin.exists && origin.hidden === false ? 1 : 0;
       totals.originWithWhy += origin.whyLine.indexOf(FAME_ORIGIN_TEXT) === 0 ? 1 : 0;
       // ===== ★R242 ここまで =====
+
+      // ===== ★R245 ここから: 連動軸 =====
+      // 「画面に★バッジが1枚以上あること」と「★の説明の行が出ていること」が一致すること。
+      // R242 は説明を出す条件を距離の凡例と共有してしまい、★が1枚も無くても説明だけが
+      // 出る状態を作っていた(読み込み中・本番で★0枚の宿)。距離は全カードに出るが
+      // ★は初期5枚で 10/25枚しか出ないので、条件を共有してよい関係ではなかった。
+      // 枚数も文言も **DOM から** 取る(engine の再計算値とは突き合わせない。R240 の教訓)。
+      const badgedOnScreen = origin.badgesOnScreen > 0;
+      const whyShown = origin.whyLine.indexOf(FAME_ORIGIN_TEXT) === 0;
+      ok(badgedOnScreen === whyShown,
+        `${area}: 画面の★バッジの有無と★の説明の行の有無が一致する`,
+        { badgesOnScreen: origin.badgesOnScreen, whyShown });
+      totals.originLinked += badgedOnScreen === whyShown ? 1 : 0;
+      // ===== ★R245 ここまで =====
 
       // ===== ★R241 ここから: 初期5枚(「もっと見る」を押す前)だけを見る2軸 =====
       // (a) 母数軸: 画面のカード枚数と、そのうちバッジが出ている枚数。
@@ -501,6 +522,10 @@ async function main() {
       `合計: 根拠の行を載せた #feed-origin が ${AREAS.length} エリアで表示される`, totals.originShown);
     ok(totals.originWithWhy === AREAS.length,
       `合計: 根拠の文言が ${AREAS.length} エリアすべてに出ている`, totals.originWithWhy);
+    // ★R245 合計の連動軸(エリア単位とは別軸。5エリアが同時にずれても落ちる)
+    ok(totals.originLinked === AREAS.length,
+      `合計: ★バッジの有無と★の説明の有無が ${AREAS.length} エリアすべてで一致する`,
+      totals.originLinked);
 
     // ★R242: 根拠の行も距離の凡例(R228)と同じ条件でしか出ないこと。
     // カードが0件の画面と、宿を選ぶ前の画面(状態A)で出ていたら「根拠が無いのに
@@ -526,6 +551,48 @@ async function main() {
     ok(stateA.selectHidden === false, '状態A(宿未選択)に戻れている', stateA.selectHidden);
     ok(stateA.hidden === true && !(stateA.text || '').includes(FAME_ORIGIN_TEXT),
       '状態A(宿未選択)では根拠の行が出ない', stateA);
+
+    // ===== ★R245: ★が1枚も出ない状態で、★の説明だけが残っていないこと =====
+    // R242 の条件(カードが0件でないこと)は、読み込み中の段や本番で★が1枚も付かない
+    // 宿で「★って何だろう」と探しても画面のどこにも★が無い状態を作っていた。
+    // 固定データの5エリアは全部★が1枚以上出るので、**fixture の backlinks を配信の途中で
+    // 0 に差し替えて** ★0枚の画面を作る(assets/ も fixtures/ も1バイトも書き換えない)。
+    // 見るのは DOM だけ: ★バッジ0枚・★の説明が無い・**距離の行は残っている**の3点。
+    // 距離の行まで消す実装(#feed-origin ごと隠す)はここで落ちる。
+    const zeroArea = 'kusatsu';
+    let zeroed = 0;
+    await page.route(`**/fixtures/${zeroArea}.json`, async (route) => {
+      const res = await route.fetch();
+      const json = JSON.parse(await res.text());
+      if (json.backlinks && typeof json.backlinks === 'object') {
+        for (const k of Object.keys(json.backlinks)) { json.backlinks[k] = 0; zeroed++; }
+      }
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(json) });
+    });
+    await page.goto(`${base}/?fixture=${zeroArea}`, { waitUntil: 'load' });
+    await waitFor(2000);
+    const zero = await page.evaluate((head) => {
+      const el = document.getElementById('feed-origin');
+      const text = el ? (el.textContent || '') : '';
+      return {
+        cards: document.querySelectorAll('#feed-list .feedcard').length,
+        badges: document.querySelectorAll('#feed-list .feedcard__fame').length,
+        hidden: el ? el.hidden : null,
+        text,
+        hasWhy: text.indexOf(head) >= 0,
+        hasDistance: text.indexOf('距離は「') === 0,
+      };
+    }, FAME_ORIGIN_HEAD);
+    await page.unroute(`**/fixtures/${zeroArea}.json`);
+    // 母数: 差し替えが本当に効いて★0枚の画面になっていること
+    // (ここが緑のまま 0枚を作れていないと、下の2件は常に緑の死んだ軸になる)
+    ok(zeroed >= 1 && zero.cards >= 1 && zero.badges === 0,
+      `★0枚の画面を作れている(${zeroArea} の backlinks を配信時に0へ差し替え)`, { zeroed, ...zero });
+    ok(zero.hasWhy === false,
+      '★が0枚のとき ★の説明の行が出ていない', zero.text);
+    ok(zero.hidden === false && zero.hasDistance === true,
+      '★が0枚でも距離の凡例(R228)の行は残っている', zero);
+    // ===== ★R245 ここまで =====
 
     ok(consoleErrors.length === 0, 'コンソールエラー0件', consoleErrors);
 
